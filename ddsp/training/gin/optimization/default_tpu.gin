@@ -1,0 +1,15 @@
+# -*-Python-*-
+
+# IMPORTANT: Use the custom cumsum for TPUs.
+ddsp.core.cumsum.use_tpu = True
+
+train_util.create_estimator.batch_size = 128
+train_util.create_estimator.save_checkpoint_steps = 300
+train_util.create_estimator.save_summary_steps = 300
+train_util.create_estimator.keep_checkpoint_max = 100
+
+train_util.get_train_op.learning_rate = 1e-5
+train_util.get_train_op.lr_decay_steps = 10000
+train_util.get_train_op.lr_decay_rate = 0.98
+train_util.get_train_op.gradient_clip_norm = 3.0
+

@@ -1,0 +1,92 @@
+# -*-Python-*-
+
+import ddsp
+import ddsp.training.data
+import ddsp.training.decoders
+import ddsp.training.encoders
+import ddsp.training.preprocessing
+import ddsp.training.model
+import ddsp.training.train_util
+
+
+# Training dataset and model.
+train.file_reader = @data.NSynth()
+train.model = @model.Model()
+train.file_pattern = '/path/to/dataset*.tfrecord'
+
+# =======
+# Network
+# =======
+
+# Preprocessor
+model.Model.preprocessor = @preprocessing.DefaultPreprocessor()
+preprocessing.DefaultPreprocessor.time_steps = 1000
+
+
+# Encoder
+model.Model.encoder = @encoders.MfccTimeDistributedRnnEncoder()
+encoders.MfccTimeDistributedRnnEncoder.rnn_channels = 512
+encoders.MfccTimeDistributedRnnEncoder.rnn_type = 'gru'
+encoders.MfccTimeDistributedRnnEncoder.z_dims = 16
+encoders.MfccTimeDistributedRnnEncoder.z_time_steps = 125
+
+
+# Decoder
+model.Model.decoder = @decoders.ZRnnFcDecoder()
+decoders.ZRnnFcDecoder.n_out = 166
+decoders.ZRnnFcDecoder.rnn_channels = 512
+decoders.ZRnnFcDecoder.rnn_type = 'gru'
+decoders.ZRnnFcDecoder.ch = 512
+decoders.ZRnnFcDecoder.layers_per_stack = 3
+decoders.ZRnnFcDecoder.append_f0_loudness = True
+
+
+# =================
+# Signal Processors
+# =================
+
+# ProcessorGroup
+model.Model.processor_group = @processors.ProcessorGroup()
+
+processors.ProcessorGroup.dag = [
+  (@split/processors.Split(),
+    ['decoder_outputs']),
+  (@additive/synths.Additive(),
+    ['split/signal/to_amp', 'split/signal/to_harm', 'f0_hz']),
+  (@noise/synths.FilteredNoise(),
+    ['split/signal/to_noise']),
+  (@add/processors.Add(),
+    ['noise/signal', 'additive/signal']),
+]
+
+# Split
+split/processors.Split.name = 'split'
+split/processors.Split.splits = (('to_amp', 1), ('to_harm', 100), ('to_noise', 65))
+
+# Additive Synthesizer
+additive/synths.Additive.name = 'additive'
+additive/synths.Additive.n_samples = 64000
+additive/synths.Additive.sample_rate = 16000
+additive/synths.Additive.normalize_below_nyquist = True
+additive/synths.Additive.amp_scale_fn = @core.exp_sigmoid
+
+# Filtered Noise Synthesizer
+noise/synths.FilteredNoise.name = 'noise'
+noise/synths.FilteredNoise.n_samples = 64000
+noise/synths.FilteredNoise.window_size = 0
+noise/synths.FilteredNoise.amp_scale_fn = @core.exp_sigmoid
+
+# Add
+add/processors.Add.name = 'add'
+
+
+# ======
+# Losses
+# ======
+
+model.Model.losses = [
+    @losses.SpectralLoss(),
+]
+losses.SpectralLoss.loss_type = 'L1'
+losses.SpectralLoss.mag_weight = 1.0
+losses.SpectralLoss.logmag_weight = 1.0

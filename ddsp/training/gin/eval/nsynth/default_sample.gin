@@ -1,0 +1,13 @@
+# -*-Python-*-
+
+import ddsp.training.eval_util
+import ddsp.training.model
+import ddsp.training.data
+
+evaluate_or_sample.file_reader = @data.NSynth()
+evaluate_or_sample.model = @model.Model()
+evaluate_or_sample.file_pattern = '/path/to/dataset*.tfrecord'
+
+evaluate_or_sample.batch_size = 21
+evaluate_or_sample.mode = 'sample'
+evaluate_or_sample.ckpt_delay_secs = 300  # 5 minutes
