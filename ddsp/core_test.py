@@ -26,6 +26,8 @@ import numpy as np
 from scipy import signal
 import tensorflow.compat.v1 as tf
 
+tf.disable_v2_behavior()
+
 f32 = core.f32
 
 
@@ -774,5 +776,4 @@ class FiniteImpulseResponseTest(parameterized.TestCase, tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.disable_v2_behavior()
   tf.test.main()

@@ -27,6 +27,8 @@ from ddsp import synths
 import numpy as np
 import tensorflow.compat.v1 as tf
 
+tf.disable_v2_behavior()
+
 
 class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
 
@@ -106,5 +108,4 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.disable_v2_behavior()
   tf.test.main()
