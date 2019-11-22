@@ -54,7 +54,7 @@ def calc_mel(audio,
              pad_end=False):
   """Calculate Mel Spectrogram."""
   mag = calc_mag(audio, fft_size, overlap, pad_end)
-  num_spectrogram_bins = mag.shape[-1].value
+  num_spectrogram_bins = int(mag.shape[-1])
   linear_to_mel_matrix = tf.signal.linear_to_mel_weight_matrix(
       bins, num_spectrogram_bins, 16000, lo_hz, hi_hz)
   mel = tf.tensordot(mag, linear_to_mel_matrix, 1)
@@ -131,7 +131,7 @@ def diff(x, axis=-1):
   Raises:
     ValueError: Axis out of range for tensor.
   """
-  shape = x.get_shape()
+  shape = x.shape.as_list()
   if axis >= len(shape):
     raise ValueError('Invalid axis index: %d for tensor with only %d axes.' %
                      (axis, len(shape)))

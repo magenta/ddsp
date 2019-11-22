@@ -68,7 +68,7 @@ class Additive(processors.Processor):
 
     # Bandlimit the harmonic distribution.
     if self.normalize_below_nyquist:
-      n_harmonics = harmonic_distribution.get_shape().as_list()[-1]
+      n_harmonics = int(harmonic_distribution.shape[-1])
       harmonic_frequencies = core.get_harmonic_frequencies(f0_hz,
                                                            n_harmonics)
       harmonic_distribution = core.remove_above_nyquist(harmonic_frequencies,
@@ -153,7 +153,7 @@ class FilteredNoise(processors.Processor):
     Returns:
       signal: A tensor of harmonic waves of shape [batch, n_samples, 1].
     """
-    batch_size = magnitudes.shape[0]
+    batch_size = int(magnitudes.shape[0])
     signal = tf.random_uniform([batch_size, self.n_samples])
     signal = core.frequency_filter(signal,
                                    magnitudes,

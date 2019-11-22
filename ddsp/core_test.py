@@ -253,7 +253,7 @@ def create_wave_np(batch_size, frequencies, amplitudes, seconds, n_samples):
   """
   wave_np = np.zeros([batch_size, n_samples])
   time = np.linspace(0, seconds, n_samples)
-  n_harmonics = frequencies.shape[-1]
+  n_harmonics = int(frequencies.shape[-1])
   for i in range(batch_size):
     for j in range(n_harmonics):
       rads_per_cycle = 2.0 * np.pi
@@ -735,7 +735,7 @@ class FiniteImpulseResponseTest(parameterized.TestCase, tf.test.TestCase):
       is_even = target_size % 2 == 0
       target_size -= int(is_even)
 
-    impulse_response_size = impulse_response.shape[-1]
+    impulse_response_size = int(impulse_response.shape[-1])
     self.assertEqual(impulse_response_size, target_size)
 
   @parameterized.named_parameters(
@@ -771,7 +771,7 @@ class FiniteImpulseResponseTest(parameterized.TestCase, tf.test.TestCase):
                                                  window_size=window_size,
                                                  padding='same'))
 
-    audio_out_size = audio_out.shape[-1]
+    audio_out_size = int(audio_out.shape[-1])
     self.assertEqual(audio_out_size, self.audio_size)
 
 

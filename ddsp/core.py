@@ -115,7 +115,7 @@ def upsample_with_windows(inputs: tf.Tensor,
   if add_endpoint:
     inputs = tf.concat([inputs, inputs[:, -1:, :]], axis=1)
 
-  n_frames = inputs.shape[1].value
+  n_frames = int(inputs.shape[1])
   n_intervals = (n_frames - 1)
 
   if n_frames >= n_timesteps:
@@ -331,9 +331,9 @@ def harmonic_synthesis(frequencies: tf.Tensor,
     audio: Output audio. Shape [batch_size, n_samples, 1]
   """
   if harmonic_distribution is not None:
-    n_harmonics = harmonic_distribution.get_shape().as_list()[-1]
+    n_harmonics = int(harmonic_distribution.shape[-1])
   elif harmonic_shifts is not None:
-    n_harmonics = harmonic_shifts.get_shape().as_list()[-1]
+    n_harmonics = int(harmonic_shifts.shape[-1])
   else:
     n_harmonics = 1
 
@@ -383,7 +383,7 @@ def linear_lookup(phase: tf.Tensor,
   # Add first sample to end of wavetable for smooth linear interpolation
   # between the last point in the wavetable and the first point.
   wavetables = tf.concat([wavetables, wavetables[..., 0:1]], axis=-1)
-  n_wavetable = wavetables.shape[-1].value
+  n_wavetable = int(wavetables.shape[-1])
 
   # Get a phase value for each point on the wavetable.
   phase_wavetables = tf.linspace(0.0, 1.0, n_wavetable)
@@ -430,7 +430,7 @@ def wavetable_synthesis(frequency: tf.Tensor,
   frequency_envelope = resample(frequency, n_samples)  # cycles / sec
 
   # Create intermediate wavetables.
-  wavetable_shape = wavetables.get_shape().as_list()
+  wavetable_shape = wavetables.shape.as_list()
   if len(wavetable_shape) == 3 and wavetable_shape[1] > 1:
     wavetables = resample(wavetables, n_samples)
 
@@ -511,7 +511,7 @@ def padded_fft(frames: tf.Tensor, fft_size: int) -> tf.Tensor:
   Returns:
     FFT of the padded audio frames.
   """
-  frame_size = frames.get_shape().as_list()[-1]
+  frame_size = int(frames.shape[-1])
   padding = fft_size - frame_size
   frames_padded = tf.pad(frames, [(0, 0), (0, 0), (0, padding)])
   return tf.spectral.rfft(frames_padded)
@@ -553,7 +553,7 @@ def crop_and_compensate_delay(audio: tf.Tensor, audio_size: int, ir_size: int,
   # Compensate for the group delay of the filter by trimming the front.
   # For an impulse response produced by frequency_impulse_response(),
   # the group delay is constant because the filter is linear phase.
-  total_size = audio.get_shape().as_list()[-1]
+  total_size = int(audio.shape[-1])
   crop = total_size - crop_size
   start = ((ir_size - 1) // 2 -
            1 if delay_compensation < 0 else delay_compensation)
@@ -602,14 +602,14 @@ def fft_convolve(audio: tf.Tensor,
         not a multiple of the audio size.)
   """
   # Add a frame dimension to impulse response if it doesn't have one.
-  ir_shape = impulse_response.get_shape().as_list()
+  ir_shape = impulse_response.shape.as_list()
   if len(ir_shape) == 2:
     impulse_response = impulse_response[:, tf.newaxis, :]
-    ir_shape = impulse_response.get_shape().as_list()
+    ir_shape = impulse_response.shape.as_list()
 
   # Get shapes of audio and impulse response.
   batch_size_ir, n_ir_frames, ir_size = ir_shape
-  batch_size, audio_size = audio.get_shape().as_list()
+  batch_size, audio_size = audio.shape.as_list()
 
   # Validate that batch sizes match.
   if batch_size != batch_size_ir:
@@ -622,7 +622,7 @@ def fft_convolve(audio: tf.Tensor,
   audio_frames = tf.signal.frame(audio, frame_size, hop_size, pad_end=True)
 
   # Check that number of frames match.
-  n_audio_frames = audio_frames.get_shape().as_list()[1]
+  n_audio_frames = int(audio_frames.shape[1])
   if n_audio_frames != n_ir_frames:
     raise ValueError(
         'Number of Audio frames ({}) and impulse response frames ({}) do not '
@@ -671,7 +671,7 @@ def apply_window_to_impulse_response(impulse_response: tf.Tensor,
 
   # Get a window for better time/frequency resolution than rectangular.
   # Window defaults to IR size, cannot be bigger.
-  ir_size = impulse_response.get_shape().as_list()[-1]
+  ir_size = int(impulse_response.shape[-1])
   if (window_size <= 0) or (window_size > ir_size):
     window_size = ir_size
   window = tf.signal.hann_window(window_size)

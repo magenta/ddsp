@@ -53,7 +53,7 @@ class Encoder(object):
       conditioning['f0_hz'] = ddsp.midi_to_hz(conditioning['f0'] * 127.0)
 
     z = self.compute_z(conditioning)
-    time_steps = conditioning['f0'].get_shape().as_list()[1]
+    time_steps = int(conditioning['f0'].shape[1])
     conditioning['z'] = self.expand_z(z, time_steps)
 
     return conditioning
@@ -64,7 +64,7 @@ class Encoder(object):
     if len(z.shape) == 2:
       z = z[:, tf.newaxis, :]
     # Expand time dim of z if necessary.
-    z_time_steps = z.get_shape().as_list()[1]
+    z_time_steps = int(z.shape[1])
     if z_time_steps != time_steps:
       z = ddsp.resample(z, time_steps)
     return z
@@ -150,7 +150,7 @@ class F0EncoderMixin(object):
   def _compute_unit_midi(self, probs):
     """Computes the midi from a distribution over the unit interval."""
     # probs: [B, T, D]
-    depth = probs.shape.as_list()[-1]
+    depth = int(probs.shape[-1])
 
     unit_midi_bins = tf.constant(
         1.0 * np.arange(depth).reshape((1, 1, -1)) / depth,
@@ -182,7 +182,8 @@ class ResnetF0Encoder(F0EncoderMixin):
     x = nn.resnet(mag, size=self.size)
 
     # Collapse the frequency dimension
-    y = tf.reshape(x, [int(x.shape[0]), int(x.shape[1]), -1])
+    x_shape = x.shape.as_list()
+    y = tf.reshape(x, [x_shape[0], x_shape[1], -1])
     # Project to f0_bins
     y = tfkl.Dense(self.f0_bins)(y)
 
@@ -193,6 +194,6 @@ class ResnetF0Encoder(F0EncoderMixin):
     f0 = self._compute_unit_midi(probs)
 
     # Make same time resolution as original CREPE f0.
-    n_timesteps = conditioning['f0'].shape[1]
+    n_timesteps = int(conditioning['f0'].shape[1])
     f0 = ddsp.resample(f0, n_timesteps)
     return f0

@@ -98,7 +98,7 @@ class FixedReverb(Reverb):
         [tf.zeros_like(ir, tf.float32)[:, 0:1], ir[:, 1:]], axis=-1)
 
     # Match batch dimension. Take first output if it's a list.
-    batch_size = audio.get_shape().as_list()[0]
+    batch_size = int(audio.shape[0])
     ir = tf.tile(ir, [batch_size, 1])
     controls = {'input_audio': audio, 'impulse_response': ir}
     return controls

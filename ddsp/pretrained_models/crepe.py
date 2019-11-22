@@ -88,7 +88,7 @@ class Crepe(tf.keras.layers.Layer):
 
   def call(self, features, training=False):
     # returns a dict of tensors, from layer name to layer activations.
-    assert features.shape.as_list()[1] == 1024
+    assert features.shape[1] == 1024
 
     y = features
     for _ in range(2):
@@ -140,7 +140,7 @@ class PretrainedCREPE(base.PretrainedModel):
     if self._model is None:
       self._build_model()
     batch_size = tf.shape(features)[0]
-    length = features.shape.as_list()[1]
+    length = int(features.shape[1])
 
     # TODO(gcj): relax this constraint by modifying the model to generate
     # outputs at every time point.

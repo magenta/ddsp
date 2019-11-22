@@ -290,8 +290,8 @@ class Mix(Processor):
     Raises:
       ValueError: If signal_one and signal_two are not the same length.
     """
-    n_time_one = signal_one.get_shape().as_list()[1]
-    n_time_two = signal_two.get_shape().as_list()[1]
+    n_time_one = int(signal_one.shape[1])
+    n_time_two = int(signal_two.shape[1])
     if n_time_one != n_time_two:
       raise ValueError('The two signals must have the same length instead of'
                        '{} and {}'.format(n_time_one, n_time_two))
