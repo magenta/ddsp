@@ -500,23 +500,6 @@ def get_fft_size(frame_size: int, ir_size: int, power_of_2: bool = True) -> int:
   return fft_size
 
 
-def padded_fft(frames: tf.Tensor, fft_size: int) -> tf.Tensor:
-  """Zero pad and calculate fft of audio frames.
-
-  Args:
-    frames: Frames of audio or impulse responses. Tensor of shape [batch,
-      frames, frame_size].
-    fft_size: Size of frames after zero padding.
-
-  Returns:
-    FFT of the padded audio frames.
-  """
-  frame_size = int(frames.shape[-1])
-  padding = fft_size - frame_size
-  frames_padded = tf.pad(frames, [(0, 0), (0, 0), (0, padding)])
-  return tf.spectral.rfft(frames_padded)
-
-
 def crop_and_compensate_delay(audio: tf.Tensor, audio_size: int, ir_size: int,
                               padding: Text,
                               delay_compensation: int) -> tf.Tensor:
@@ -632,8 +615,8 @@ def fft_convolve(audio: tf.Tensor,
 
   # Pad and FFT the audio and impulse responses.
   fft_size = get_fft_size(frame_size, ir_size, power_of_2=True)
-  audio_fft = padded_fft(audio_frames, fft_size)
-  ir_fft = padded_fft(impulse_response, fft_size)
+  audio_fft = tf.signal.rfft(audio_frames, [fft_size])
+  ir_fft = tf.signal.rfft(impulse_response, [fft_size])
 
   # Multiply the FFTs (same as convolution in time).
   audio_ir_fft = tf.multiply(audio_fft, ir_fft)
