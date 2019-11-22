@@ -24,7 +24,7 @@ from ddsp import core
 import librosa
 import numpy as np
 from scipy import signal
-import tensorflow as tf  # tf
+import tensorflow.compat.v1 as tf
 
 f32 = core.f32
 

@@ -22,7 +22,7 @@ from __future__ import print_function
 import functools
 
 import gin
-import tensorflow as tf  # tf
+import tensorflow.compat.v1 as tf
 
 
 # ---------- Base Class --------------------------------------------------------
