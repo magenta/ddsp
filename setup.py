@@ -32,6 +32,7 @@ setuptools.setup(
     scripts=[],
     install_requires=[
         'absl-py',
+        'crepe',
         'future',
         'gin-config',
         'librosa',
