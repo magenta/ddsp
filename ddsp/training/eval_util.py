@@ -30,7 +30,6 @@ import crepe
 import ddsp
 import gin
 import librosa
-from magenta import music as mm
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.io import wavfile
@@ -40,6 +39,8 @@ import tensorflow.compat.v1 as tf
 AUDIO_CONFIG = {'n_fft': 2048, 'hop_length': 64, 'sample_rate': 16000}
 MIN_F0_CONFIDENCE = 0.85
 OUTLIER_MIDI_THRESH = 12
+
+MAX_MIDI_PITCH = 127
 
 # Mean and std for each eps calculated from 5000 samples.
 EPS_CENTER_STATS = {1e-1: {'mean': -1.4405, 'std': 0.9490},
@@ -144,7 +145,7 @@ def compute_f0(audio, hop_length, sr, normalize_midi=True, viterbi=True):
       audio, sr, viterbi=viterbi, step_size=hop_length / sr * 1000, verbose=0)
   f0 = librosa.core.hz_to_midi(f0_hz)
   if normalize_midi:
-    f0 /= mm.constants.MAX_MIDI_PITCH
+    f0 /= MAX_MIDI_PITCH
   # Set -infs introduced by hz_to_midi to 0.
   f0[f0 == -np.inf] = 0
   # Set nans to 0 in confidence.
@@ -224,7 +225,7 @@ def f0_dist_conf_thresh(gen_f0,
     delta_f0_filt = delta_f0[keep_mask]
     delta_f0_mean = np.mean(delta_f0_filt)
     # Report mean error in midi space for easier interpretation
-    delta_f0_mean = delta_f0_mean * mm.constants.MAX_MIDI_PITCH
+    delta_f0_mean = delta_f0_mean * MAX_MIDI_PITCH
 
   return delta_f0_mean
 
