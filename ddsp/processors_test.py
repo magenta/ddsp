@@ -74,6 +74,20 @@ class SplitTest(tf.test.TestCase):
     self.assertAllEqual(x3, actual_call[2])
 
 
+class MixTest(tf.test.TestCase):
+
+  def test_output_shape_is_correct(self):
+    processor = processors.Mix(name='mix')
+    x1 = np.zeros((2, 100, 3), dtype=np.float32) + 1.0
+    x2 = np.zeros((2, 100, 3), dtype=np.float32) + 2.0
+    mix_level = np.zeros(
+        (2, 100, 1), dtype=np.float32) + 0.1  # will be passed to sigmoid
+
+    output = processor(x1, x2, mix_level)
+
+    self.assertListEqual([2, 100, 3], output.shape.as_list())
+
+
 class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
 
   def setUp(self):
