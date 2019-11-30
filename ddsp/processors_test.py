@@ -30,6 +30,22 @@ import tensorflow.compat.v1 as tf
 tf.disable_v2_behavior()
 
 
+class AddTest(tf.test.TestCase):
+
+  def test_output_is_correct(self):
+    processor = processors.Add(name='add')
+    x = tf.zeros((2, 3), dtype=tf.float32) + 1.0
+    y = tf.zeros((2, 3), dtype=tf.float32) + 2.0
+    output = processor(x, y)
+
+    with self.session() as sess:
+      actual = sess.run(output)
+
+    expected = np.zeros((2, 3), dtype=np.float32) + 3.0
+
+    self.assertAllEqual(expected, actual)
+
+
 class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
 
   def setUp(self):
@@ -40,19 +56,20 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
     self.n_frames = 1000
     self.n_time = 64000
     rand_signal = lambda ch: np.random.randn(self.n_batch, self.n_frames, ch)
-    nn_outputs = {'nn_output': rand_signal(356),
-                  'f0_hz': 200 + rand_signal(1),
-                  'target_audio': np.random.randn(self.n_batch, self.n_time)}
+    nn_outputs = {
+        'nn_output': rand_signal(356),
+        'f0_hz': 200 + rand_signal(1),
+        'target_audio': np.random.randn(self.n_batch, self.n_time)
+    }
     self.nn_outputs = {k: core.f32(v) for k, v in nn_outputs.items()}
 
     # Create Processors.
     additive = synths.Additive(name='additive')
     noise = synths.FilteredNoise(name='noise')
     add = processors.Add(name='add')
-    split = processors.Split(splits=(('to_amp', 1),
-                                     ('to_harm', 99),
-                                     ('to_noise', 256)),
-                             name='split')
+    split = processors.Split(
+        splits=(('to_amp', 1), ('to_harm', 99), ('to_noise', 256)),
+        name='split')
     reverb = effects.FixedReverb(name='reverb')
 
     # Create DAG for testing.
