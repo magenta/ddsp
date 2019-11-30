@@ -243,20 +243,19 @@ class Add(Processor):
 class Split(Processor):
   """Split a tensor into multiple signals."""
 
-  def __init__(self,
-               splits: Sequence[Tuple[Text, int]],
-               name: Text = 'split'):
+  def __init__(self, splits: Sequence[Tuple[Text, int]], name: Text = 'split'):
     super(Split, self).__init__(name=name)
     self.labels = [out[0] for out in splits]
     self.sizes = [out[1] for out in splits]
+
+  def get_controls(self, signal: tf.Tensor) -> TensorDict:
+    return {'signal': signal}
 
   def get_signal(self, signal: tf.Tensor) -> Sequence[tf.Tensor]:
     """Split along the last dimension."""
     return tf.split(signal, self.sizes, axis=-1)
 
-  def get_outputs(self,
-                  *args: tf.Tensor,
-                  **kwargs: tf.Tensor) -> TensorDict:
+  def get_outputs(self, *args: tf.Tensor, **kwargs: tf.Tensor) -> TensorDict:
     """Label signal splits increasing from."""
     signals = self.get_signal(*args, **kwargs)
     signal_dict = {k: v for k, v in zip(self.labels, signals)}
@@ -268,13 +267,10 @@ class Split(Processor):
 class Mix(Processor):
   """Constant-power crossfade between two signals."""
 
-  def __init__(self,
-               name: Text = 'mix'):
+  def __init__(self, name: Text = 'mix'):
     super(Mix, self).__init__(name=name)
 
-  def get_controls(self,
-                   signal_one: tf.Tensor,
-                   signal_two: tf.Tensor,
+  def get_controls(self, signal_one: tf.Tensor, signal_two: tf.Tensor,
                    nn_out_mix_level: tf.Tensor) -> TensorDict:
     """Standardize inputs to same length, mix_level to range [0, 1].
 
@@ -321,4 +317,3 @@ class Mix(Processor):
     mix_level_one = tf.sqrt(tf.abs(mix_level))
     mix_level_two = 1.0 - tf.sqrt(tf.abs(mix_level - 1.0))
     return mix_level_one * signal_one + mix_level_two * signal_two
-

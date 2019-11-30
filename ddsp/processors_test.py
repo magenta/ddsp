@@ -46,6 +46,34 @@ class AddTest(tf.test.TestCase):
     self.assertAllEqual(expected, actual)
 
 
+class SplitTest(tf.test.TestCase):
+
+  def test_output_is_correct(self):
+    processor = processors.Split(
+        splits=(('x1', 1), ('x2', 2), ('x3', 3)), name='split')
+    x1 = np.zeros((2, 3, 1), dtype=np.float32) + 1.0
+    x2 = np.zeros((2, 3, 2), dtype=np.float32) + 2.0
+    x3 = np.zeros((2, 3, 3), dtype=np.float32) + 3.0
+    x = tf.constant(np.concatenate([x1, x2, x3], axis=2))
+
+    output = processor.get_outputs(x)
+    call_output = processor(x)
+    with self.cached_session() as sess:
+      actual = sess.run(output)
+      actual_call = sess.run(call_output)
+
+    self.assertSetEqual(set(['split']), set(actual.keys()))
+
+    signal_dict = actual.get('split').get('signal')
+    self.assertSetEqual(set(['x1', 'x2', 'x3']), set(signal_dict.keys()))
+    self.assertAllEqual(x1, signal_dict.get('x1'))
+    self.assertAllEqual(x2, signal_dict.get('x2'))
+    self.assertAllEqual(x3, signal_dict.get('x3'))
+    self.assertAllEqual(x1, actual_call[0])
+    self.assertAllEqual(x2, actual_call[1])
+    self.assertAllEqual(x3, actual_call[2])
+
+
 class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
 
   def setUp(self):
