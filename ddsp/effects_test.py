@@ -38,5 +38,17 @@ class ReverbTest(tf.test.TestCase):
     self.assertListEqual([3, 16000], output.shape.as_list())
 
 
+class FixedReverbTest(tf.test.TestCase):
+
+  def test_output_shape_is_correct(self):
+    processor = effects.FixedReverb(reverb_length=100)
+
+    input_audio = tf.zeros((3, 16000), dtype=tf.float32)
+
+    output = processor(input_audio)
+
+    self.assertListEqual([3, 16000], output.shape.as_list())
+
+
 if __name__ == '__main__':
   tf.test.main()

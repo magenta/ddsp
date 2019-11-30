@@ -30,9 +30,7 @@ import tensorflow.compat.v1 as tf
 class Reverb(processors.Processor):
   """Apply convolutional reverb."""
 
-  def __init__(self,
-               scale_fn=None,
-               name='reverb_effect'):
+  def __init__(self, scale_fn=None, name='reverb_effect'):
     """Constructor.
 
     Args:
@@ -54,8 +52,7 @@ class Reverb(processors.Processor):
     """
     # Scale the amplitudes.
     ir = self.scale_fn(nn_outputs) if self.scale_fn else nn_outputs
-    controls = {'input_audio': input_audio,
-                'impulse_response': ir}
+    controls = {'input_audio': input_audio, 'impulse_response': ir}
     return controls
 
   def get_signal(self, input_audio, impulse_response):
@@ -64,18 +61,21 @@ class Reverb(processors.Processor):
     Args:
       input_audio: 2-D Tensor of shape [batch, n_samples].
       impulse_response: 3-D Tensor  of shape [batch, impulse_response_size, 1].
+
     Returns:
       tensor of shape [batch, n_samples]
     """
-    return core.fft_convolve(input_audio,
-                             impulse_response,
-                             padding='same',
-                             delay_compensation=0)
+    return core.fft_convolve(
+        input_audio, impulse_response, padding='same', delay_compensation=0)
 
 
 @gin.configurable
 class FixedReverb(Reverb):
-  """Apply a fixed convolutional reverb."""
+  """Apply a fixed convolutional reverb.
+
+  This class creates a tensorflow variable of shape [1, self.reverb_length].
+
+  """
 
   def __init__(self,
                scale_fn=None,
@@ -101,8 +101,7 @@ class FixedReverb(Reverb):
       ir = self.scale_fn(ir)
 
     # Hold the first impulse response (dry) as zero to decouple dry/wet signal.
-    ir = tf.concat(
-        [tf.zeros_like(ir, tf.float32)[:, 0:1], ir[:, 1:]], axis=-1)
+    ir = tf.concat([tf.zeros_like(ir, tf.float32)[:, 0:1], ir[:, 1:]], axis=-1)
 
     # Match batch dimension. Take first output if it's a list.
     batch_size = int(audio.shape[0])
