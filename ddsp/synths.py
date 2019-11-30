@@ -98,7 +98,7 @@ class Additive(processors.Processor):
           n_frames, 1].
 
     Returns:
-      signal: A tensor of harmonic waves of shape [batch, n_samples, 1].
+      signal: A tensor of harmonic waves of shape [batch, n_samples].
     """
     signal = core.harmonic_synthesis(
         frequencies=f0_hz,
