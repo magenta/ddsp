@@ -47,7 +47,7 @@ class Reverb(processors.Processor):
 
     Args:
       nn_outputs: 3-D Tensor  of shape [batch, impulse_response_size, 1].
-      input_audio: 3-D Tensor of shape [batch, n_samples, 1].
+      input_audio: 2-D Tensor of shape [batch, n_samples].
 
     Returns:
       controls: Dictionary of effect controls.
@@ -55,11 +55,18 @@ class Reverb(processors.Processor):
     # Scale the amplitudes.
     ir = self.scale_fn(nn_outputs) if self.scale_fn else nn_outputs
     controls = {'input_audio': input_audio,
-                'impulse_response': ir,}
+                'impulse_response': ir}
     return controls
 
   def get_signal(self, input_audio, impulse_response):
-    """Apply impulse response."""
+    """Apply impulse response.
+
+    Args:
+      input_audio: 2-D Tensor of shape [batch, n_samples].
+      impulse_response: 3-D Tensor  of shape [batch, impulse_response_size, 1].
+    Returns:
+      tensor of shape [batch, n_samples]
+    """
     return core.fft_convolve(input_audio,
                              impulse_response,
                              padding='same',
