@@ -70,7 +70,15 @@ class Loss(processors.Processor):
     raise NotImplementedError('Loss functions do not have controls.')
 
   def compute_loss(self, audio, target_audio):
-    """Subclasses must implement compute_loss()."""
+    """Subclasses must implement compute_loss().
+
+    Args:
+      audio: 2D tensor of shape [batch, time].
+      target_audio: 2D tensor of shape [batch, time].
+
+    Returns:
+      A scalar tensor of the loss.
+    """
     raise NotImplementedError
 
 
