@@ -45,5 +45,15 @@ class AdditiveTest(tf.test.TestCase):
     self.assertAllEqual([batch_size, 64000], output.shape.as_list())
 
 
+class FilteredNoiseTest(tf.test.TestCase):
+
+  def test_output_shape_is_correct(self):
+    synthesizer = synths.FilteredNoise(n_samples=16000)
+    filter_bank_magnitudes = tf.zeros((3, 16000, 100), dtype=tf.float32) + 3.0
+    output = synthesizer(filter_bank_magnitudes)
+
+    self.assertAllEqual([3, 16000], output.shape.as_list())
+
+
 if __name__ == '__main__':
   tf.test.main()
