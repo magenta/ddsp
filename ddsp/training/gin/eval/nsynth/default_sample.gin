@@ -4,9 +4,9 @@ import ddsp.training.eval_util
 import ddsp.training.model
 import ddsp.training.data
 
-evaluate_or_sample.file_reader = @data.NSynth()
+data.TfdsProvider.get_dataset.tfds_split = 'test'
+evaluate_or_sample.data_provider = @data.NSynthTfds()
 evaluate_or_sample.model = @model.Model()
-evaluate_or_sample.file_pattern = '/path/to/dataset*.tfrecord'
 
 evaluate_or_sample.batch_size = 21
 evaluate_or_sample.mode = 'sample'

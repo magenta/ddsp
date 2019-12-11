@@ -659,7 +659,7 @@ class NSynthAudioWriter(NSynthWriter):
 
 # ---------------------- Evaluation --------------------------------------------
 @gin.configurable
-def evaluate_or_sample(file_reader=gin.REQUIRED,
+def evaluate_or_sample(data_provider=gin.REQUIRED,
                        model=gin.REQUIRED,
                        mode='eval',
                        model_dir='~/tmp/ddsp/training',
@@ -669,11 +669,11 @@ def evaluate_or_sample(file_reader=gin.REQUIRED,
                        keys_to_fetch='additive_audio,noise_audio',
                        ckpt_delay_secs=0,
                        run_once=False,
-                       file_pattern=None):
+                       dataset_kwargs=None):
   """Run evaluation loop.
 
   Args:
-    file_reader: FileReader instance.
+    data_provider: DataProvider instance.
     model: Model instance.
     mode: Whether to 'eval' with metrics or create 'sample' s.
     model_dir: Path to directory with checkpoints and summary events.
@@ -683,12 +683,14 @@ def evaluate_or_sample(file_reader=gin.REQUIRED,
     keys_to_fetch: Additional tensors to fetch from model outputs.
     ckpt_delay_secs: Time to wait when a new checkpoint was not detected.
     run_once: Only run evaluation or sampling once.
-    file_pattern: Regex to dataset files to use for evaluation.
+    dataset_kwargs: A dictionary of keyword arguments to pass to the data
+      provider's `get_input_fn`.
   """
   # Set up dataset.
-  input_fn = file_reader.get_input_fn(file_pattern=file_pattern,
-                                      shuffle=False,
-                                      repeats=1)
+  dataset_kwargs = dataset_kwargs or {}
+  input_fn = data_provider.get_input_fn(shuffle=False,
+                                        repeats=1,
+                                        **dataset_kwargs)
   model_dir = os.path.expanduser(model_dir)
   params = {'batch_size': batch_size, 'model_dir': model_dir}
   dataset = input_fn(params)

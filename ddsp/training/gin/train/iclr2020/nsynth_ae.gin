@@ -10,9 +10,9 @@ import ddsp.training.train_util
 
 
 # Training dataset and model.
-train.file_reader = @data.NSynth()
+data.TfdsProvider.get_dataset.tfds_split = 'train'
+train.data_provider = @data.NSynthTfds()
 train.model = @model.Model()
-train.file_pattern = '/path/to/dataset*.tfrecord'
 
 # =======
 # Network

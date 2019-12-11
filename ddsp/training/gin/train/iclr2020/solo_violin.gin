@@ -8,9 +8,9 @@ import ddsp.training.train_util
 
 
 # Training dataset and model.
-train.file_reader = @data.SoloInstrument()
+data.TFRecordProvider.get_dataset.file_pattern = '/path/to/dataset*.tfrecord'
+train.dataset_provider = @data.SoloInstrument()
 train.model = @model.Model()
-train.file_pattern = '/path/to/dataset*.tfrecord'
 
 # =======
 # Network
