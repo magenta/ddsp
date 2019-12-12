@@ -1,5 +1,8 @@
 # -*-Python-*-
 
+import ddsp
+import ddsp.training
+
 # IMPORTANT: Use the custom cumsum for TPUs.
 ddsp.core.cumsum.use_tpu = True
 

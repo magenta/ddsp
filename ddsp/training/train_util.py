@@ -217,14 +217,9 @@ def train(data_provider=gin.REQUIRED,
           model_dir='~/tmp/ddsp',
           num_steps=1000000,
           master='',
-          use_tpu=True,
-          dataset_kwargs=None):
+          use_tpu=True):
   """Main training loop."""
-  dataset_kwargs = dataset_kwargs or {}
-  input_fn = data_provider.get_input_fn(
-      shuffle=True,
-      repeats=-1,
-      **dataset_kwargs)
+  input_fn = data_provider.get_input_fn(shuffle=True, repeats=-1)
   model_fn = model.get_model_fn(use_tpu=use_tpu)
 
   estimator = create_estimator(

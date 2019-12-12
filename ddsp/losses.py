@@ -22,11 +22,9 @@ from __future__ import print_function
 import functools
 
 from ddsp import pretrained_models
-from ddsp import processors
 from ddsp import spectral_ops
 
 import gin
-import gin.tf
 import tensorflow.compat.v1 as tf
 
 
@@ -41,7 +39,7 @@ def mean_difference(target, value, loss_type='L1'):
     return tf.losses.cosine_distance(target, value, axis=-1)
 
 
-class Loss(processors.Processor):
+class Loss(object):
   """Base class to implement any loss.
 
   Users should override compute_loss() to define the actual loss.
@@ -49,25 +47,12 @@ class Loss(processors.Processor):
   """
 
   def __init__(self, name):
-    super(Loss, self).__init__(name=name)
+    self.name = name
     self.pretrained_model = None
 
   def __call__(self, *args, **kwargs):
     """Alias to compute_loss."""
     return self.compute_loss(*args, **kwargs)
-
-  def get_signal(self, *args, **kwargs):
-    """Alias to compute_loss."""
-    return self.compute_loss(*args, **kwargs)
-
-  def get_outputs(self, *args, **kwargs):
-    """No controls for loss functions, bypass."""
-    loss = self.compute_loss(*args, **kwargs)
-    outputs = {self.name: loss}
-    return outputs
-
-  def get_controls(self, *args, **kwargs):
-    raise NotImplementedError('Loss functions do not have controls.')
 
   def compute_loss(self, audio, target_audio):
     """Subclasses must implement compute_loss().
@@ -230,3 +215,5 @@ class PretrainedCREPEEmbeddingLoss(EmbeddingLoss):
             model_capacity=model_capacity,
             activation_layer=activation_layer,
             checkpoint=checkpoint))
+
+

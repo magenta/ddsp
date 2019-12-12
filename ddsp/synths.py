@@ -50,9 +50,9 @@ class Additive(processors.Processor):
 
     Args:
       nn_out_amplitudes: 3-D Tensor of synthesizer controls, of shape
-          [batch, time, 1].
+        [batch, time, 1].
       nn_out_harmonic_distribution: 3-D Tensor of synthesizer controls, of shape
-          [batch, time, n_harmonics].
+        [batch, time, n_harmonics].
       f0_hz: Fundamental frequencies in hertz. Shape [batch, time, 1].
 
     Returns:
@@ -90,12 +90,12 @@ class Additive(processors.Processor):
 
     Args:
       amplitudes: Amplitude tensor of shape [batch, n_frames, 1]. Expects
-          float32 that is strictly positive.
+        float32 that is strictly positive.
       harmonic_distribution: Tensor of shape [batch, n_frames, n_harmonics].
-          Expects float32 that is strictly positive and normalized in the last
-          dimension.
+        Expects float32 that is strictly positive and normalized in the last
+        dimension.
       f0_hz: The fundamental frequency in Hertz. Tensor of shape [batch,
-          n_frames, 1].
+        n_frames, 1].
 
     Returns:
       signal: A tensor of harmonic waves of shape [batch, n_samples].
@@ -130,7 +130,7 @@ class FilteredNoise(processors.Processor):
 
     Args:
       nn_outputs: 3-D Tensor of synthesizer parameters, of shape [batch, time,
-          n_filter_banks].
+        n_filter_banks].
 
     Returns:
       controls: Dictionary of tensors of synthesizer controls.

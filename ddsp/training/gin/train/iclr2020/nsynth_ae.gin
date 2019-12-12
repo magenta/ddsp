@@ -1,17 +1,13 @@
 # -*-Python-*-
 
 import ddsp
-import ddsp.training.data
-import ddsp.training.decoders
-import ddsp.training.encoders
-import ddsp.training.preprocessing
-import ddsp.training.model
-import ddsp.training.train_util
+import ddsp.training
 
 
 # Training dataset and model.
-data.TfdsProvider.get_dataset.tfds_split = 'train'
 train.data_provider = @data.NSynthTfds()
+data.NSynthTfds.split = 'train'
+
 train.model = @model.Model()
 
 # =======
@@ -33,12 +29,14 @@ encoders.MfccTimeDistributedRnnEncoder.z_time_steps = 125
 
 # Decoder
 model.Model.decoder = @decoders.ZRnnFcDecoder()
-decoders.ZRnnFcDecoder.n_out = 166
 decoders.ZRnnFcDecoder.rnn_channels = 512
 decoders.ZRnnFcDecoder.rnn_type = 'gru'
 decoders.ZRnnFcDecoder.ch = 512
 decoders.ZRnnFcDecoder.layers_per_stack = 3
 decoders.ZRnnFcDecoder.append_f0_loudness = True
+decoders.ZRnnFcDecoder.output_splits = (('amps', 1),
+                                        ('harmonic_distribution', 100),
+                                        ('noise_magnitudes', 65))
 
 
 # =================
@@ -49,19 +47,16 @@ decoders.ZRnnFcDecoder.append_f0_loudness = True
 model.Model.processor_group = @processors.ProcessorGroup()
 
 processors.ProcessorGroup.dag = [
-  (@split/processors.Split(),
-    ['decoder_outputs']),
   (@additive/synths.Additive(),
-    ['split/signal/to_amp', 'split/signal/to_harm', 'f0_hz']),
+    ['amps', 'harmonic_distribution', 'f0_hz']),
   (@noise/synths.FilteredNoise(),
-    ['split/signal/to_noise']),
+    ['noise_magnitudes']),
   (@add/processors.Add(),
     ['noise/signal', 'additive/signal']),
 ]
 
 # Split
 split/processors.Split.name = 'split'
-split/processors.Split.splits = (('to_amp', 1), ('to_harm', 100), ('to_noise', 65))
 
 # Additive Synthesizer
 additive/synths.Additive.name = 'additive'

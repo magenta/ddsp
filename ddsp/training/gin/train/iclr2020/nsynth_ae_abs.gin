@@ -1,5 +1,5 @@
 # -*-Python-*-
-include 'third_party/py/ddsp/training/gin/experiments/iclr2020/nsynth_ae.gin'
+include 'third_party/py/ddsp/training/gin/train/iclr2020/nsynth_ae.gin'
 
 # =======
 # Network

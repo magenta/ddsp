@@ -63,19 +63,16 @@ class Model(object):
     conditioning = self.preprocessor(features, is_training=is_training)
 
     # ---------------------- Encoder -------------------------------------------
-    with tf.variable_scope('encoder', reuse=tf.AUTO_REUSE):
-      if self.encoder is not None:
-        conditioning = self.encoder(conditioning)
+    if self.encoder is not None:
+      conditioning = self.encoder(conditioning)
 
     # ---------------------- Decoder -------------------------------------------
-    with tf.variable_scope('decoder', reuse=tf.AUTO_REUSE):
-      conditioning = self.decoder(conditioning)
+    conditioning = self.decoder(conditioning)
 
     # ---------------------- Synthesizer ---------------------------------------
-    with tf.variable_scope('processor_group', reuse=tf.AUTO_REUSE):
-      outputs = self.processor_group.get_outputs(conditioning)
-      audio_gen = outputs[self.processor_group.name]['signal']
-      outputs['audio_gen'] = audio_gen
+    outputs = self.processor_group.get_outputs(conditioning)
+    audio_gen = outputs[self.processor_group.name]['signal']
+    outputs['audio_gen'] = audio_gen
 
     # ---------------------- Losses --------------------------------------------
     total_loss = 0.0

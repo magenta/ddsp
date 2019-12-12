@@ -668,8 +668,7 @@ def evaluate_or_sample(data_provider=gin.REQUIRED,
                        num_batches=50,
                        keys_to_fetch='additive_audio,noise_audio',
                        ckpt_delay_secs=0,
-                       run_once=False,
-                       dataset_kwargs=None):
+                       run_once=False):
   """Run evaluation loop.
 
   Args:
@@ -683,14 +682,9 @@ def evaluate_or_sample(data_provider=gin.REQUIRED,
     keys_to_fetch: Additional tensors to fetch from model outputs.
     ckpt_delay_secs: Time to wait when a new checkpoint was not detected.
     run_once: Only run evaluation or sampling once.
-    dataset_kwargs: A dictionary of keyword arguments to pass to the data
-      provider's `get_input_fn`.
   """
   # Set up dataset.
-  dataset_kwargs = dataset_kwargs or {}
-  input_fn = data_provider.get_input_fn(shuffle=False,
-                                        repeats=1,
-                                        **dataset_kwargs)
+  input_fn = data_provider.get_input_fn(shuffle=False, repeats=1)
   model_dir = os.path.expanduser(model_dir)
   params = {'batch_size': batch_size, 'model_dir': model_dir}
   dataset = input_fn(params)

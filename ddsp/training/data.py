@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 from absl import logging
 import gin
 import tensorflow.compat.v1 as tf
@@ -30,8 +29,8 @@ import tensorflow_datasets as tfds
 class DataProvider(object):
   """Base class for returning a dataset."""
 
-  def get_dataset(self, split, shuffle, **kwargs):
-    """A method that return a dataset."""
+  def get_dataset(self, shuffle):
+    """A method that returns a tf.data.Dataset."""
     raise NotImplementedError
 
   def get_preprocess_fn(self):
@@ -44,21 +43,20 @@ class DataProvider(object):
     """
     return lambda x: x
 
-  def get_batch(self, batch_size, shuffle=True, repeats=-1, **dataset_kwargs):
+  def get_batch(self, batch_size, shuffle=True, repeats=-1):
     """Read dataset.
 
     Args:
       batch_size: Size of batch.
       shuffle: Whether to shuffle the examples.
       repeats: Number of times to repeat dataset. -1 for endless repeats.
-      **dataset_kwargs: Additonal keyword arguments for the DataProvider.
 
     Returns:
-      A batched tf.dataset.
+      A batched tf.data.Dataset.
     """
     autotune = tf.data.experimental.AUTOTUNE
 
-    dataset = self.get_dataset(shuffle, **dataset_kwargs)
+    dataset = self.get_dataset(shuffle)
     dataset = dataset.map(self.get_preprocess_fn(), num_parallel_calls=autotune)
     if shuffle:
       dataset = dataset.shuffle(buffer_size=10 * 1000)
@@ -67,44 +65,76 @@ class DataProvider(object):
     dataset = dataset.prefetch(buffer_size=autotune)
     return dataset
 
-  def get_input_fn(self, shuffle=True, repeats=-1, **dataset_kwargs):
-    """Wrapper to make compatible with tf.Estimator.
-
-    It seems that @gin.configurable overwites the function names, which violates
-    tf.TPUEstimator's interface that requires an arg to be named 'params'. This
-    wrapper function gets around that collision.
+  def get_input_fn(self, shuffle=True, repeats=-1):
+    """Wrapper to make get_batch() compatible with tf.Estimator.
 
     Args:
       shuffle: Whether to shuffle the examples.
       repeats: Number of times to repeat dataset. -1 for endless repeats.
-      **dataset_kwargs: Additonal keyword arguments for the dataset.
 
     Returns:
-      A tf.dataset.
+      An input_fn() for a tf.Estimator. Function takes in a dictionary 'params'
+        as its first argument, with key 'batch_size', and returns a dataset
+        that has a tuple of examples for each entry.
     """
+
     def input_fn(params):
       batch_size = params['batch_size']
       dataset = self.get_batch(
-          batch_size=batch_size, shuffle=shuffle, repeats=repeats,
-          **dataset_kwargs)
+          batch_size=batch_size, shuffle=shuffle, repeats=repeats)
       dataset = dataset.map(
-          lambda ex: (ex, ex),
-          num_parallel_calls=tf.data.experimental.AUTOTUNE)
+          lambda ex: (ex, ex), num_parallel_calls=tf.data.experimental.AUTOTUNE)
       return dataset
 
     return input_fn
 
 
+class TfdsProvider(DataProvider):
+  """Base class for reading datasets from TensorFlow Datasets (TFDS)."""
+
+  def __init__(self, name, split, data_dir):
+    """TfdsProvider constructor.
+
+    Args:
+      name: TFDS dataset name (with optional config and version).
+      split: Dataset split to use of the TFDS dataset.
+      data_dir: The directory to read TFDS datasets from. Defaults to
+        "~/tensorflow_datasets".
+    """
+    self.name = name
+    self.split = split
+    self.data_dir = data_dir
+
+  def get_dataset(self, shuffle=True):
+    """Read dataset.
+
+    Args:
+      shuffle: Whether to shuffle the input files.
+
+    Returns:
+      dataset: A tf.data.Dataset that reads from TFDS.
+    """
+    return tfds.load(
+        self.name,
+        data_dir=self.data_dir,
+        split=self.split,
+        shuffle_files=shuffle,
+        download=False)
+
+
 class TFRecordProvider(DataProvider):
   """Base class for reading files and returning a dataset."""
 
+  def __init__(self, file_pattern=None):
+    """Specifyies the regular expression of the TFRecord files."""
+    self.file_pattern = file_pattern or self.default_file_pattern
+
   @property
   def default_file_pattern(self):
-    """File pattern dict bound to class, used if no file_pattern provided."""
+    """Used if file_pattern is not provided to constructor."""
     raise NotImplementedError(
-        'You must either specify a --file_pattern flag with a regular '
-        'expression for the dataset file paths or choose a FileDataProvider '
-        'with default file patterns.')
+        'You must pass a "file_pattern" argument to the constructor or '
+        'choose a FileDataProvider with a default_file_pattern.')
 
   @property
   def features_dict(self):
@@ -113,11 +143,13 @@ class TFRecordProvider(DataProvider):
 
   @property
   def file_reader(self):
-    """Dataset file reader."""
+    """Which type of dataset from which to read."""
     return tf.data.TFRecordDataset
 
   def get_preprocess_fn(self):
+
     def parse_tfexample(*args):
+      """Only parse the tf.Example string."""
       if len(args) == 2:
         record = args[1]
       else:
@@ -126,94 +158,21 @@ class TFRecordProvider(DataProvider):
 
     return parse_tfexample
 
-  @gin.configurable(module='data.TFRecordProvider')
-  def get_dataset(self, shuffle=True, file_pattern=None):
+  def get_dataset(self, shuffle=True):
     """Read dataset.
 
     Args:
       shuffle: Whether to shuffle the files.
-      file_pattern: Regex pattern to all the tfrecord files. Defaults to
-          `self.default_file_pattern`.
 
     Returns:
       dataset: A tf.dataset that reads from the TFRecord.
     """
-
-    file_pattern = file_pattern or self.default_file_pattern
-    filenames = tf.data.Dataset.list_files(file_pattern,
-                                           shuffle=shuffle)
-
+    filenames = tf.data.Dataset.list_files(self.file_pattern, shuffle=shuffle)
     dataset = filenames.interleave(
         map_func=self.file_reader,
         cycle_length=40,
         num_parallel_calls=tf.data.experimental.AUTOTUNE)
     return dataset
-
-
-class TfdsProvider(DataProvider):
-  """Base class for reading datasets from TensorFlow Datasets (TFDS)."""
-
-  def __init__(self, data_dir=None):
-    """TfdsProvider constructor.
-
-    Args:
-      data_dir: The directory to read/write data when downloading and preparing
-        new TFDS datasets. Defaults to "~/tensorflow_datasets".
-    """
-    self._tfds_dir = data_dir
-
-  @property
-  def default_tfds_name(self):
-    """TFDS name bound to class, used if no `tfds_name` provided.
-
-    May optionally include the config name and version number.
-    """
-    raise NotImplementedError(
-        'You must either specify a --tfds_name flag or choose a '
-        'TfdsDataProvider with a default dataset name.')
-
-  @property
-  def default_tfds_split(self):
-    """TFDS split bound to class, used if no `tfds_split` provided."""
-    raise NotImplementedError(
-        'You must either specify a --tfds_split flag or choose a '
-        'TfdsDataProvider with a default split.')
-
-  @property
-  def default_tfds_data_dir(self):
-    """TFDS data dir bound to class, used if no `tfds_data_dir` provided."""
-    raise NotImplementedError(
-        'You must either specify a --tfds_data_dir flag or choose a '
-        'TfdsDataProvider with a default data directory.')
-
-  @gin.configurable(module='data.TfdsProvider')
-  def get_dataset(
-      self, shuffle=True, tfds_name=None, tfds_split=gin.REQUIRED,
-      tfds_data_dir=None):
-    """Read dataset.
-
-    Args:
-      shuffle: Whether to shuffle the input files.
-      tfds_name: TFDS dataset name (with optional config and version). Defaults
-        to `self.default_tfds_name`.
-      tfds_split: The name of the split to use. Defaults to
-        `self.default_tfds_split`.
-      tfds_data_dir: The directory to read TFDS data from. Defaults to
-        `self.default_tfds_data_dir`.
-
-    Returns:
-      dataset: A tf.dataset that reads from TFDS.
-    """
-    logging.info(tfds_split)
-    tfds_name = tfds_name or self.default_tfds_name
-    tfds_split = tfds_split or self.default_tfds_split
-    tfds_data_dir = tfds_data_dir or self.default_tfds_data_dir
-    return tfds.load(
-        tfds_name,
-        data_dir=tfds_data_dir,
-        split=tfds_split,
-        shuffle_files=shuffle,
-        download=False)
 
 
 # ---------- Different Dataset Types -------------------------------------------
@@ -225,35 +184,49 @@ class NSynthTfds(TfdsProvider):
   'gs://tfds-data/datasets' to avoid unnecessary downloads.
   """
 
-  @property
-  def default_tfds_name(self):
-    return 'nsynth/gansynth_subset.f0_and_loudness'
+  def __init__(self,
+               name='nsynth/gansynth_subset.f0_and_loudness',
+               split='train',
+               data_dir='gs://tfds-data/datasets'):
+    """TfdsProvider constructor.
 
-  @property
-  def default_tfds_data_dir(self):
-    logging.warn(
-        'Using public TFDS GCS bucket load NSynth. If not running on cloud, it '
-        'is recommended you prepare the dataset locally with TFDS and set '
-        '`--tfds_data_dir` appropriately.')
-    default_dir = 'gs://tfds-data/datasets'
-    return default_dir
+    Args:
+      name: TFDS dataset name (with optional config and version).
+      split: Dataset split to use of the TFDS dataset.
+      data_dir: The directory to read the prepared NSynth dataset from. Defaults
+        to the public TFDS GCS bucket.
+    """
+    if data_dir == 'gs://tfds-data/datasets':
+      logging.warn(
+          'Using public TFDS GCS bucket to load NSynth. If not running on '
+          'cloud, this will be very slow, and it is recommended you prepare '
+          'the dataset locally with TFDS and set the data_dir appropriately.')
+    super(NSynthTfds, self).__init__(name, split, data_dir)
 
   def get_preprocess_fn(self):
-    loudness_stats = tfds.builder(
-        'nsynth/gansynth_subset.f0_and_loudness').info.metadata
+    loudness_stats = tfds.builder(self.name).info.metadata
+
     def preprocess_ex(ex):
       return {
-          'pitch': ex['pitch'],
-          'audio': ex['audio'],
-          'instrument_source': ex['instrument']['source'],
-          'instrument_family': ex['instrument']['family'],
-          'instrument': ex['instrument']['label'],
-          'f0': ex['f0']['hz'],
-          'f0_confidence': ex['f0']['confidence'],
+          'pitch':
+              ex['pitch'],
+          'audio':
+              ex['audio'],
+          'instrument_source':
+              ex['instrument']['source'],
+          'instrument_family':
+              ex['instrument']['family'],
+          'instrument':
+              ex['instrument']['label'],
+          'f0':
+              ex['f0']['hz'],
+          'f0_confidence':
+              ex['f0']['confidence'],
           'loudness': (
               (ex['loudness']['db'] - loudness_stats['loudness_db_mean']) /
               tf.math.sqrt(loudness_stats['loudness_db_variance'])),
       }
+
     return preprocess_ex
 
 
@@ -289,3 +262,5 @@ class SoloInstrument(TFRecordProvider):
         'f0_confidence': tf.FixedLenFeature([1001], dtype=tf.float32),
         'loudness': tf.FixedLenFeature([1001], dtype=tf.float32),
     }
+
+

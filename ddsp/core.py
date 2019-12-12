@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-from typing import Text, TypeVar
+from typing import Any, Dict, Text, TypeVar
 
 import gin
 import numpy as np
@@ -41,6 +41,28 @@ def make_iterable(x):
   return x if isinstance(x, collections.Iterable) else [x]
 
 
+def nested_lookup(nested_key: Text,
+                  nested_dict: Dict[Text, Any],
+                  delimiter: Text = '/') -> tf.Tensor:
+  """Returns the value of a nested dict according to a parsed input string.
+
+  Args:
+    nested_key: String of the form "key/key/key...".
+    nested_dict: Nested dictionary.
+    delimiter: String that splits the nested keys.
+
+  Returns:
+    value: Value of the key from the nested dictionary.
+  """
+  # Parse the input string.
+  keys = nested_key.split(delimiter)
+  # Return the nested value.
+  value = nested_dict
+  for key in keys:
+    value = value[key]
+  return value
+
+
 def midi_to_hz(notes: Number) -> Number:
   """TF-compatible midi_to_hz function."""
   return 440.0 * (2.0**((notes - 69.0) / 12.0))
@@ -56,13 +78,13 @@ def resample(inputs: tf.Tensor,
     inputs: Framewise 3-D Tensor. Shape [batch_size, n_frames, channels].
     n_timesteps: Time resolution of the output signal.
     method: Type of resampling, must be in ['linear', 'cubic', 'window']. Linear
-        and cubic ar typical bilinear, bicubic interpolation. Window uses
-        overlapping windows (only for upsampling) which is smoother for
-        amplitude envelopes.
+      and cubic ar typical bilinear, bicubic interpolation. Window uses
+      overlapping windows (only for upsampling) which is smoother for amplitude
+      envelopes.
     add_endpoint: Hold the last timestep for an additional step as the endpoint.
-        Then, n_timesteps is divided evenly into n_frames segments. If false,
-        use the last timestep as the endpoint, producing (n_frames - 1) segments
-        with each having a length of n_timesteps / (n_frames - 1).
+      Then, n_timesteps is divided evenly into n_frames segments. If false, use
+      the last timestep as the endpoint, producing (n_frames - 1) segments with
+      each having a length of n_timesteps / (n_frames - 1).
   Returns:
     Interpolated 3-D Tensor. Shape [batch_size, n_timesteps, channels].
 
@@ -98,9 +120,9 @@ def upsample_with_windows(inputs: tf.Tensor,
     inputs: Framewise 3-D tensor. Shape [batch_size, n_frames, n_channels].
     n_timesteps: The time resolution of the output signal.
     add_endpoint: Hold the last timestep for an additional step as the endpoint.
-        Then, n_timesteps is divided evenly into n_frames segments. If false,
-        use the last timestep as the endpoint, producing (n_frames - 1) segments
-        with each having a length of n_timesteps / (n_frames - 1).
+      Then, n_timesteps is divided evenly into n_frames segments. If false, use
+      the last timestep as the endpoint, producing (n_frames - 1) segments with
+      each having a length of n_timesteps / (n_frames - 1).
 
   Returns:
     Upsampled 3-D tensor. Shape [batch_size, n_timesteps, n_channels].
@@ -108,7 +130,7 @@ def upsample_with_windows(inputs: tf.Tensor,
   Raises:
     ValueError: If attempting to use function for downsampling.
     ValueError: If n_timesteps is not divisible by n_frames (if add_endpoint is
-        true) or n_frames - 1 (if add_endpoint is false).
+      true) or n_frames - 1 (if add_endpoint is false).
   """
   # Mimic behavior of tf.image.resize.
   # For forward (not endpointed), hold value for last interval.
@@ -206,10 +228,10 @@ def exp_sigmoid(x, exponent=10.0, max_value=2.0, threshold=1e-7):
   Args:
     x: Input tensor.
     exponent: In nonlinear regime (away from x=0), the output varies by this
-        factor for every change of x by 1.0.
+      factor for every change of x by 1.0.
     max_value: Limiting value at x=inf.
     threshold: Limiting value at x=-inf. Stablizes training when outputs are
-        pushed to 0.
+      pushed to 0.
 
   Returns:
     A tensor with pointwise nonlinearity applied.
@@ -221,13 +243,6 @@ def exp_sigmoid(x, exponent=10.0, max_value=2.0, threshold=1e-7):
 def sym_exp_sigmoid(x, width=8.0):
   """Symmetrical version of exp_sigmoid centered at (0, 1e-7)."""
   return exp_sigmoid(width * (tf.abs(x)/2.0 - 1.0))
-
-
-def get_variable(shape=(1, 64000), scale=1e-3):
-  """Get a random normal float32 variable."""
-  w_init = scale * np.random.randn(*shape)
-  w = tf.Variable(w_init, dtype=tf.float32, trainable=True)
-  return w
 
 
 # Additive Synthesizer ---------------------------------------------------------
@@ -245,7 +260,7 @@ def remove_above_nyquist(frequency_envelopes: tf.Tensor,
 
   Returns:
     amplitude_envelopes: Sample-wise filtered oscillator amplitude.
-        Shape [batch_size, n_samples, n_sinusoids].
+      Shape [batch_size, n_samples, n_sinusoids].
   """
   amplitude_envelopes = tf.where(
       tf.greater_equal(frequency_envelopes, sample_rate / 2.0),
@@ -295,7 +310,7 @@ def get_harmonic_frequencies(frequencies: tf.Tensor,
 
   Returns:
     harmonic_frequencies: Oscillator frequencies (Hz).
-        Shape [batch_size, :, n_harmonics].
+      Shape [batch_size, :, n_harmonics].
   """
   f_ratios = tf.linspace(1.0, float(n_harmonics), int(n_harmonics))
   f_ratios = f_ratios[tf.newaxis, tf.newaxis, :]
@@ -367,14 +382,14 @@ def linear_lookup(phase: tf.Tensor,
 
   Args:
     phase: The instantaneous phase of the base oscillator, ranging from 0 to
-        1.0. This gives the position to lookup in the wavetable.
-        Shape [batch_size, n_samples, 1].
+      1.0. This gives the position to lookup in the wavetable.
+      Shape [batch_size, n_samples, 1].
     wavetables: Wavetables to be read from on lookup. Shape [batch_size,
-        n_samples, n_wavetable] or [batch_size, n_wavetable].
+      n_samples, n_wavetable] or [batch_size, n_wavetable].
 
   Returns:
     The resulting audio from linearly interpolated lookup of the wavetables at
-        each point in time. Shape [batch_size, n_samples].
+      each point in time. Shape [batch_size, n_samples].
   """
   # Add a time dimension if not present.
   if len(wavetables.shape) == 2:
@@ -413,17 +428,17 @@ def wavetable_synthesis(frequency: tf.Tensor,
 
   Args:
     frequency: Frame-wise frequency in Hertz of the fundamental oscillator.
-        Shape [batch_size, n_frames, 1].
+      Shape [batch_size, n_frames, 1].
     amplitude: Frame-wise amplitude envelope to apply to the oscillator. Shape
-        [batch_size, n_frames, 1].
+      [batch_size, n_frames, 1].
     wavetables: Frame-wise wavetables from which to lookup. Shape
-        [batch_size, n_wavetable] or [batch_size, n_frames, n_wavetable].
+      [batch_size, n_wavetable] or [batch_size, n_frames, n_wavetable].
     n_samples: Total length of output audio. Interpolates and crops to this.
     sample_rate: Number of samples per a second.
 
   Returns:
     audio: Audio at the frequency and amplitude of the inputs, with harmonics
-        given by the wavetable. Shape [batch_size, n_samples].
+      given by the wavetable. Shape [batch_size, n_samples].
   """
   # Create sample-wise envelopes.
   amplitude_envelope = resample(amplitude, n_samples, method='window')[:, :, 0]
@@ -457,8 +472,8 @@ def variable_length_delay(phase: tf.Tensor,
   Useful for modulation effects such as vibrato, chorus, and flanging.
   Args:
     phase: The normlaized instantaneous length of the delay, ranging from 0 to
-        1.0. This corresponds to a delay of 0 to max_length samples. Shape
-        [batch_size, n_samples, 1].
+      1.0. This corresponds to a delay of 0 to max_length samples. Shape
+      [batch_size, n_samples, 1].
     audio: Audio signal to be delayed. Shape [batch_size, n_samples].
     max_length: Maximimum delay in samples.
 
@@ -581,8 +596,8 @@ def fft_convolve(audio: tf.Tensor,
   Raises:
     ValueError: If audio and impulse response have different batch size.
     ValueError: If audio cannot be split into evenly spaced frames. (i.e. the
-        number of impulse response frames is on the order of the audio size and
-        not a multiple of the audio size.)
+      number of impulse response frames is on the order of the audio size and
+      not a multiple of the audio size.)
   """
   # Add a frame dimension to impulse response if it doesn't have one.
   ir_shape = impulse_response.shape.as_list()
@@ -638,15 +653,15 @@ def apply_window_to_impulse_response(impulse_response: tf.Tensor,
 
   Args:
     impulse_response: A series of impulse responses frames to window, of shape
-        [batch, n_frames, ir_size].
+      [batch, n_frames, ir_size].
     window_size: Size of the window to apply in the time domain. If window_size
-        is less than 1, it defaults to the impulse_response size.
+      is less than 1, it defaults to the impulse_response size.
     causal: Impulse responnse input is in causal form (peak in the middle).
 
   Returns:
     impulse_response: Windowed impulse response in causal form, with last
-        dimension cropped to window_size if window_size is greater than 0 and
-        less than ir_size.
+      dimension cropped to window_size if window_size is greater than 0 and less
+      than ir_size.
   """
   # If IR is in causal form, put it in zero-phase form.
   if causal:
@@ -704,7 +719,7 @@ def frequency_impulse_response(magnitudes: tf.Tensor,
 
   Returns:
     impulse_response: Time-domain FIR filter of shape
-        [batch, frames, window_size] or [batch, window_size].
+      [batch, frames, window_size] or [batch, window_size].
 
   Raises:
     ValueError: If window size is larger than fft size.
@@ -732,15 +747,15 @@ def sinc_impulse_response(cutoff_frequency, window_size=512, sample_rate=None):
 
   Args:
     cutoff_frequency: Frequency cutoff for low-pass sinc filter. If the
-        sample_rate is given, cutoff_frequency is in Hertz. If sample_rate
-        is None, cutoff_frequency is normalized ratio (frequency/nyquist)
-        in the range [0, 1.0]. Shape [batch_size, n_time, 1].
+      sample_rate is given, cutoff_frequency is in Hertz. If sample_rate is
+      None, cutoff_frequency is normalized ratio (frequency/nyquist) in the
+      range [0, 1.0]. Shape [batch_size, n_time, 1].
     window_size: Size of the Hamming window to apply to the impulse.
     sample_rate: Optionally provide the sample rate.
 
   Returns:
     impulse_response: A series of impulse responses. Shape
-        [batch_size, n_time, (window_size // 2) * 2 + 1].
+      [batch_size, n_time, (window_size // 2) * 2 + 1].
   """
   # Convert frequency to samples/sample_rate [0, Nyquist] -> [0, 1].
   if sample_rate is not None:
@@ -805,9 +820,9 @@ def sinc_filter(audio: tf.Tensor,
   Args:
     audio: Input audio. Tensor of shape [batch, audio_timesteps].
     cutoff_frequency: Frequency cutoff for low-pass sinc filter. If the
-        sample_rate is given, cutoff_frequency is in Hertz. If sample_rate
-        is None, cutoff_frequency is normalized ratio (frequency/nyquist)
-        in the range [0, 1.0]. Shape [batch_size, n_time, 1].
+      sample_rate is given, cutoff_frequency is in Hertz. If sample_rate is
+      None, cutoff_frequency is normalized ratio (frequency/nyquist) in the
+      range [0, 1.0]. Shape [batch_size, n_time, 1].
     window_size: Size of the Hamming window to apply to the impulse.
     sample_rate: Optionally provide the sample rate.
     padding: Either 'valid' or 'same'. For 'same' the final output to be the
@@ -817,8 +832,8 @@ def sinc_filter(audio: tf.Tensor,
 
   Returns:
     Filtered audio. Tensor of shape
-        [batch, audio_timesteps + window_size - 1] ('valid' padding) or shape
-        [batch, audio_timesteps] ('same' padding).
+      [batch, audio_timesteps + window_size - 1] ('valid' padding) or shape
+      [batch, audio_timesteps] ('same' padding).
   """
   impulse_response = sinc_impulse_response(cutoff_frequency,
                                            window_size=window_size,

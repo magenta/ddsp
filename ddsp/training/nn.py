@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
 import gin
 import tensorflow.compat.v1 as tf
 
@@ -26,7 +27,7 @@ tfkl = tf.keras.layers
 
 
 # ------------------ Normalization ---------------------------------------------
-def normalize(x, norm_type='instance', eps=1e-5):
+def normalize_op(x, norm_type='layer', eps=1e-5):
   """Apply either Group, Instance, or Layer normalization."""
   mb, h, w, ch = x.shape
   n_groups = {'instance': ch, 'layer': 1, 'group': 32}[norm_type]
@@ -41,87 +42,135 @@ def normalize(x, norm_type='instance', eps=1e-5):
 class Normalize(tfkl.Layer):
   """Normalization layer with learnable parameters."""
 
-  def __init__(self, norm_type='instance'):
+  def __init__(self, norm_type='layer'):
     super(Normalize, self).__init__()
     self.norm_type = norm_type
 
   def build(self, x_shape):
-    self.scale = self.add_weight('scale',
-                                 shape=[1, 1, 1, int(x_shape[-1])],
-                                 dtype=tf.float32,
-                                 initializer=tf.ones_initializer)
-    self.shift = self.add_weight('shift',
-                                 shape=[1, 1, 1, int(x_shape[-1])],
-                                 dtype=tf.float32,
-                                 initializer=tf.zeros_initializer)
+    self.scale = self.add_weight(
+        name='scale',
+        shape=[1, 1, 1, int(x_shape[-1])],
+        dtype=tf.float32,
+        initializer=tf.ones_initializer)
+    self.shift = self.add_weight(
+        name='shift',
+        shape=[1, 1, 1, int(x_shape[-1])],
+        dtype=tf.float32,
+        initializer=tf.zeros_initializer)
 
   def call(self, x):
-    x = normalize(x, self.norm_type)
+    x = normalize_op(x, self.norm_type)
     return (x * self.scale) + self.shift
 
 
 # ------------------ ResNet ----------------------------------------------------
-def residual_block(x, ch, stride, projection_shortcut, norm_type):
-  """A single block for ResNet, with a bottleneck."""
-  conv = lambda x, ch, k, s: tfkl.Conv2D(ch, k, s, padding='same')(x)
-
-  r = x
-  x = Normalize(norm_type)(x)
-  x = tf.nn.relu(x)
-
-  # The projection shortcut should come after the first norm and ReLU
-  # since it performs a 1x1 convolution.
-  if projection_shortcut:
-    r = conv(x, 4 * ch, (1, 1), (1, stride))
-
-  x = conv(x, ch, (1, 1), (1, 1))
-
-  x = Normalize(norm_type)(x)
-  x = tf.nn.relu(x)
-  x = conv(x, ch, (3, 3), (1, stride))
-
-  x = Normalize(norm_type)(x)
-  x = tf.nn.relu(x)
-  x = conv(x, 4 * ch, (1, 1), (1, 1))
-  return x + r
+def norm_relu_conv(ch, k, s, norm_type, name='norm_relu_conv'):
+  """Downsample frequency by stride."""
+  layers = [
+      Normalize(norm_type),
+      tfkl.Activation(tf.nn.relu),
+      tfkl.Conv2D(ch, (k, k), (1, s), padding='same', name='conv2d'),
+  ]
+  return tf.keras.Sequential(layers, name=name)
 
 
-def residual_stack(x, filters, blocks, strides, norm_type):
-  """ResNet blocks."""
-  for (ch, num_blocks, stride) in zip(filters, blocks, strides):
-    # Only the first block per residual_stack uses shortcut and strides
-    x = residual_block(x, ch, stride, True, norm_type)
+class ResidualLayer(tfkl.Layer):
+  """A single layer for ResNet, with a bottleneck."""
 
-    # Add the additional num_blocks - 1 blocks to the stack.
-    for _ in range(1, num_blocks):
-      x = residual_block(x, ch, 1, False, norm_type)
+  def __init__(self, ch, stride, shortcut, norm_type, name='residual_layer'):
+    """Downsample frequency by stride, upsample channels by 4."""
+    super(ResidualLayer, self).__init__(name=name)
+    ch_out = 4 * ch
+    self.shortcut = shortcut
 
-  x = Normalize(norm_type)(x)
-  x = tf.nn.relu(x)
-  return x
+    # Layers.
+    self.norm_input = Normalize(norm_type)
+    if self.shortcut:
+      self.conv_proj = tfkl.Conv2D(ch_out, (1, 1), (1, stride), padding='same',
+                                   name='conv_proj')
+    layers = [
+        tfkl.Conv2D(ch, (1, 1), (1, 1), padding='same', name='conv2d'),
+        norm_relu_conv(ch, 3, stride, norm_type),
+        norm_relu_conv(ch_out, 1, 1, norm_type),
+    ]
+    self.bottleneck = tf.keras.Sequential(layers, name='bottleneck')
+
+  def call(self, x):
+    r = x
+    x = tf.nn.relu(self.norm_input(x))
+    # The projection shortcut should come after the first norm and ReLU
+    # since it performs a 1x1 convolution.
+    r = self.conv_proj(x) if self.shortcut else r
+    x = self.bottleneck(x)
+    return x + r
+
+
+def residual_stack(filters,
+                   block_sizes,
+                   strides,
+                   norm_type,
+                   name='residual_stack'):
+  """ResNet layers."""
+  layers = []
+  for (ch, n_layers, stride) in zip(filters, block_sizes, strides):
+    # Only the first block per residual_stack uses shortcut and strides.
+    layers.append(ResidualLayer(ch, stride, True, norm_type))
+    # Add the additional (n_layers - 1) layers to the stack.
+    for _ in range(1, n_layers):
+      layers.append(ResidualLayer(ch, 1, False, norm_type))
+  layers.append(Normalize(norm_type))
+  layers.append(tfkl.Activation(tf.nn.relu))
+  return tf.keras.Sequential(layers, name=name)
 
 
 @gin.configurable
-def resnet(x, norm_type='layer', size='large'):
+def resnet(size='large', norm_type='layer', name='resnet'):
   """Residual network."""
-  ch, blocks = {
+  size_dict = {
       'small': (32, [2, 3, 4]),
       'medium': (32, [3, 4, 6]),
       'large': (64, [3, 4, 6]),
-  }[size]
-  x = tfkl.Conv2D(64, (7, 7), (1, 2), padding='same')(x)
-  x = tf.layers.max_pooling2d(x, pool_size=(1, 3), strides=(1, 2),
-                              padding='SAME')
-
-  x = residual_stack(x, [ch, 2*ch, 4*ch], blocks, [1, 2, 2], norm_type)
-  x = residual_stack(x, [8*ch], [3], [2], norm_type)
-  return x
+  }
+  ch, blocks = size_dict[size]
+  layers = [
+      tfkl.Conv2D(64, (7, 7), (1, 2), padding='same', name='conv2d'),
+      tfkl.MaxPool2D(pool_size=(1, 3), strides=(1, 2), padding='same'),
+      residual_stack([ch, 2 * ch, 4 * ch], blocks, [1, 2, 2], norm_type),
+      residual_stack([8 * ch], [3], [2], norm_type)
+  ]
+  return tf.keras.Sequential(layers, name=name)
 
 
 # ------------------ Stacks ----------------------------------------------------
-def fc_stack(x, ch=256, layers=2):
-  for _ in range(layers):
-    x = tfkl.Dense(ch)(x)
-    x = tfkl.LayerNormalization()(x)
-    x = tf.nn.leaky_relu(x)
-  return x
+def dense(ch, name='dense'):
+  return tfkl.Dense(ch, name=name)
+
+
+def fc(ch=256, name='fc'):
+  layers = [
+      dense(ch),
+      tfkl.LayerNormalization(),
+      tfkl.Activation(tf.nn.leaky_relu),
+  ]
+  return tf.keras.Sequential(layers, name=name)
+
+
+def fc_stack(ch=256, layers=2, name='fc_stack'):
+  return tf.keras.Sequential([fc(ch) for _ in range(layers)], name=name)
+
+
+def rnn(dims, rnn_type, return_sequences=True):
+  rnn_class = {'lstm': tfkl.LSTM, 'gru': tfkl.GRU}[rnn_type]
+  return rnn_class(dims, return_sequences=return_sequences, name=rnn_type)
+
+
+# ------------------ Utilities -------------------------------------------------
+@gin.configurable
+def split_to_dict(tensor, tensor_splits):
+  """Split a tensor into a dictionary of multiple tensors."""
+  labels = [v[0] for v in tensor_splits]
+  sizes = [v[1] for v in tensor_splits]
+  tensors = tf.split(tensor, sizes, axis=-1)
+  return {k: v for k, v in zip(labels, tensors)}
+
+

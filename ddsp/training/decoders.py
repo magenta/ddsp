@@ -27,29 +27,33 @@ tfkl = tf.keras.layers
 
 
 # ------------------ Decoders --------------------------------------------------
-class Decoder(object):
+class Decoder(tfkl.Layer):
   """Base class to implement any decoder.
 
   Users should override decode() to define the actual encoder structure.
   Hyper-parameters will be passed through the constructor.
   """
 
-  def __init__(self, name):
-    self.name = name
+  def __init__(self,
+               output_splits=(('amps', 1), ('harmonic_distribution', 40)),
+               name='decoder'):
+    super(Decoder, self).__init__(name=name)
+    self.output_splits = output_splits
+    self.n_out = sum([v[1] for v in output_splits])
 
-  def __call__(self, conditioning):
-    return self.get_outputs(conditioning)
+  def call(self, conditioning):
+    """Updates conditioning with dictionary of decoder outputs."""
+    x = self.decode(conditioning)
+    outputs = nn.split_to_dict(x, self.output_splits)
 
-  def get_outputs(self, conditioning):
-    """Updates conditioning with z and (optionally) f0."""
-    decoder_outputs = self.decode(conditioning)
-    if isinstance(decoder_outputs, dict):
-      conditioning.update(decoder_outputs)
+    if isinstance(outputs, dict):
+      conditioning.update(outputs)
     else:
-      conditioning['decoder_outputs'] = decoder_outputs
+      raise ValueError('Decoder must output a dictionary of signals.')
     return conditioning
 
   def decode(self, conditioning):
+    """Takes in conditioning dictionary, returns dictionary of signals."""
     raise NotImplementedError
 
 
@@ -63,36 +67,36 @@ class ZRnnFcDecoder(Decoder):
                ch=512,
                layers_per_stack=3,
                append_f0_loudness=True,
-               n_out=41,
+               output_splits=(('amps', 1), ('harmonic_distribution', 40)),
                name='z_rnn_fc_decoder'):
-    super(ZRnnFcDecoder, self).__init__(name=name)
-    self.rnn_channels = rnn_channels
-    self.rnn_type = rnn_type
-    self.ch = ch
-    self.layers_per_stack = layers_per_stack
+    super(ZRnnFcDecoder, self).__init__(output_splits=output_splits, name=name)
     self.append_f0_loudness = append_f0_loudness
-    self.n_out = n_out
+    stack = lambda: nn.fc_stack(ch, layers_per_stack)
+
+    # Layers.
+    self.f_stack = stack()
+    self.l_stack = stack()
+    self.z_stack = stack()
+    self.rnn = nn.rnn(rnn_channels, rnn_type)
+    self.out_stack = stack()
+    self.dense_out = nn.dense(self.n_out)
 
   def decode(self, conditioning):
-    rnn = {'lstm': tfkl.LSTM, 'gru': tfkl.GRU}[self.rnn_type]
-    stack = lambda x: nn.fc_stack(x, self.ch, self.layers_per_stack)
-
     f, l, z = conditioning['f0'], conditioning['loudness'], conditioning['z']
 
     # Initial processing.
-    f = stack(f)
-    l = stack(l)
-    z = stack(z)
+    f = self.f_stack(f)
+    l = self.l_stack(l)
+    z = self.z_stack(z)
 
-    # Expand z with an RNN.
-    z = tf.concat([f, l, z], axis=-1) if self.append_f0_loudness else z
-    z = rnn(self.rnn_channels, return_sequences=True)(z)
-    x = tf.concat([f, l, z], axis=-1)
+    # Run an RNN over the latents.
+    x = tf.concat([f, l, z], axis=-1) if self.append_f0_loudness else z
+    x = self.rnn(x)
+    x = tf.concat([f, l, x], axis=-1)
 
     # Final processing.
-    x = stack(x)
-    decoder_outputs = tfkl.Dense(self.n_out)(x)
-    return decoder_outputs
+    x = self.out_stack(x)
+    return self.dense_out(x)
 
 
 @gin.configurable
@@ -104,33 +108,32 @@ class RnnFcDecoder(Decoder):
                rnn_type='gru',
                ch=512,
                layers_per_stack=3,
-               n_out=41,
+               output_splits=(('amps', 1), ('harmonic_distribution', 40)),
                name='rnn_fc_decoder'):
-    super(RnnFcDecoder, self).__init__(name=name)
-    self.rnn_channels = rnn_channels
-    self.rnn_type = rnn_type
-    self.ch = ch
-    self.layers_per_stack = layers_per_stack
-    self.n_out = n_out
+    super(RnnFcDecoder, self).__init__(output_splits=output_splits, name=name)
+    stack = lambda: nn.fc_stack(ch, layers_per_stack)
+
+    # Layers.
+    self.f_stack = stack()
+    self.l_stack = stack()
+    self.rnn = nn.rnn(rnn_channels, rnn_type)
+    self.out_stack = stack()
+    self.dense_out = nn.dense(self.n_out)
 
   def decode(self, conditioning):
-    rnn = {'lstm': tfkl.LSTM, 'gru': tfkl.GRU}[self.rnn_type]
-    stack = lambda x: nn.fc_stack(x, self.ch, self.layers_per_stack)
-
     f, l = conditioning['f0'], conditioning['loudness']
 
     # Initial processing.
-    f = stack(f)
-    l = stack(l)
+    f = self.f_stack(f)
+    l = self.l_stack(l)
 
-    # Expand z with an RNN.
-    z = tf.concat([f, l], axis=-1)
-    z = rnn(self.rnn_channels, return_sequences=True)(z)
-    x = tf.concat([f, l, z], axis=-1)
+    # Run an RNN over the latents.
+    x = tf.concat([f, l], axis=-1)
+    x = self.rnn(x)
+    x = tf.concat([f, l, x], axis=-1)
 
     # Final processing.
-    x = stack(x)
-    decoder_outputs = tfkl.Dense(self.n_out)(x)
-    return decoder_outputs
+    x = self.out_stack(x)
+    return self.dense_out(x)
 
 

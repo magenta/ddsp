@@ -46,34 +46,6 @@ class AddTest(tf.test.TestCase):
     self.assertAllEqual(expected, actual)
 
 
-class SplitTest(tf.test.TestCase):
-
-  def test_output_is_correct(self):
-    processor = processors.Split(
-        splits=(('x1', 1), ('x2', 2), ('x3', 3)), name='split')
-    x1 = np.zeros((2, 3, 1), dtype=np.float32) + 1.0
-    x2 = np.zeros((2, 3, 2), dtype=np.float32) + 2.0
-    x3 = np.zeros((2, 3, 3), dtype=np.float32) + 3.0
-    x = tf.constant(np.concatenate([x1, x2, x3], axis=2))
-
-    output = processor.get_outputs(x)
-    call_output = processor(x)
-    with self.cached_session() as sess:
-      actual = sess.run(output)
-      actual_call = sess.run(call_output)
-
-    self.assertSetEqual(set(['split']), set(actual.keys()))
-
-    signal_dict = actual.get('split').get('signal')
-    self.assertSetEqual(set(['x1', 'x2', 'x3']), set(signal_dict.keys()))
-    self.assertAllEqual(x1, signal_dict.get('x1'))
-    self.assertAllEqual(x2, signal_dict.get('x2'))
-    self.assertAllEqual(x3, signal_dict.get('x3'))
-    self.assertAllEqual(x1, actual_call[0])
-    self.assertAllEqual(x2, actual_call[1])
-    self.assertAllEqual(x3, actual_call[2])
-
-
 class MixTest(tf.test.TestCase):
 
   def test_output_shape_is_correct(self):
@@ -99,7 +71,9 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
     self.n_time = 64000
     rand_signal = lambda ch: np.random.randn(self.n_batch, self.n_frames, ch)
     nn_outputs = {
-        'nn_output': rand_signal(356),
+        'amps': rand_signal(1),
+        'harmonic_distribution': rand_signal(99),
+        'magnitudes': rand_signal(256),
         'f0_hz': 200 + rand_signal(1),
         'target_audio': np.random.randn(self.n_batch, self.n_time)
     }
@@ -109,16 +83,12 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
     additive = synths.Additive(name='additive')
     noise = synths.FilteredNoise(name='noise')
     add = processors.Add(name='add')
-    split = processors.Split(
-        splits=(('to_amp', 1), ('to_harm', 99), ('to_noise', 256)),
-        name='split')
     reverb = effects.FixedReverb(name='reverb')
 
     # Create DAG for testing.
     dag_tuple = [
-        (split, ['nn_output']),
-        (additive, ['split/signal/to_amp', 'split/signal/to_harm', 'f0_hz']),
-        (noise, ['split/signal/to_noise']),
+        (additive, ['amps', 'harmonic_distribution', 'f0_hz']),
+        (noise, ['magnitudes']),
         (add, ['noise/signal', 'additive/signal']),
         (reverb, ['add/signal']),
     ]
@@ -126,12 +96,11 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
     self.dags = {'dag_tuple': dag_tuple, 'dag_dict': dag_dict}
 
     self.expected_outputs = [
-        'nn_output',
+        'amps',
+        'harmonic_distribution',
+        'magnitudes',
         'f0_hz',
         'target_audio',
-        'split/signal/to_amp',
-        'split/signal/to_harm',
-        'split/signal/to_noise',
         'additive/signal',
         'additive/controls/amplitudes',
         'additive/controls/harmonic_distribution',
@@ -146,7 +115,7 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
 
   def _check_tensor_outputs(self, strings_to_check, outputs, processor_group):
     for tensor_string in strings_to_check:
-      tensor = processor_group._get_input_from_string(tensor_string, outputs)
+      tensor = core.nested_lookup(tensor_string, outputs)
       self.assertIsInstance(tensor, tf.Tensor)
 
   @parameterized.named_parameters(

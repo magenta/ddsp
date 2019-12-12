@@ -28,12 +28,12 @@ tf.disable_v2_behavior()
 class SpectralLossTest(tf.test.TestCase):
 
   def test_output_shape_is_correct(self):
-    processor = losses.SpectralLoss()
+    loss_obj = losses.SpectralLoss()
 
     input_audio = tf.random.uniform((3, 16000), dtype=tf.float32)
     target_audio = tf.random.uniform((3, 16000), dtype=tf.float32)
 
-    loss = processor(input_audio, target_audio)
+    loss = loss_obj(input_audio, target_audio)
 
     self.assertListEqual([], loss.shape.as_list())
 

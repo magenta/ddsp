@@ -91,14 +91,20 @@ class FixedReverb(Reverb):
     super(FixedReverb, self).__init__(scale_fn=scale_fn, name=name)
     self.reverb_length = reverb_length
 
+  def build(self, audio_shape):
+    """Initialize impulse response."""
+    initializer = tf.random_normal_initializer(mean=0, stddev=1e-6)
+    self.ir = self.add_weight(
+        name='impulse_response',
+        shape=[1, self.reverb_length],
+        dtype=tf.float32,
+        initializer=initializer)
+
   def get_controls(self, audio):
     """Retrieve ir response."""
-    # Initialize impulse response.
-    ir = core.get_variable(shape=[1, self.reverb_length])
 
-    # Scale the amplitudes.
-    if self.scale_fn:
-      ir = self.scale_fn(ir)
+    # Scale the impulse response.
+    ir = self.scale_fn(self.ir) if self.scale_fn else self.ir
 
     # Hold the first impulse response (dry) as zero to decouple dry/wet signal.
     ir = tf.concat([tf.zeros_like(ir, tf.float32)[:, 0:1], ir[:, 1:]], axis=-1)

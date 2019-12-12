@@ -1,11 +1,10 @@
 # -*-Python-*-
 
-import ddsp.training.eval_util
-import ddsp.training.model
-import ddsp.training.data
+import ddsp.training
 
-data.TfdsProvider.get_dataset.tfds_split = 'test'
 evaluate_or_sample.data_provider = @data.NSynthTfds()
+data.NSynthTfds.split = 'test'
+
 evaluate_or_sample.model = @model.Model()
 
 evaluate_or_sample.batch_size = 21

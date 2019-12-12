@@ -28,7 +28,7 @@ import tensorflow.compat.v1 as tf
 # ---------------------- Preprocess Helpers ------------------------------------
 def resample(x, time_steps):
   """Converts tensor [batch, n_time_in] to [batch, n_time_out, 1]."""
-  return ddsp.resample(x[:, :, tf.newaxis], time_steps)
+  return ddsp.core.resample(x[:, :, tf.newaxis], time_steps)
 
 
 # ---------------------- Preprocess objects ------------------------------------
@@ -83,9 +83,10 @@ class DefaultPreprocessor(Preprocessor):
     """Always resample to `time_steps` and add `f0_hz` key."""
     self._apply(
         resample, conditioning, ('loudness', 'f0'), time_steps=self.time_steps)
-    conditioning['f0_hz'] = ddsp.midi_to_hz(conditioning['f0'] * 127.0)
+    conditioning['f0_hz'] = ddsp.core.midi_to_hz(conditioning['f0'] * 127.0)
     return conditioning
 
   def get_outputs(self, features, is_training):
     conditioning = copy.copy(features)
     return self._default_processing(conditioning)
+

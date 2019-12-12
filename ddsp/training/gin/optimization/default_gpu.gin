@@ -1,5 +1,7 @@
 # -*-Python-*-
 
+import ddsp.training
+
 train_util.create_estimator.batch_size = 32
 train_util.create_estimator.save_checkpoint_steps = 300
 train_util.create_estimator.save_summary_steps = 300
