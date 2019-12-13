@@ -145,8 +145,10 @@ class SpectralLoss(Loss):
                                                      self.loss_type)
 
     if self.loudness_weight > 0:
-      target = spectral_ops.get_loudness(target_audio, n_fft=2048, top_db=200.0)
-      value = spectral_ops.get_loudness(audio, n_fft=2048, top_db=200.0)
+      target = spectral_ops.calc_loudness(
+          target_audio, n_fft=2048, top_db=200.0)
+      value = spectral_ops.calc_loudness(
+          audio, n_fft=2048, top_db=200.0)
       loss += self.loudness_weight * mean_difference(target, value,
                                                      self.loss_type)
 

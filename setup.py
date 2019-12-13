@@ -44,11 +44,12 @@ setuptools.setup(
     extras_require={
         'gcp': ['gevent', 'google-api-python-client', 'google-compute-engine',
                 'google-cloud-storage', 'oauth2client'],
+        'data_preparation': ['apache_beam'],
     },
     entry_points={
         'console_scripts': [
-            'ddsp_train = ddsp.training.ddsp_train:console_entry_point',
-            'ddsp_eval = ddsp.training.ddsp_eval:console_entry_point',
+            'ddsp_run = ddsp.training.ddsp_run:console_entry_point',
+            'ddsp_prepare_tfrecord = ddsp.training.data_preparation.prepare_tfrecord:console_entry_point',
         ],
     },
     classifiers=[

@@ -139,7 +139,12 @@ class TFRecordProvider(DataProvider):
   @property
   def features_dict(self):
     """Dictionary of features to read from dataset."""
-    raise NotImplementedError
+    return {
+        'audio': tf.FixedLenFeature([None], dtype=tf.float32),
+        'f0': tf.FixedLenFeature([None], dtype=tf.float32),
+        'f0_confidence': tf.FixedLenFeature([None], dtype=tf.float32),
+        'loudness': tf.FixedLenFeature([None], dtype=tf.float32),
+    }
 
   @property
   def file_reader(self):

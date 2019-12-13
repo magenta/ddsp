@@ -101,10 +101,11 @@ def calc_mfcc(audio,
   return mfccs[..., :mfcc_bins]
 
 
-def get_loudness(audio, n_fft=2048, top_db=80.0, pmin=1e-20):
+def calc_loudness(audio, n_fft=2048, top_db=200.0, pmin=1e-20, hop_size=4000):
   """Perceptual loudness, following librosa implementation."""
   log10 = lambda x: tf.log(x) / tf.log(10.0)
-  spectra = stft(audio, frame_size=n_fft, overlap=0.75)
+  spectra = stft(
+      audio, frame_size=n_fft, overlap=1-hop_size/n_fft, pad_end=True)
   power = tf.abs(spectra)**2.0
 
   power_db = 10.0 * log10(tf.maximum(pmin, power))
@@ -114,7 +115,7 @@ def get_loudness(audio, n_fft=2048, top_db=80.0, pmin=1e-20):
   a_weighting = librosa.A_weighting(fft_frequencies)
 
   loudness = power_db + a_weighting[tf.newaxis, tf.newaxis, :]
-  loudness = tf.reduce_mean(loudness, axis=2)
+  loudness = tf.reduce_mean(loudness, axis=-1)
   return loudness
 
 
