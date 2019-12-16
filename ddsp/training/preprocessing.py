@@ -38,8 +38,8 @@ class Preprocessor(object):
   def __init__(self):
     pass
 
-  def __call__(self, features, is_training=True):
-    return self.get_outputs(features, is_training)
+  def __call__(self, features, training=True):
+    return self.get_outputs(features, training)
 
   def _apply(self, fn, conditioning, keys, **kwargs):
     """Apply preprocessing function `fn` to specific keys.
@@ -57,12 +57,12 @@ class Preprocessor(object):
       conditioning[k] = fn(conditioning[k], **kwargs)
     return conditioning
 
-  def get_outputs(self, features, is_training):
+  def get_outputs(self, features, training):
     """Get outputs after preprocessing functions.
 
     Args:
       features: dict of feature key and tensors
-      is_training: boolean for controlling training-specfic preprocessing
+      training: boolean for controlling training-specfic preprocessing
         behavior
 
     Returns:
@@ -86,7 +86,7 @@ class DefaultPreprocessor(Preprocessor):
     conditioning['f0_hz'] = ddsp.core.midi_to_hz(conditioning['f0'] * 127.0)
     return conditioning
 
-  def get_outputs(self, features, is_training):
+  def get_outputs(self, features, training):
     conditioning = copy.copy(features)
     return self._default_processing(conditioning)
 

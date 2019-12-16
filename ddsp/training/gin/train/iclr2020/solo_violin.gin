@@ -4,24 +4,23 @@ import ddsp
 import ddsp.training
 
 # Training dataset and model.
-train.dataset_provider = @data.SoloInstrument()
+train.data_provider = @data.SoloInstrument()
 data.SoloInstrument.file_pattern = '/path/to/dataset*.tfrecord'
-
-train.model = @model.Model()
+train.model = @models.Autoencoder()
 
 # =======
 # Network
 # =======
 
 # Preprocessor
-model.Model.preprocessor = @preprocessing.DefaultPreprocessor()
+models.Autoencoder.preprocessor = @preprocessing.DefaultPreprocessor()
 preprocessing.DefaultPreprocessor.time_steps = 1000
 
 # Encoder
-model.Model.encoder = None
+models.Autoencoder.encoder = None
 
 # Decoder
-model.Model.decoder = @decoders.RnnFcDecoder()
+models.Autoencoder.decoder = @decoders.RnnFcDecoder()
 decoders.RnnFcDecoder.rnn_channels = 512
 decoders.RnnFcDecoder.rnn_type = 'gru'
 decoders.RnnFcDecoder.ch = 512
@@ -36,7 +35,7 @@ decoders.RnnFcDecoder.output_splits = (('amps', 1),
 # =================
 
 # ProcessorGroup
-model.Model.processor_group = @processors.ProcessorGroup()
+models.Autoencoder.processor_group = @processors.ProcessorGroup()
 
 processors.ProcessorGroup.dag = [
   (@additive/synths.Additive(),
@@ -79,7 +78,7 @@ add2/processors.Add.name = 'add2'
 # Losses
 # ======
 
-model.Model.losses = [
+models.Autoencoder.losses = [
     @losses.SpectralLoss(),
 ]
 losses.SpectralLoss.loss_type = 'L1'

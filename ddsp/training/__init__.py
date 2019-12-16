@@ -19,7 +19,7 @@ from ddsp.training import data
 from ddsp.training import decoders
 from ddsp.training import encoders
 from ddsp.training import eval_util
-from ddsp.training import model
+from ddsp.training import models
 from ddsp.training import nn
 from ddsp.training import preprocessing
 from ddsp.training import train_util

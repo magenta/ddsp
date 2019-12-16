@@ -1,0 +1,80 @@
+# Copyright 2019 The DDSP Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Lint as: python3
+"""Tests for ddsp.training.nn."""
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import os
+
+from absl.testing import parameterized
+from ddsp import core
+from ddsp.training import models
+import gin
+import numpy as np
+import pkg_resources
+import tensorflow.compat.v1 as tf
+
+tf.disable_v2_behavior()
+
+GIN_PATH = pkg_resources.resource_filename(__name__, 'gin')
+
+
+class AutoencoderTest(parameterized.TestCase, tf.test.TestCase):
+
+  def setUp(self):
+    """Create some dummy input data for the chain."""
+    super(AutoencoderTest, self).setUp()
+    # Create inputs.
+    self.n_batch = 4
+    self.n_frames = 1001
+    self.n_samples = 64000
+    inputs = {
+        'loudness': np.zeros([self.n_batch, self.n_frames]),
+        'f0': 0.5 + np.zeros([self.n_batch, self.n_frames]),
+        'audio': np.random.randn(self.n_batch, self.n_samples),
+    }
+    self.inputs = {k: core.f32(v) for k, v in inputs.items()}
+    self.gin_files = {
+        'nsynth_ae': 'train/iclr2020/nsynth_ae.gin',
+        'nsynth_ae_abs': 'train/iclr2020/nsynth_ae_abs.gin',
+        'solo_violin': 'train/iclr2020/solo_violin.gin'
+    }
+
+  @parameterized.named_parameters(
+      ('nsynth_ae', 'nsynth_ae'),
+      ('nsynth_ae_abs', 'nsynth_ae_abs'),
+      ('solo_violin', 'solo_violin'),
+  )
+  def test_build_model(self, gin_file):
+    """Tests if Model builds properly and produces audio of correct shape.
+
+    Args:
+      gin_file: Name of gin_file to use.
+    """
+    with gin.unlock_config():
+      gin.parse_config_file(os.path.join(GIN_PATH, self.gin_files[gin_file]))
+
+    model = models.Autoencoder()
+    outputs = model.get_outputs(self.inputs)
+    self.assertIsInstance(outputs, dict)
+    # Confirm that model generates correctly sized audio.
+    audio_gen_shape = outputs['audio_gen'].shape.as_list()
+    self.assertEqual(audio_gen_shape, self.inputs['audio'].shape)
+
+if __name__ == '__main__':
+  tf.test.main()

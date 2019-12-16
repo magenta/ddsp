@@ -27,7 +27,7 @@ f0_spectral/spectral_ops.calc_logmel.pad_end = True
 # Add perceptual loss
 # ===================
 
-model.Model.losses = [
+models.Autoencoder.losses = [
     @losses.SpectralLoss(),
     @losses.PretrainedCREPEEmbeddingLoss(),
 ]

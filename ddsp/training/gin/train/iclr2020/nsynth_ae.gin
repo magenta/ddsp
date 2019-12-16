@@ -7,20 +7,19 @@ import ddsp.training
 # Training dataset and model.
 train.data_provider = @data.NSynthTfds()
 data.NSynthTfds.split = 'train'
-
-train.model = @model.Model()
+train.model = @models.Autoencoder()
 
 # =======
 # Network
 # =======
 
 # Preprocessor
-model.Model.preprocessor = @preprocessing.DefaultPreprocessor()
+models.Autoencoder.preprocessor = @preprocessing.DefaultPreprocessor()
 preprocessing.DefaultPreprocessor.time_steps = 1000
 
 
 # Encoder
-model.Model.encoder = @encoders.MfccTimeDistributedRnnEncoder()
+models.Autoencoder.encoder = @encoders.MfccTimeDistributedRnnEncoder()
 encoders.MfccTimeDistributedRnnEncoder.rnn_channels = 512
 encoders.MfccTimeDistributedRnnEncoder.rnn_type = 'gru'
 encoders.MfccTimeDistributedRnnEncoder.z_dims = 16
@@ -28,7 +27,7 @@ encoders.MfccTimeDistributedRnnEncoder.z_time_steps = 125
 
 
 # Decoder
-model.Model.decoder = @decoders.ZRnnFcDecoder()
+models.Autoencoder.decoder = @decoders.ZRnnFcDecoder()
 decoders.ZRnnFcDecoder.rnn_channels = 512
 decoders.ZRnnFcDecoder.rnn_type = 'gru'
 decoders.ZRnnFcDecoder.ch = 512
@@ -44,7 +43,7 @@ decoders.ZRnnFcDecoder.output_splits = (('amps', 1),
 # =================
 
 # ProcessorGroup
-model.Model.processor_group = @processors.ProcessorGroup()
+models.Autoencoder.processor_group = @processors.ProcessorGroup()
 
 processors.ProcessorGroup.dag = [
   (@additive/synths.Additive(),
@@ -54,9 +53,6 @@ processors.ProcessorGroup.dag = [
   (@add/processors.Add(),
     ['noise/signal', 'additive/signal']),
 ]
-
-# Split
-split/processors.Split.name = 'split'
 
 # Additive Synthesizer
 additive/synths.Additive.name = 'additive'
@@ -79,7 +75,7 @@ add/processors.Add.name = 'add'
 # Losses
 # ======
 
-model.Model.losses = [
+models.Autoencoder.losses = [
     @losses.SpectralLoss(),
 ]
 losses.SpectralLoss.loss_type = 'L1'

@@ -5,7 +5,7 @@ import ddsp.training
 evaluate_or_sample.data_provider = @data.NSynthTfds()
 data.NSynthTfds.split = 'test'
 
-evaluate_or_sample.model = @model.Model()
+evaluate_or_sample.model = @models.Autoencoder()
 
 evaluate_or_sample.batch_size = 21
 evaluate_or_sample.mode = 'sample'

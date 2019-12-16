@@ -693,7 +693,7 @@ def evaluate_or_sample(data_provider=gin.REQUIRED,
   features_tf = dataset.get_next()[0]
 
   # Load model checkpoint
-  predictions = model.get_outputs(features_tf, is_training=False)
+  predictions = model.get_outputs(features_tf, training=False)
   # additional tensors to fetch during eval
   tensor_dict_tf = {}
   for k in keys_to_fetch.split(','):

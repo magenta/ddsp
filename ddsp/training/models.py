@@ -25,15 +25,95 @@ import time
 from absl import logging
 
 import ddsp
-from ddsp.training import preprocessing
 from ddsp.training import train_util
 
 import gin
 import tensorflow.compat.v1 as tf
 
+tfkl = tf.keras.layers
+
+
+class Model(tfkl.Layer):
+  """Wrap the model function for dependency injection with gin."""
+
+  def __init__(self, name='model'):
+    super(Model, self).__init__(name=name)
+    self.tb_metrics = {}
+
+  def call(self, features, training=True):
+    return self.get_outputs(features, training=training)
+
+  def get_outputs(self, features, training=True):
+    """Return a dictionary of the all relevant tensors for model inspection.
+
+    Args:
+      features: An input dictionary of data feature tensors.
+      training: Different behavior for training.
+
+    Returns:
+      Output dictionary of tensors. Must include a scalar tensor for the key
+        'total_loss'.
+    """
+    raise NotImplementedError
+
+  def get_scaffold_fn(self):
+    """Optionally returns scaffold_fn."""
+    return
+
+  def get_variables_to_optimize(self):
+    """Returns variables to optimize."""
+    return tf.trainable_variables()
+
+  def add_tb_metric(self, name, tensor):
+    """Add scalar average metric to be plotted on tensorboard."""
+    metric_tensor = tf.reduce_mean(tensor)
+    metric_tensor = tf.expand_dims(metric_tensor, axis=0)
+    self.tb_metrics[name] = metric_tensor
+
+  def get_model_fn(self, use_tpu=True):
+    """Returns function for Estimator."""
+
+    def model_fn(features, labels, mode, params, config):
+      """Builds the network model."""
+      del labels
+      del config
+      outputs = self.get_outputs(features)
+      scaffold_fn = self.get_scaffold_fn()
+      model_dir = params['model_dir']
+
+      host_call = (train_util.get_host_call_fn(model_dir), self.tb_metrics)
+
+      estimator_spec = train_util.get_estimator_spec(
+          outputs['total_loss'],
+          mode,
+          model_dir,
+          use_tpu=use_tpu,
+          scaffold_fn=scaffold_fn,
+          variables_to_optimize=self.get_variables_to_optimize(),
+          host_call=host_call)
+      return estimator_spec
+
+    return model_fn
+
+  def restore(self, sess, checkpoint_dir):
+    """Load weights from most recent checkpoint in directory.
+
+    Args:
+      sess: tf.Session() with which to load the checkpoint
+      checkpoint_dir: Path to the directory containing model checkpoints.
+    """
+    start_time = time.time()
+    trainable_variables = self.get_variables_to_optimize()
+    saver = tf.train.Saver(var_list=trainable_variables)
+
+    checkpoint_path = os.path.expanduser(os.path.expandvars(checkpoint_dir))
+    checkpoint = tf.train.latest_checkpoint(checkpoint_path)
+    saver.restore(sess, checkpoint)
+    logging.info('Loading model took %.1f seconds', time.time() - start_time)
+
 
 @gin.configurable
-class Model(object):
+class Autoencoder(Model):
   """Wrap the model function for dependency injection with gin."""
 
   def __init__(self,
@@ -41,26 +121,30 @@ class Model(object):
                encoder=None,
                decoder=None,
                processor_group=None,
-               losses=None):
-    # IMPORTANT: For arguments that are or contain objects, we set the default
-    # to None override here. Otherwise, gin cannot set arguments of the object
-    # constructors without also specifying the object in this constructor.
-    self.preprocessor = preprocessor or preprocessing.DefaultPreprocessor()
+               losses=None,
+               name='autoencoder'):
+    super(Autoencoder, self).__init__(name=name)
+    self.preprocessor = preprocessor
     self.encoder = encoder
     self.decoder = decoder
     self.processor_group = processor_group
-    losses = losses or [ddsp.losses.SpectralLoss()]
-    self.losses = ddsp.core.make_iterable(losses)
-    self.tb_metrics = {}
+    self.loss_objs = ddsp.core.make_iterable(losses)
 
-  def __call__(self, features):
-    return self.get_outputs(features)
+  def get_outputs(self, features, training=True):
+    """Run the core of the network, get predictions and loss.
 
-  def get_outputs(self, features, is_training=True):
-    """Run the core of the network, get predictions and loss."""
+    Args:
+      features: An input dictionary of audio features. Requires at least the
+        item "audio" (tensor[batch, n_samples]).
+      training: Different behavior for training.
+
+    Returns:
+      Dictionary of all inputs, decoder outputs, signal processor intermediates,
+        and losses. Includes total loss and audio_gen.
+    """
     # ---------------------- Data Preprocessing --------------------------------
     # Returns a modified copy of features.
-    conditioning = self.preprocessor(features, is_training=is_training)
+    conditioning = self.preprocessor(features, training=training)
 
     # ---------------------- Encoder -------------------------------------------
     if self.encoder is not None:
@@ -77,7 +161,7 @@ class Model(object):
     # ---------------------- Losses --------------------------------------------
     total_loss = 0.0
     loss_dict = {}
-    for loss_obj in self.losses:
+    for loss_obj in self.loss_objs:
       loss_term = loss_obj(features['audio'], audio_gen)
       total_loss += loss_term
       loss_name = 'losses/{}'.format(loss_obj.name)
@@ -132,50 +216,3 @@ class Model(object):
         logging.info('!skipping frozen variable %s (shape=%s, dtype=%s).',
                      x.name, x.shape, x.dtype)
     return trainables
-
-  def add_tb_metric(self, name, tensor):
-    """Add scalar average metric to be plotted on tensorboard."""
-    metric_tensor = tf.reduce_mean(tensor)
-    metric_tensor = tf.expand_dims(metric_tensor, axis=0)
-    self.tb_metrics[name] = metric_tensor
-
-  def get_model_fn(self, use_tpu=True):
-    """Returns function for Estimator."""
-
-    def model_fn(features, labels, mode, params, config):
-      """Builds the network model."""
-      del labels
-      del config
-      outputs = self.get_outputs(features)
-      scaffold_fn = self.get_scaffold_fn()
-      model_dir = params['model_dir']
-
-      host_call = (train_util.get_host_call_fn(model_dir), self.tb_metrics)
-
-      estimator_spec = train_util.get_estimator_spec(
-          outputs['total_loss'],
-          mode,
-          model_dir,
-          use_tpu=use_tpu,
-          scaffold_fn=scaffold_fn,
-          variables_to_optimize=self.get_variables_to_optimize(),
-          host_call=host_call)
-      return estimator_spec
-
-    return model_fn
-
-  def restore(self, sess, checkpoint_dir):
-    """Load weights from most recent checkpoint in directory.
-
-    Args:
-      sess: tf.Session() with which to load the checkpoint
-      checkpoint_dir: Path to the directory containing model checkpoints.
-    """
-    start_time = time.time()
-    trainable_variables = self.get_variables_to_optimize()
-    saver = tf.train.Saver(var_list=trainable_variables)
-
-    checkpoint_path = os.path.expanduser(os.path.expandvars(checkpoint_dir))
-    checkpoint = tf.train.latest_checkpoint(checkpoint_path)
-    saver.restore(sess, checkpoint)
-    logging.info('Loading model took %.1f seconds', time.time() - start_time)
