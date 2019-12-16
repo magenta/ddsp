@@ -40,6 +40,7 @@ setuptools.setup(
         'scipy',
         'six',
         'tensorflow',
+        'tensorflow_datasets',
     ],
     extras_require={
         'gcp': ['gevent', 'google-api-python-client', 'google-compute-engine',
