@@ -19,7 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
 
+from absl import flags
 from absl.testing import absltest
 from ddsp.training.data_preparation import prepare_tfrecord_lib
 import librosa
@@ -32,9 +34,17 @@ tf.enable_eager_execution()
 
 class ProcessTaskBeamTest(absltest.TestCase):
 
+  def get_tempdir(self):
+    try:
+      flags.FLAGS.test_tmpdir
+    except flags.UnparsedFlagAccessError:
+      # Need to initialize flags when running `pytest`.
+      flags.FLAGS(sys.argv)
+    return self.create_tempdir().full_path
+
   def setUp(self):
     super(ProcessTaskBeamTest, self).setUp()
-    self.test_dir = self.create_tempdir().full_path
+    self.test_dir = self.get_tempdir()
 
     # Write test wav file.
     self.wav_sr = 22050

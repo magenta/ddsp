@@ -39,13 +39,14 @@ setuptools.setup(
         'numpy',
         'scipy',
         'six',
-        'tensorflow',
+        'tensorflow==2.0',  # TODO(adarob): Set to >= 2.0 once crepe is updated.
         'tensorflow_datasets',
     ],
     extras_require={
         'gcp': ['gevent', 'google-api-python-client', 'google-compute-engine',
                 'google-cloud-storage', 'oauth2client'],
         'data_preparation': ['apache_beam'],
+        'test': ['pytest'],
     },
     entry_points={
         'console_scripts': [

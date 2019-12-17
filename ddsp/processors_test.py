@@ -38,7 +38,7 @@ class AddTest(tf.test.TestCase):
     y = tf.zeros((2, 3), dtype=tf.float32) + 2.0
     output = processor(x, y)
 
-    with self.session() as sess:
+    with self.cached_session() as sess:
       actual = sess.run(output)
 
     expected = np.zeros((2, 3), dtype=np.float32) + 3.0

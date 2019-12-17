@@ -19,8 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from absl.testing import parameterized
 from ddsp import core
 from ddsp.training import models
@@ -54,6 +52,7 @@ class AutoencoderTest(parameterized.TestCase, tf.test.TestCase):
         'nsynth_ae_abs': 'train/iclr2020/nsynth_ae_abs.gin',
         'solo_violin': 'train/iclr2020/solo_violin.gin'
     }
+    gin.add_config_file_search_path(GIN_PATH)
 
   @parameterized.named_parameters(
       ('nsynth_ae', 'nsynth_ae'),
@@ -67,7 +66,7 @@ class AutoencoderTest(parameterized.TestCase, tf.test.TestCase):
       gin_file: Name of gin_file to use.
     """
     with gin.unlock_config():
-      gin.parse_config_file(os.path.join(GIN_PATH, self.gin_files[gin_file]))
+      gin.parse_config_file(self.gin_files[gin_file])
 
     model = models.Autoencoder()
     outputs = model.get_outputs(self.inputs)
