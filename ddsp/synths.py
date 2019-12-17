@@ -35,7 +35,7 @@ class Additive(processors.Processor):
                sample_rate=16000,
                amp_scale_fn=core.exp_sigmoid,
                normalize_below_nyquist=True,
-               name='additive_synth'):
+               name='additive'):
     super(Additive, self).__init__(name=name)
     self.n_samples = n_samples
     self.sample_rate = sample_rate
@@ -118,7 +118,7 @@ class FilteredNoise(processors.Processor):
                window_size=257,
                amp_scale_fn=core.exp_sigmoid,
                noise_fade_fn=None,
-               name='filtered_noise_synth'):
+               name='filtered_noise'):
     super(FilteredNoise, self).__init__(name=name)
     self.n_samples = n_samples
     self.window_size = window_size
@@ -154,10 +154,11 @@ class FilteredNoise(processors.Processor):
       signal: A tensor of harmonic waves of shape [batch, n_samples, 1].
     """
     batch_size = int(magnitudes.shape[0])
-    signal = tf.random_uniform([batch_size, self.n_samples])
-    signal = core.frequency_filter(signal,
-                                   magnitudes,
-                                   window_size=self.window_size)
+    signal = tf.random_uniform([batch_size, self.n_samples],
+                               minval=-1.0,
+                               maxval=1.0)
+    signal = core.frequency_filter(
+        signal, magnitudes, window_size=self.window_size)
 
     if self.noise_fade_fn is not None:
       signal = signal * self.noise_fade_fn()  # pylint: disable=not-callable

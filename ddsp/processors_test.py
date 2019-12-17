@@ -83,7 +83,7 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
     additive = synths.Additive(name='additive')
     noise = synths.FilteredNoise(name='noise')
     add = processors.Add(name='add')
-    reverb = effects.FixedReverb(name='reverb')
+    reverb = effects.TrainableReverb(name='reverb')
 
     # Create DAG for testing.
     dag_tuple = [
@@ -109,7 +109,7 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
         'noise/controls/magnitudes',
         'add/signal',
         'reverb/signal',
-        'reverb/controls/impulse_response',
+        'reverb/controls/ir',
         'processor_group/signal',
     ]
 

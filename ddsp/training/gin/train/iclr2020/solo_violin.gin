@@ -44,10 +44,8 @@ processors.ProcessorGroup.dag = [
     ['noise_magnitudes']),
   (@add/processors.Add(),
     ['noise/signal', 'additive/signal']),
-  (@reverb/effects.FixedReverb(),
+  (@reverb/effects.TrainableReverb(),
     ['add/signal']),
-  (@add2/processors.Add(),
-    ['add/signal', 'reverb/signal']),
 ]
 
 # Additive Synthesizer
@@ -67,12 +65,8 @@ noise/synths.FilteredNoise.amp_scale_fn = @core.exp_sigmoid
 add/processors.Add.name = 'add'
 
 # Reverb
-reverb/effects.FixedReverb.name = 'reverb'
-reverb/effects.FixedReverb.reverb_length = 64000
-
-# Add2
-add2/processors.Add.name = 'add2'
-
+reverb/effects.TrainableReverb.name = 'reverb'
+reverb/effects.TrainableReverb.reverb_length = 64000
 
 # ======
 # Losses
