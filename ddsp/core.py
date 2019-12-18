@@ -395,6 +395,10 @@ def linear_lookup(phase: tf.Tensor,
   if len(wavetables.shape) == 2:
     wavetables = wavetables[:, tf.newaxis, :]
 
+  # Add a wavetable dimension if not present.
+  if len(phase.shape) == 2:
+    phase = phase[:, :, tf.newaxis]
+
   # Add first sample to end of wavetable for smooth linear interpolation
   # between the last point in the wavetable and the first point.
   wavetables = tf.concat([wavetables, wavetables[..., 0:1]], axis=-1)
@@ -419,17 +423,17 @@ def linear_lookup(phase: tf.Tensor,
   return tf.reduce_sum(weighted_wavetables, axis=-1)
 
 
-def wavetable_synthesis(frequency: tf.Tensor,
-                        amplitude: tf.Tensor,
+def wavetable_synthesis(frequencies: tf.Tensor,
+                        amplitudes: tf.Tensor,
                         wavetables: tf.Tensor,
                         n_samples: int = 64000,
                         sample_rate: int = 16000):
   """Monophonic wavetable synthesizer.
 
   Args:
-    frequency: Frame-wise frequency in Hertz of the fundamental oscillator.
+    frequencies: Frame-wise frequency in Hertz of the fundamental oscillator.
       Shape [batch_size, n_frames, 1].
-    amplitude: Frame-wise amplitude envelope to apply to the oscillator. Shape
+    amplitudes: Frame-wise amplitude envelope to apply to the oscillator. Shape
       [batch_size, n_frames, 1].
     wavetables: Frame-wise wavetables from which to lookup. Shape
       [batch_size, n_wavetable] or [batch_size, n_frames, n_wavetable].
@@ -441,8 +445,8 @@ def wavetable_synthesis(frequency: tf.Tensor,
       given by the wavetable. Shape [batch_size, n_samples].
   """
   # Create sample-wise envelopes.
-  amplitude_envelope = resample(amplitude, n_samples, method='window')[:, :, 0]
-  frequency_envelope = resample(frequency, n_samples)  # cycles / sec
+  amplitude_envelope = resample(amplitudes, n_samples, method='window')[:, :, 0]
+  frequency_envelope = resample(frequencies, n_samples)  # cycles / sec
 
   # Create intermediate wavetables.
   wavetable_shape = wavetables.shape.as_list()

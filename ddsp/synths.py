@@ -25,7 +25,6 @@ import gin
 import tensorflow.compat.v1 as tf
 
 
-#------------------ Synthesizers ----------------------------------------------#
 @gin.configurable
 class Additive(processors.Processor):
   """Synthesize audio with a bank of harmonic sinusoidal oscillators."""
@@ -165,3 +164,67 @@ class FilteredNoise(processors.Processor):
 
     return signal
 
+
+@gin.configurable
+class Wavetable(processors.Processor):
+  """Synthesize audio from a series of wavetables."""
+
+  def __init__(self,
+               n_samples=64000,
+               sample_rate=16000,
+               amp_scale_fn=core.exp_sigmoid,
+               name='wavetable'):
+    super(Wavetable, self).__init__(name=name)
+    self.n_samples = n_samples
+    self.sample_rate = sample_rate
+    self.amp_scale_fn = amp_scale_fn
+
+  def get_controls(self,
+                   nn_out_amplitudes,
+                   nn_out_wavetables,
+                   f0_hz):
+    """Convert network output tensors into a dictionary of synthesizer controls.
+
+    Args:
+      nn_out_amplitudes: 3-D Tensor of synthesizer controls, of shape
+        [batch, time, 1].
+      nn_out_wavetables: 3-D Tensor of synthesizer controls, of shape
+        [batch, time, n_harmonics].
+      f0_hz: Fundamental frequencies in hertz. Shape [batch, time, 1].
+
+    Returns:
+      controls: Dictionary of tensors of synthesizer controls.
+    """
+    # Scale the amplitudes.
+    if self.amp_scale_fn is not None:
+      amplitudes = self.amp_scale_fn(nn_out_amplitudes)
+      wavetables = self.amp_scale_fn(nn_out_wavetables)
+    else:
+      amplitudes = nn_out_amplitudes
+      wavetables = nn_out_wavetables
+
+    controls = {'amplitudes': amplitudes,
+                'wavetables': wavetables,
+                'f0_hz': f0_hz}
+    return controls
+
+  def get_signal(self, amplitudes, wavetables, f0_hz):
+    """Synthesize audio with additive synthesizer from controls.
+
+    Args:
+      amplitudes: Amplitude tensor of shape [batch, n_frames, 1]. Expects
+        float32 that is strictly positive.
+      wavetables: Tensor of shape [batch, n_frames, n_wavetable].
+      f0_hz: The fundamental frequency in Hertz. Tensor of shape [batch,
+        n_frames, 1].
+
+    Returns:
+      signal: A tensor of of shape [batch, n_samples].
+    """
+    wavetables = core.resample(wavetables, self.n_samples)
+    signal = core.wavetable_synthesis(amplitudes=amplitudes,
+                                      wavetables=wavetables,
+                                      frequencies=f0_hz,
+                                      n_samples=self.n_samples,
+                                      sample_rate=self.sample_rate)
+    return signal

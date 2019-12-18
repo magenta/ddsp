@@ -1,8 +1,7 @@
 # Realtime NSynth (rt_nsynth)
 
 This directory contains the code for training models to synthesize audio from
-realtime control features (fundamental frequency, loudness, latents), for
-monophonic audio signals.
+realtime control features (fundamental frequency, loudness, latents).
 
 ## Gin: Setting hyperparameters
 
