@@ -95,19 +95,23 @@ class Model(tfkl.Layer):
 
     return model_fn
 
-  def restore(self, sess, checkpoint_dir):
+  def restore(self, sess, checkpoint_path):
     """Load weights from most recent checkpoint in directory.
 
     Args:
       sess: tf.Session() with which to load the checkpoint
-      checkpoint_dir: Path to the directory containing model checkpoints.
+      checkpoint_path: Path to the directory containing model checkpoints, or to
+        a specific checkpoint. For example, `path/to/model.ckpt-iteration`.
     """
     start_time = time.time()
     trainable_variables = self.get_variables_to_optimize()
     saver = tf.train.Saver(var_list=trainable_variables)
 
-    checkpoint_path = os.path.expanduser(os.path.expandvars(checkpoint_dir))
-    checkpoint = tf.train.latest_checkpoint(checkpoint_path)
+    checkpoint_path = os.path.expanduser(os.path.expandvars(checkpoint_path))
+    if tf.gfile.IsDirectory(checkpoint_path):
+      checkpoint = tf.train.latest_checkpoint(checkpoint_path)
+    else:
+      checkpoint = checkpoint_path
     saver.restore(sess, checkpoint)
     logging.info('Loading model took %.1f seconds', time.time() - start_time)
 
