@@ -181,7 +181,7 @@ class TFRecordProvider(DataProvider):
 
 
 # ---------- Different Dataset Types -------------------------------------------
-@gin.configurable()
+@gin.configurable
 class NSynthTfds(TfdsProvider):
   """Parses features in the TFDS NSynth dataset.
 
@@ -190,7 +190,7 @@ class NSynthTfds(TfdsProvider):
   """
 
   def __init__(self,
-               name='nsynth/gansynth_subset.f0_and_loudness',
+               name='nsynth/gansynth_subset.f0_and_loudness:2.2.0',
                split='train',
                data_dir='gs://tfds-data/datasets'):
     """TfdsProvider constructor.
@@ -202,7 +202,7 @@ class NSynthTfds(TfdsProvider):
         to the public TFDS GCS bucket.
     """
     if data_dir == 'gs://tfds-data/datasets':
-      logging.warn(
+      logging.warning(
           'Using public TFDS GCS bucket to load NSynth. If not running on '
           'cloud, this will be very slow, and it is recommended you prepare '
           'the dataset locally with TFDS and set the data_dir appropriately.')

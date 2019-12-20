@@ -75,15 +75,20 @@ class Preprocessor(object):
 class DefaultPreprocessor(Preprocessor):
   """Default class that resamples features and adds `f0_hz` key at end of chain."""
 
-  def __init__(self, time_steps=1000):
+  def __init__(self, time_steps=1000, scale_f0_to_hz=False):
     super(DefaultPreprocessor, self).__init__()
     self.time_steps = time_steps
+    self.scale_f0_to_hz = scale_f0_to_hz
 
   def _default_processing(self, conditioning):
     """Always resample to `time_steps` and add `f0_hz` key."""
     self._apply(
         resample, conditioning, ('loudness', 'f0'), time_steps=self.time_steps)
-    conditioning['f0_hz'] = ddsp.core.midi_to_hz(conditioning['f0'] * 127.0)
+    # Optionally, scale input in the range [0, 1] to hertz.
+    if self.scale_f0_to_hz:
+      conditioning['f0_hz'] = ddsp.core.midi_to_hz(conditioning['f0'] * 127.0)
+    else:
+      conditioning['f0_hz'] = conditioning['f0']
     return conditioning
 
   def get_outputs(self, features, training):

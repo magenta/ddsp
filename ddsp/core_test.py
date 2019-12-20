@@ -37,11 +37,17 @@ class UtilitiesTest(tf.test.TestCase):
     """Tests converting between MIDI values and their frequencies in hertz."""
     midi = np.arange(128)
     librosa_hz = librosa.midi_to_hz(midi)
-    np_hz = core.midi_to_hz(midi)
     with self.cached_session() as sess:
-      tf_hz = sess.run(core.midi_to_hz(f32(midi)))
-    self.assertAllClose(librosa_hz, np_hz)
+      tf_hz = sess.run(core.midi_to_hz(midi))
     self.assertAllClose(librosa_hz, tf_hz)
+
+  def test_hz_to_midi_is_accurate(self):
+    """Tests converting between MIDI values and their frequencies in hertz."""
+    hz = np.linspace(20.0, 20000.0, 128)
+    librosa_midi = librosa.hz_to_midi(hz)
+    with self.cached_session() as sess:
+      tf_midi = sess.run(core.hz_to_midi(hz))
+    self.assertAllClose(librosa_midi, tf_midi)
 
 
 class ResampleTest(parameterized.TestCase, tf.test.TestCase):

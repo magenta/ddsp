@@ -65,7 +65,13 @@ def nested_lookup(nested_key: Text,
 
 def midi_to_hz(notes: Number) -> Number:
   """TF-compatible midi_to_hz function."""
-  return 440.0 * (2.0**((notes - 69.0) / 12.0))
+  return 440.0 * (2.0**((f32(notes) - 69.0) / 12.0))
+
+
+def hz_to_midi(frequencies: Number) -> Number:
+  """TF-compatible hz_to_midi function."""
+  log2 = lambda x: tf.log(x) / tf.log(2.0)
+  return 12 * (log2(f32(frequencies)) - log2(440.0)) + 69
 
 
 def resample(inputs: tf.Tensor,
