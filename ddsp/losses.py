@@ -67,7 +67,7 @@ class Loss(object):
     raise NotImplementedError
 
 
-@gin.configurable
+@gin.register
 class SpectralLoss(Loss):
   """Multi-scale spectrogram loss."""
 
@@ -155,7 +155,7 @@ class SpectralLoss(Loss):
     return loss
 
 
-@gin.configurable
+@gin.register
 class EmbeddingLoss(Loss):
   """Embedding loss for a given pretrained model.
 
@@ -182,7 +182,7 @@ class EmbeddingLoss(Loss):
     return loss
 
 
-@gin.configurable
+@gin.register
 class PretrainedCREPEEmbeddingLoss(EmbeddingLoss):
   """Embedding loss of the CREPE model."""
 

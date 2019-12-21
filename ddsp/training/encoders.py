@@ -71,7 +71,7 @@ class Encoder(tfkl.Layer):
     raise NotImplementedError
 
 
-@gin.configurable
+@gin.register
 class MfccTimeDistributedRnnEncoder(Encoder):
   """Use MFCCs as latent variables, distribute across timesteps."""
 
@@ -161,7 +161,7 @@ class F0Encoder(tfkl.Layer):
     return f0_unit_midi
 
 
-@gin.configurable
+@gin.register
 class ResnetF0Encoder(F0Encoder):
   """Embeddings from resnet on spectrograms."""
 

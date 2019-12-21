@@ -123,7 +123,7 @@ def residual_stack(filters,
   return tf.keras.Sequential(layers, name=name)
 
 
-@gin.configurable
+@gin.register
 def resnet(size='large', norm_type='layer', name='resnet'):
   """Residual network."""
   size_dict = {
@@ -165,7 +165,7 @@ def rnn(dims, rnn_type, return_sequences=True):
 
 
 # ------------------ Utilities -------------------------------------------------
-@gin.configurable
+@gin.register
 def split_to_dict(tensor, tensor_splits):
   """Split a tensor into a dictionary of multiple tensors."""
   labels = [v[0] for v in tensor_splits]

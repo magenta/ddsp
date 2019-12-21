@@ -4,7 +4,6 @@ import ddsp.training
 
 evaluate_or_sample.data_provider = @data.NSynthTfds()
 data.NSynthTfds.split = 'valid'
-
 evaluate_or_sample.model = @models.Autoencoder()
 
 evaluate_or_sample.batch_size = 32

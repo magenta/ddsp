@@ -39,12 +39,12 @@ def stft(audio, frame_size=2048, overlap=0.75, pad_end=False):
   return s
 
 
-@gin.configurable
+@gin.register
 def calc_mag(audio, size=2048, overlap=0.75, pad_end=False):
   return tf.abs(stft(audio, frame_size=size, overlap=overlap, pad_end=pad_end))
 
 
-@gin.configurable
+@gin.register
 def calc_mel(audio,
              lo_hz=0.0,
              hi_hz=8000.0,
@@ -62,12 +62,12 @@ def calc_mel(audio,
   return mel
 
 
-@gin.configurable
+@gin.register
 def calc_logmag(audio, size=2048):
   return safe_log(calc_mag(audio, size))
 
 
-@gin.configurable
+@gin.register
 def calc_logmel(audio,
                 lo_hz=80.0,
                 hi_hz=7600.0,
@@ -79,7 +79,7 @@ def calc_logmel(audio,
   return safe_log(mel)
 
 
-@gin.configurable
+@gin.register
 def calc_mfcc(audio,
               lo_hz=20.0,
               hi_hz=8000.0,

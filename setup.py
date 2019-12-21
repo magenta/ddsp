@@ -34,7 +34,7 @@ setuptools.setup(
         'absl-py',
         'crepe',
         'future',
-        'gin-config',
+        'gin-config>=0.3.0',
         'librosa',
         'numpy',
         'scipy',

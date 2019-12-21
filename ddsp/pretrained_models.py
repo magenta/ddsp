@@ -21,7 +21,6 @@ from __future__ import division
 from __future__ import print_function
 
 from absl import logging
-import gin
 import tensorflow.compat.v1 as tf
 
 tfkl = tf.keras.layers
@@ -167,7 +166,6 @@ class Crepe(tfkl.Layer):
     return activation_dict
 
 
-@gin.configurable
 class PretrainedCREPE(PretrainedModel):
   """CREPE model."""
 

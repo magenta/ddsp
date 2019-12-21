@@ -108,7 +108,6 @@ def get_train_op(loss,
 
 
 # ---------------------- Estimators --------------------------------------------
-@gin.configurable
 def get_estimator_spec(loss,
                        mode,
                        model_dir,
@@ -116,7 +115,7 @@ def get_estimator_spec(loss,
                        scaffold_fn=None,
                        variables_to_optimize=None,
                        host_call=None):
-  """Get TPUEstimatorSpec depending on mode."""
+  """Get TPUEstimatorSpec depending on mode, for Model.get_model_fn()."""
   train_op = get_train_op(
       loss, use_tpu=use_tpu, variables=variables_to_optimize)
   gin_config_saver_hook = gin.tf.GinConfigSaverHook(
@@ -136,8 +135,8 @@ def get_estimator_spec(loss,
 
   # Eval
   elif mode == tf.estimator.ModeKeys.EVAL:
-    raise ValueError('Estimator evaluation is not supported. Use eval.py '
-                     'instead.')
+    raise ValueError('Estimator evaluation is not supported. Use ddsp_run.py '
+                     '--mode=eval instead.')
 
   # Predict
   elif mode == tf.estimator.ModeKeys.PREDICT:
@@ -212,8 +211,8 @@ def create_estimator(model_fn,
 
 # ---------------------- Training ----------------------------------------------
 @gin.configurable
-def train(data_provider=gin.REQUIRED,
-          model=gin.REQUIRED,
+def train(data_provider,
+          model,
           model_dir='~/tmp/ddsp',
           num_steps=1000000,
           master='',

@@ -225,7 +225,7 @@ def log_scale(x, min_x, max_x):
   return tf.exp((1.0 - x) * tf.log(min_x) + x * tf.log(max_x))
 
 
-@gin.configurable
+@gin.register
 def exp_sigmoid(x, exponent=10.0, max_value=2.0, threshold=1e-7):
   """Exponentiated Sigmoid pointwise nonlinearity.
 
@@ -245,7 +245,7 @@ def exp_sigmoid(x, exponent=10.0, max_value=2.0, threshold=1e-7):
   return max_value * tf.nn.sigmoid(x)**tf.log(exponent) + threshold
 
 
-@gin.configurable
+@gin.register
 def sym_exp_sigmoid(x, width=8.0):
   """Symmetrical version of exp_sigmoid centered at (0, 1e-7)."""
   return exp_sigmoid(width * (tf.abs(x)/2.0 - 1.0))

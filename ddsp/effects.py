@@ -26,7 +26,7 @@ import tensorflow.compat.v1 as tf
 
 
 #------------------ Reverberation ----------------------------------------------
-@gin.configurable
+@gin.register
 class Reverb(processors.Processor):
   """Convolutional (FIR) reverb."""
 
@@ -81,7 +81,7 @@ class Reverb(processors.Processor):
     return wet if self._reverb_only else (wet + audio)
 
 
-@gin.configurable
+@gin.register
 class TrainableReverb(Reverb):
   """Learn a single impulse response for the whole dataset."""
 
@@ -118,7 +118,7 @@ class TrainableReverb(Reverb):
     return controls
 
 
-@gin.configurable
+@gin.register
 class ExpDecayReverb(Reverb):
   """Parameterize impulse response as a simple exponential decay."""
 
@@ -164,7 +164,7 @@ class ExpDecayReverb(Reverb):
     return controls
 
 
-@gin.configurable
+@gin.register
 class TrainableExpDecayReverb(ExpDecayReverb):
   """Parameterize impulse response as a simple exponential decay."""
 

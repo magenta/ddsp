@@ -57,7 +57,7 @@ class Decoder(tfkl.Layer):
     raise NotImplementedError
 
 
-@gin.configurable
+@gin.register
 class ZRnnFcDecoder(Decoder):
   """Decompress z in time with RNN. Fully connected stacks for z as well."""
 
@@ -99,7 +99,7 @@ class ZRnnFcDecoder(Decoder):
     return self.dense_out(x)
 
 
-@gin.configurable
+@gin.register
 class RnnFcDecoder(Decoder):
   """RNN and FC stacks for f0 and loudness."""
 

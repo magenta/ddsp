@@ -181,7 +181,7 @@ class TFRecordProvider(DataProvider):
 
 
 # ---------- Different Dataset Types -------------------------------------------
-@gin.configurable
+@gin.register
 class NSynthTfds(TfdsProvider):
   """Parses features in the TFDS NSynth dataset.
 
@@ -235,7 +235,7 @@ class NSynthTfds(TfdsProvider):
     return preprocess_ex
 
 
-@gin.configurable
+@gin.register
 class NSynthTFRecord(TFRecordProvider):
   """Parses features in the TFRecord NSynth dataset."""
 
@@ -255,7 +255,7 @@ class NSynthTFRecord(TFRecordProvider):
     }
 
 
-@gin.configurable
+@gin.register
 class SoloInstrument(TFRecordProvider):
   """Parses features in a solo instrument dataset."""
 

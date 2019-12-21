@@ -35,16 +35,17 @@ import numpy as np
 from scipy.io import wavfile
 import tensorflow.compat.v1 as tf
 
-# Global values for NSynth evaluation.
+# Global values for evaluation.
 AUDIO_CONFIG = {'n_fft': 2048, 'hop_length': 64, 'sample_rate': 16000}
 MIN_F0_CONFIDENCE = 0.85
 OUTLIER_MIDI_THRESH = 12
-
 MAX_MIDI_PITCH = 127
 
 # Mean and std for each eps calculated from 5000 samples.
-EPS_CENTER_STATS = {1e-1: {'mean': -1.4405, 'std': 0.9490},
-                    1e-4: {'mean': -4.0599, 'std': 3.5105}}
+NSYNTH_EPS_CENTER_STATS = {
+    1e-1: {'mean': -1.4405, 'std': 0.9490},
+    1e-4: {'mean': -4.0599, 'std': 3.5105}
+}
 
 
 # ---------------------- midi2wave WaveRNN L1 Metrics -------------------------
@@ -59,6 +60,7 @@ def _log_scaling(value, eps):
   Args:
     value: input value
     eps: "noise floor". 1e-4 expands quiet portions of signals
+
   Returns:
     log scaled value
   """
@@ -134,8 +136,8 @@ def compute_loudness(input_matrix,
   if center_data:
     loudness = _center_val(
         loudness,
-        mean=EPS_CENTER_STATS[eps]['mean'],
-        std=EPS_CENTER_STATS[eps]['std'])
+        mean=NSYNTH_EPS_CENTER_STATS[eps]['mean'],
+        std=NSYNTH_EPS_CENTER_STATS[eps]['std'])
   return loudness
 
 
@@ -174,8 +176,7 @@ def compute_audio_features(audio, audio_config=None):
 
 def is_outlier(ground_truth_f0_conf):
   """Determine if ground truth f0 for audio sample is an outlier."""
-  ground_truth_f0_conf = check_and_squeeze_to_vector(
-      ground_truth_f0_conf)
+  ground_truth_f0_conf = check_and_squeeze_to_vector(ground_truth_f0_conf)
   return np.max(ground_truth_f0_conf) < MIN_F0_CONFIDENCE
 
 
@@ -255,7 +256,7 @@ def spectrogram(audio, sess=None, rotate=False, size=2048):
 
 
 # ---------------------- Summary Writers --------------------------------------
-class NSynthWriter(object):
+class Writer(object):
   """Base Class for writing tensorboard summaries for RT Nsynth dataset."""
 
   def __init__(self, batch_size, summary_dir, global_step, verbose=True):
@@ -273,14 +274,14 @@ class NSynthWriter(object):
     raise NotImplementedError('flush() not defined')
 
 
-class NSynthWriters(object):
-  """Result writer that wraps a list of NSynth writers."""
+class Writers(object):
+  """Result writer that wraps a list of  writers."""
 
   def __init__(self, writers=None):
     """Initializes the result writer.
 
     Args:
-      writers: list of `eval_utils.NSynthWriter`
+      writers: list of `eval_utils.Writer`
     """
     self._writers = writers or []
 
@@ -296,12 +297,11 @@ class NSynthWriters(object):
       writer.flush()
 
 
-class NSynthMetricsWriter(NSynthWriter):
-  """Class for writing WaveRNN metrics in NSynth Dataset to tensorboard."""
+class MetricsWriter(Writer):
+  """Class for writing WaveRNN metrics in  Dataset to tensorboard."""
 
   def __init__(self, batch_size, summary_dir, global_step):
-    super(NSynthMetricsWriter, self).__init__(batch_size, summary_dir,
-                                              global_step)
+    super(MetricsWriter, self).__init__(batch_size, summary_dir, global_step)
     self._metrics_dict = {
         'ld_metric': 0,
         'ld_dist_sum': 0,
@@ -419,8 +419,7 @@ class NSynthMetricsWriter(NSynthWriter):
     # Compute metrics per sample. No batch operations possible.
     for sample_idx in range(self._batch_size):
       # Extract generated audio
-      gen_audio = check_and_squeeze_to_vector(
-          gen_audio_outputs[sample_idx])
+      gen_audio = check_and_squeeze_to_vector(gen_audio_outputs[sample_idx])
       gen_feats = compute_audio_features(gen_audio)
 
       ld_dist = self._compute_ld_dist_and_update_counts(
@@ -492,12 +491,12 @@ class NSynthMetricsWriter(NSynthWriter):
     crepe.reset()  # Reset CREPE global state
 
 
-class NSynthWaveformImageWriter(NSynthWriter):
+class WaveformImageWriter(Writer):
   """Class for writing waveform tensorboard summaries."""
 
   def __init__(self, batch_size, summary_dir, global_step):
-    super(NSynthWaveformImageWriter, self).__init__(batch_size, summary_dir,
-                                                    global_step)
+    super(WaveformImageWriter, self).__init__(batch_size, summary_dir,
+                                              global_step)
 
   def update(self, gen_audio_outputs, ground_truth_feats, tensor_dict):
     """Update metrics dictionary given a batch of audio."""
@@ -551,12 +550,12 @@ class NSynthWaveformImageWriter(NSynthWriter):
                  self._summary_dir)
 
 
-class NSynthSpectrogramImageWriter(NSynthWriter):
+class SpectrogramImageWriter(Writer):
   """Class for writing spectrogram tensorboard summaries."""
 
   def __init__(self, batch_size, summary_dir, global_step):
-    super(NSynthSpectrogramImageWriter, self).__init__(batch_size, summary_dir,
-                                                       global_step)
+    super(SpectrogramImageWriter, self).__init__(batch_size, summary_dir,
+                                                 global_step)
 
   def update(self,
              gen_audio_outputs,
@@ -604,12 +603,11 @@ class NSynthSpectrogramImageWriter(NSynthWriter):
                  self._summary_dir)
 
 
-class NSynthAudioWriter(NSynthWriter):
+class AudioWriter(Writer):
   """Class for writing audio samples to tensorboard."""
 
   def __init__(self, batch_size, summary_dir, global_step, sample_rate=16000):
-    super(NSynthAudioWriter, self).__init__(batch_size, summary_dir,
-                                            global_step)
+    super(AudioWriter, self).__init__(batch_size, summary_dir, global_step)
     self._sample_rate = sample_rate
 
   def update(self, gen_audio_outputs, ground_truth_feats, unused_tensor_dict):
@@ -634,8 +632,7 @@ class NSynthAudioWriter(NSynthWriter):
           audio=gtr_audio_summary)
 
       # Synthesized audio
-      gen_audio = check_and_squeeze_to_vector(
-          gen_audio_outputs[sample_idx])
+      gen_audio = check_and_squeeze_to_vector(gen_audio_outputs[sample_idx])
 
       gen_audio_summary = tf.Summary.Audio(
           sample_rate=self._sample_rate,
@@ -659,8 +656,8 @@ class NSynthAudioWriter(NSynthWriter):
 
 # ---------------------- Evaluation --------------------------------------------
 @gin.configurable
-def evaluate_or_sample(data_provider=gin.REQUIRED,
-                       model=gin.REQUIRED,
+def evaluate_or_sample(data_provider,
+                       model,
                        mode='eval',
                        model_dir='~/tmp/ddsp/training',
                        master='',
@@ -705,8 +702,8 @@ def evaluate_or_sample(data_provider=gin.REQUIRED,
   saver = tf.train.Saver(var_list=trainable_variables)
 
   # Sample continuously and load the newest checkpoint each time
-  checkpoints_iterator = tf.train.checkpoints_iterator(
-      model_dir, ckpt_delay_secs)
+  checkpoints_iterator = tf.train.checkpoints_iterator(model_dir,
+                                                       ckpt_delay_secs)
 
   for checkpoint in checkpoints_iterator:
 
@@ -721,31 +718,31 @@ def evaluate_or_sample(data_provider=gin.REQUIRED,
 
     if mode == 'eval':
       writers.append(
-          NSynthMetricsWriter(
+          MetricsWriter(
               batch_size=batch_size,
               summary_dir=base_summary_dir,
               global_step=global_step))
 
     elif mode == 'sample':
       writers.append(
-          NSynthSpectrogramImageWriter(
+          SpectrogramImageWriter(
               batch_size=batch_size,
               summary_dir=base_summary_dir,
               global_step=global_step))
 
       writers.append(
-          NSynthWaveformImageWriter(
+          WaveformImageWriter(
               batch_size=batch_size,
               summary_dir=base_summary_dir,
               global_step=global_step))
 
       writers.append(
-          NSynthAudioWriter(
+          AudioWriter(
               batch_size=batch_size,
               summary_dir=base_summary_dir,
               global_step=global_step))
 
-    nsynth_writers = NSynthWriters(writers)
+    nsynth_writers = Writers(writers)
 
     # Setup session.
     sess = tf.Session(target=master)
@@ -777,5 +774,3 @@ def evaluate_or_sample(data_provider=gin.REQUIRED,
 
     if run_once:
       break
-
-

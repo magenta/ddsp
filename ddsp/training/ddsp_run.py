@@ -23,6 +23,8 @@ ddsp_run \
 --alsologtostderr \
 --model_dir=~/tmp/$USER-ddsp-0 \
 --gin_file=train/iclr2020/nsynth_ae.gin
+--gin_param=batch_size=16 \
+--gin_param=decoders.ZRnnFcDecoder.layers_per_stack=3
 
 """
 
@@ -111,7 +113,9 @@ def run():
 
   # Training.
   if FLAGS.mode == 'train':
-    train_util.train(model_dir=model_dir,
+    train_util.train(data_provider=gin.REQUIRED,
+                     model=gin.REQUIRED,
+                     model_dir=model_dir,
                      num_steps=FLAGS.num_train_steps,
                      master=FLAGS.master,
                      use_tpu=FLAGS.use_tpu)
@@ -123,7 +127,9 @@ def run():
       logging.info('Waiting for %i second(s)', delay_time)
       time.sleep(delay_time)
 
-    eval_util.evaluate_or_sample(model_dir=model_dir,
+    eval_util.evaluate_or_sample(data_provider=gin.REQUIRED,
+                                 model=gin.REQUIRED,
+                                 model_dir=model_dir,
                                  master=FLAGS.master,
                                  run_once=FLAGS.eval_once)
 

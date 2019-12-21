@@ -82,7 +82,7 @@ Node = TypeVar('Node', NodeAsTuple, NodeAsDict)
 DAG = Sequence[Node]
 
 
-@gin.configurable
+@gin.register
 class ProcessorGroup(tfkl.Layer):
   """String Proccesor() objects together into a processor_group."""
 
@@ -188,7 +188,7 @@ class ProcessorGroup(tfkl.Layer):
 
 
 # Routing processors for manipulating signals in a processor_group -------------
-@gin.configurable
+@gin.register
 class Add(Processor):
   """Sum two signals."""
 
@@ -205,7 +205,7 @@ class Add(Processor):
     return signal_one + signal_two
 
 
-@gin.configurable
+@gin.register
 class Mix(Processor):
   """Constant-power crossfade between two signals."""
 

@@ -71,7 +71,7 @@ class Preprocessor(object):
     raise NotImplementedError
 
 
-@gin.configurable
+@gin.register
 class DefaultPreprocessor(Preprocessor):
   """Default class that resamples features and adds `f0_hz` key at end of chain."""
 

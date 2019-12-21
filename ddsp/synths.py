@@ -25,7 +25,7 @@ import gin
 import tensorflow.compat.v1 as tf
 
 
-@gin.configurable
+@gin.register
 class Additive(processors.Processor):
   """Synthesize audio with a bank of harmonic sinusoidal oscillators."""
 
@@ -108,7 +108,7 @@ class Additive(processors.Processor):
     return signal
 
 
-@gin.configurable
+@gin.register
 class FilteredNoise(processors.Processor):
   """Synthesize audio by filtering white noise."""
 
@@ -165,7 +165,7 @@ class FilteredNoise(processors.Processor):
     return signal
 
 
-@gin.configurable
+@gin.register
 class Wavetable(processors.Processor):
   """Synthesize audio from a series of wavetables."""
 
