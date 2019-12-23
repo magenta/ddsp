@@ -30,6 +30,7 @@ import tensorflow.compat.v1 as tf
 tf.disable_v2_behavior()
 
 GIN_PATH = pkg_resources.resource_filename(__name__, 'gin')
+gin.add_config_file_search_path(GIN_PATH)
 
 
 class AutoencoderTest(parameterized.TestCase, tf.test.TestCase):
@@ -47,17 +48,11 @@ class AutoencoderTest(parameterized.TestCase, tf.test.TestCase):
         'audio': np.random.randn(self.n_batch, self.n_samples),
     }
     self.inputs = {k: core.f32(v) for k, v in inputs.items()}
-    self.gin_files = {
-        'nsynth_ae': 'train/iclr2020/nsynth_ae.gin',
-        'nsynth_ae_abs': 'train/iclr2020/nsynth_ae_abs.gin',
-        'solo_violin': 'train/iclr2020/solo_violin.gin'
-    }
-    gin.add_config_file_search_path(GIN_PATH)
 
   @parameterized.named_parameters(
-      ('nsynth_ae', 'nsynth_ae'),
-      ('nsynth_ae_abs', 'nsynth_ae_abs'),
-      ('solo_violin', 'solo_violin'),
+      ('nsynth_ae', 'papers/iclr2020/nsynth_ae.gin'),
+      ('nsynth_ae_abs', 'papers/iclr2020/nsynth_ae_abs.gin'),
+      ('solo_instrument', 'papers/iclr2020/solo_instrument.gin'),
   )
   def test_build_model(self, gin_file):
     """Tests if Model builds properly and produces audio of correct shape.
@@ -66,7 +61,8 @@ class AutoencoderTest(parameterized.TestCase, tf.test.TestCase):
       gin_file: Name of gin_file to use.
     """
     with gin.unlock_config():
-      gin.parse_config_file(self.gin_files[gin_file])
+      gin.clear_config()
+      gin.parse_config_file(gin_file)
 
     model = models.Autoencoder()
     outputs = model.get_outputs(self.inputs)

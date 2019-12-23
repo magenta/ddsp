@@ -1,0 +1,10 @@
+# -*-Python-*-
+include 'datasets/base.gin'
+
+# Make dataset with ddsp/training/data_preparation/prepare_tfrecord.py
+# --gin_param="SoloInstrument.file_pattern='/path/to/dataset*.tfrecord'"
+
+# Dataset
+train.data_provider = @data.SoloInstrument()
+evaluate.data_provider = @data.SoloInstrument()
+sample.data_provider = @data.SoloInstrument()

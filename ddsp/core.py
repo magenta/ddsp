@@ -71,7 +71,7 @@ def midi_to_hz(notes: Number) -> Number:
 def hz_to_midi(frequencies: Number) -> Number:
   """TF-compatible hz_to_midi function."""
   log2 = lambda x: tf.log(x) / tf.log(2.0)
-  return 12 * (log2(f32(frequencies)) - log2(440.0)) + 69
+  return 12.0 * (log2(f32(frequencies)) - log2(440.0)) + 69.0
 
 
 def resample(inputs: tf.Tensor,

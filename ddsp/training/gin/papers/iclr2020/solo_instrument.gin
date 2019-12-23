@@ -1,0 +1,6 @@
+# -*-Python-*-
+# Make dataset with ddsp/training/data_preparation/prepare_tfrecord.py
+# --gin_param="SoloInstrument.file_pattern='/path/to/dataset*.tfrecord'"
+
+include 'models/solo_instrument.gin'
+include 'datasets/solo_instrument.gin'

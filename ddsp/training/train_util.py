@@ -228,5 +228,3 @@ def train(data_provider,
       use_tpu=use_tpu)
 
   estimator.train(input_fn=input_fn, max_steps=num_steps)
-
-

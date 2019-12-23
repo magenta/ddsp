@@ -1,5 +1,4 @@
 # -*-Python-*-
-
 import ddsp.training
 
 # Globals for easier configuration with --gin_param
@@ -15,3 +14,4 @@ train_util.get_train_op.learning_rate = %learning_rate
 train_util.get_train_op.lr_decay_steps = 10000
 train_util.get_train_op.lr_decay_rate = 0.98
 train_util.get_train_op.gradient_clip_norm = 3.0
+

@@ -79,15 +79,14 @@ def l1_distance(prediction, ground_truth):
   """L1 distance difference between two vectors."""
   if prediction.shape != ground_truth.shape:
     prediction, ground_truth = np.squeeze(prediction), np.squeeze(ground_truth)
-  assert prediction.shape == ground_truth.shape
-  return np.abs(prediction - ground_truth)
+  min_length = min(prediction.size, ground_truth.size)
+  return np.abs(prediction[:min_length] - ground_truth[:min_length])
 
 
 def mean_l1_loudness(prediction, ground_truth):
   """Mean L1 loudness across a single sample."""
   if prediction.shape != ground_truth.shape:
     prediction, ground_truth = np.squeeze(prediction), np.squeeze(ground_truth)
-  assert prediction.shape == ground_truth.shape
   dist = l1_distance(prediction, ground_truth)
   return np.mean(dist)
 
@@ -655,7 +654,6 @@ class AudioWriter(Writer):
 
 
 # ---------------------- Evaluation --------------------------------------------
-@gin.configurable
 def evaluate_or_sample(data_provider,
                        model,
                        mode='eval',
@@ -774,3 +772,73 @@ def evaluate_or_sample(data_provider,
 
     if run_once:
       break
+
+
+@gin.configurable
+def evaluate(data_provider,
+             model,
+             model_dir='~/tmp/ddsp/training',
+             master='',
+             batch_size=32,
+             num_batches=50,
+             keys_to_fetch='additive_audio,noise_audio',
+             ckpt_delay_secs=0,
+             run_once=False):
+  """Run evaluation loop.
+
+  Args:
+    data_provider: DataProvider instance.
+    model: Model instance.
+    model_dir: Path to directory with checkpoints and summary events.
+    master: Name of TensorFlow runtime to use.
+    batch_size: Size of each eval/sample batch.
+    num_batches: How many batches to eval from dataset. -1 denotes all batches.
+    keys_to_fetch: Additional tensors to fetch from model outputs.
+    ckpt_delay_secs: Time to wait when a new checkpoint was not detected.
+    run_once: Only run evaluation or sampling once.
+  """
+  evaluate_or_sample(data_provider=data_provider,
+                     model=model,
+                     mode='eval',
+                     model_dir=model_dir,
+                     master=master,
+                     batch_size=batch_size,
+                     num_batches=num_batches,
+                     keys_to_fetch=keys_to_fetch,
+                     ckpt_delay_secs=ckpt_delay_secs,
+                     run_once=run_once)
+
+
+@gin.configurable
+def sample(data_provider,
+           model,
+           model_dir='~/tmp/ddsp/training',
+           master='',
+           batch_size=32,
+           num_batches=50,
+           keys_to_fetch='additive_audio,noise_audio',
+           ckpt_delay_secs=0,
+           run_once=False):
+  """Run sampling loop.
+
+  Args:
+    data_provider: DataProvider instance.
+    model: Model instance.
+    model_dir: Path to directory with checkpoints and summary events.
+    master: Name of TensorFlow runtime to use.
+    batch_size: Size of each eval/sample batch.
+    num_batches: How many batches to eval from dataset. -1 denotes all batches.
+    keys_to_fetch: Additional tensors to fetch from model outputs.
+    ckpt_delay_secs: Time to wait when a new checkpoint was not detected.
+    run_once: Only run evaluation or sampling once.
+  """
+  evaluate_or_sample(data_provider=data_provider,
+                     model=model,
+                     mode='sample',
+                     model_dir=model_dir,
+                     master=master,
+                     batch_size=batch_size,
+                     num_batches=num_batches,
+                     keys_to_fetch=keys_to_fetch,
+                     ckpt_delay_secs=ckpt_delay_secs,
+                     run_once=run_once)

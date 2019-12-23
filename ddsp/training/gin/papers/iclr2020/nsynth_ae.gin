@@ -1,0 +1,3 @@
+# -*-Python-*-
+include 'models/ae.gin'
+include 'datasets/nsynth_tfds.gin'

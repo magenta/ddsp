@@ -16,15 +16,46 @@
 r"""Train, evaluate, or sample (from) a ddsp model.
 
 Usage:
-====================
+================================================================================
+For training, you need to specify --gin_file for both the model and the dataset.
+You can optionally specify additional params with --gin_param.
+The pip install installs a `ddsp_run` script that can be called directly.
+================================================================================
 ddsp_run \
 --mode=train \
---use_tpu=false \
 --alsologtostderr \
 --model_dir=~/tmp/$USER-ddsp-0 \
---gin_file=train/iclr2020/nsynth_ae.gin
---gin_param=batch_size=16 \
---gin_param=decoders.ZRnnFcDecoder.layers_per_stack=3
+--gin_file=models/ae.gin \
+--gin_file=datasets/nsynth_tfds.gin \
+--gin_param=batch_size=16
+
+
+================================================================================
+For evaluation and sampling, only the dataset file is required.
+================================================================================
+ddsp_run \
+--mode=eval \
+--alsologtostderr \
+--model_dir=~/tmp/$USER-ddsp-0 \
+--gin_file=datasets/nsynth_tfds.gin
+
+ddsp_run \
+--mode=sample \
+--alsologtostderr \
+--model_dir=~/tmp/$USER-ddsp-0 \
+--gin_file=datasets/nsynth_tfds.gin
+
+
+================================================================================
+The directory `gin/papers/` stores configs that give the specific models and
+datasets used for a paper's experiments, so only require one gin file to train.
+================================================================================
+ddsp_run \
+--mode=train \
+--alsologtostderr \
+--model_dir=~/tmp/$USER-ddsp-0 \
+--gin_file=papers/iclr2020/nsynth_ae.gin
+
 
 """
 
@@ -39,6 +70,7 @@ from absl import app
 from absl import flags
 from absl import logging
 from ddsp.training import eval_util
+from ddsp.training import models
 from ddsp.training import train_util
 import gin
 import pkg_resources
@@ -46,27 +78,13 @@ import tensorflow.compat.v1 as tf
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_enum('mode', 'train', ['train', 'eval'],
-                  'Whether to train or evaluate the model.')
+flags.DEFINE_enum('mode', 'train', ['train', 'eval', 'sample'],
+                  'Whether to train, evaluate, or sample from the model.')
 flags.DEFINE_string('model_dir', '~/tmp/ddsp',
                     'Path where checkpoints and summary events will be located '
                     'during training and evaluation.')
 flags.DEFINE_string('master', '', 'Name of the TensorFlow runtime to use.')
-flags.DEFINE_boolean('use_tpu', True, 'Whether training will happen on a TPU.')
-
-# Dataset flags.
-flags.DEFINE_string(
-    'file_pattern', None,
-    'Regex of dataset files to use with a TFRecordProvider.')
-flags.DEFINE_string(
-    'tfds_name', None,
-    'TFDS name to use with a TfdsProvider.')
-flags.DEFINE_string(
-    'tfds_split', None,
-    'Split to use with a TfdsProvider.')
-flags.DEFINE_string(
-    'tfds_data_dir', None,
-    'TFDS data directory to read from with a TfdsProvider.')
+flags.DEFINE_boolean('use_tpu', False, 'Whether training will happen on a TPU.')
 
 # Gin config flags.
 flags.DEFINE_multi_string(
@@ -79,7 +97,7 @@ flags.DEFINE_multi_string('gin_param', [],
 flags.DEFINE_integer('num_train_steps', 1000000,
                      'Number of training steps or `None` for infinite.')
 
-# Evaluation specific flags.
+# Evaluation/sampling specific flags.
 flags.DEFINE_boolean('eval_once', False, 'Whether evaluation will run once.')
 flags.DEFINE_integer('initial_delay_secs', None,
                      'Time to wait before evaluation starts')
@@ -87,10 +105,16 @@ flags.DEFINE_integer('initial_delay_secs', None,
 GIN_PATH = pkg_resources.resource_filename(__name__, 'gin')
 
 
-def run():
-  """Parse gin config and run ddsp training, evaluation, or sampling."""
-  model_dir = os.path.expanduser(FLAGS.model_dir)
+def delay_start():
+  """Optionally delay the start of the run."""
+  delay_time = FLAGS.initial_delay_secs
+  if delay_time:
+    logging.info('Waiting for %i second(s)', delay_time)
+    time.sleep(delay_time)
 
+
+def parse_gin(model_dir):
+  """Parse gin config from --gin_file, --gin_param, and the model directory."""
   # Add user folders to the gin search path.
   for gin_search_path in [GIN_PATH] + FLAGS.gin_search_path:
     gin.add_config_file_search_path(gin_search_path)
@@ -111,10 +135,17 @@ def run():
                                         FLAGS.gin_param,
                                         skip_unknown=True)
 
+
+def run():
+  """Parse gin config and run ddsp training, evaluation, or sampling."""
+  model_dir = os.path.expanduser(FLAGS.model_dir)
+  parse_gin(model_dir)
+  model = models.get_model()
+
   # Training.
   if FLAGS.mode == 'train':
     train_util.train(data_provider=gin.REQUIRED,
-                     model=gin.REQUIRED,
+                     model=model,
                      model_dir=model_dir,
                      num_steps=FLAGS.num_train_steps,
                      master=FLAGS.master,
@@ -122,16 +153,21 @@ def run():
 
   # Evaluation.
   elif FLAGS.mode == 'eval':
-    delay_time = FLAGS.initial_delay_secs
-    if delay_time:
-      logging.info('Waiting for %i second(s)', delay_time)
-      time.sleep(delay_time)
+    delay_start()
+    eval_util.evaluate(data_provider=gin.REQUIRED,
+                       model=model,
+                       model_dir=model_dir,
+                       master=FLAGS.master,
+                       run_once=FLAGS.eval_once)
 
-    eval_util.evaluate_or_sample(data_provider=gin.REQUIRED,
-                                 model=gin.REQUIRED,
-                                 model_dir=model_dir,
-                                 master=FLAGS.master,
-                                 run_once=FLAGS.eval_once)
+  # Sampling.
+  elif FLAGS.mode == 'sample':
+    delay_start()
+    eval_util.sample(data_provider=gin.REQUIRED,
+                     model=model,
+                     model_dir=model_dir,
+                     master=FLAGS.master,
+                     run_once=FLAGS.eval_once)
 
 
 def main(unused_argv):

@@ -1,0 +1,16 @@
+# -*-Python-*-
+include 'datasets/base.gin'
+
+# Dataset (Different scopes to pass different args to same object)
+train.data_provider = @train_data/data.NSynthTfds()
+train_data/NSynthTfds.split = 'train'
+
+evaluate.data_provider = @eval_data/data.NSynthTfds()
+eval_data/data.NSynthTfds.split = 'valid'
+
+sample.data_provider = @sample_data/data.NSynthTfds()
+sample_data/data.NSynthTfds.split = 'test'
+
+# Evaluate
+evaluate.num_batches = 50  # Full test set ~17000 samples
+

@@ -1,5 +1,4 @@
 # -*-Python-*-
-
 import ddsp
 import ddsp.training
 

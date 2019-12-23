@@ -33,6 +33,19 @@ import tensorflow.compat.v1 as tf
 tfkl = tf.keras.layers
 
 
+@gin.configurable
+def get_model(model=gin.REQUIRED):
+  """Gin configurable function get a 'global' model for use in ddsp_run.py.
+
+  Convenience for using the same model in train(), evaluate(), and sample().
+  Args:
+    model: An instantiated model, such as 'models.Autoencoder()'.
+  Returns:
+    The 'global' model specifieed in the gin config.
+  """
+  return model
+
+
 class Model(tfkl.Layer):
   """Wrap the model function for dependency injection with gin."""
 
