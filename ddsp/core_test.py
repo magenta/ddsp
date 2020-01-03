@@ -28,8 +28,6 @@ import tensorflow.compat.v1 as tf
 
 tf.disable_v2_behavior()
 
-f32 = core.f32
-
 
 class UtilitiesTest(tf.test.TestCase):
 
@@ -74,7 +72,7 @@ class ResampleTest(parameterized.TestCase, tf.test.TestCase):
     before = 1.0 - np.sin(np.linspace(0, np.pi, n_before))
     before = before[np.newaxis, :, np.newaxis]
     with self.cached_session() as sess:
-      after = sess.run(core.resample(f32(before),
+      after = sess.run(core.resample(before,
                                      n_after,
                                      method=method,
                                      add_endpoint=add_endpoint))
@@ -383,8 +381,8 @@ class AdditiveSynthTest(parameterized.TestCase, tf.test.TestCase):
 
     with self.cached_session() as sess:
       wav_tf = sess.run(core.harmonic_synthesis(
-          f32(frequencies),
-          f32(amplitudes),
+          frequencies,
+          amplitudes,
           n_samples=self.n_samples,
           sample_rate=self.sample_rate))
     pad = self.n_samples // n_frames  # Ignore edge effects.
@@ -427,10 +425,10 @@ class AdditiveSynthTest(parameterized.TestCase, tf.test.TestCase):
 
     with self.cached_session() as sess:
       wav_tf = sess.run(core.harmonic_synthesis(
-          f32(frequencies_tf),
-          f32(amplitudes_tf),
-          f32(harmonic_shifts_tf),
-          f32(harmonic_distribution_tf),
+          frequencies_tf,
+          amplitudes_tf,
+          harmonic_shifts_tf,
+          harmonic_distribution_tf,
           n_samples=self.n_samples,
           sample_rate=self.sample_rate))
     pad = self.n_samples // n_frames  # Ignore edge effects.
@@ -477,8 +475,8 @@ class InterpolatingLookupTest(parameterized.TestCase, tf.test.TestCase):
 
     with self.cached_session() as sess:
       wav_tf = sess.run(core.linear_lookup(
-          f32(phase),
-          f32(wavetable)
+          phase,
+          wavetable
       ))
 
     difference = np.abs(wav_np - wav_tf).mean()
@@ -528,9 +526,9 @@ class InterpolatingLookupTest(parameterized.TestCase, tf.test.TestCase):
 
     with self.cached_session() as sess:
       wav_tf = sess.run(core.wavetable_synthesis(
-          f32(frequencies),
-          f32(amplitudes),
-          f32(wavetable),
+          frequencies,
+          amplitudes,
+          wavetable,
           n_samples,
           sample_rate
       ))
@@ -573,11 +571,11 @@ class InterpolatingLookupTest(parameterized.TestCase, tf.test.TestCase):
 
     with self.cached_session() as sess:
       wav_tf_no_delay = sess.run(core.variable_length_delay(
-          phase_no_delay, f32(wav_np), max_length))
+          phase_no_delay, wav_np, max_length))
       wav_tf_half_delay = sess.run(core.variable_length_delay(
-          phase_half_delay, f32(wav_np), max_length))
+          phase_half_delay, wav_np, max_length))
       wav_tf_full_delay = sess.run(core.variable_length_delay(
-          phase_full_delay, f32(wav_np), max_length))
+          phase_full_delay, wav_np, max_length))
 
     for target, source in [(wav_np, wav_tf_no_delay),
                            (-wav_np, wav_tf_half_delay),
@@ -594,8 +592,7 @@ class FiniteImpulseResponseTest(parameterized.TestCase, tf.test.TestCase):
     """Creates some common default values for the tests."""
     super(FiniteImpulseResponseTest, self).setUp()
     self.audio_size = 1000
-    self.audio_np = np.random.randn(1, self.audio_size).astype(np.float32)
-    self.audio = f32(self.audio_np)
+    self.audio = np.random.randn(1, self.audio_size).astype(np.float32)
 
   @parameterized.named_parameters(
       ('ir_less_than_audio', 1000, 10),
@@ -618,8 +615,8 @@ class FiniteImpulseResponseTest(parameterized.TestCase, tf.test.TestCase):
 
     with self.cached_session() as sess:
       output_tf = sess.run(core.fft_convolve(
-          f32(audio),
-          f32(impulse_response),
+          audio,
+          impulse_response,
           padding='valid',
           delay_compensation=0))[0]
 
@@ -644,7 +641,7 @@ class FiniteImpulseResponseTest(parameterized.TestCase, tf.test.TestCase):
       gain: Amount to scale the input signal.
     """
     # Create random signal to filter.
-    output_np = gain * self.audio_np[0]
+    output_np = gain * self.audio[0]
     n_frequencies = 1025
     window_size = 257
 
@@ -731,7 +728,7 @@ class FiniteImpulseResponseTest(parameterized.TestCase, tf.test.TestCase):
 
     with self.cached_session() as sess:
       impulse_response = sess.run(
-          core.frequency_impulse_response(f32(magnitudes), window_size))
+          core.frequency_impulse_response(magnitudes, window_size))
 
     target_size = fft_size
     if (window_size >= 1) and (window_size < target_size):
@@ -771,7 +768,7 @@ class FiniteImpulseResponseTest(parameterized.TestCase, tf.test.TestCase):
 
     with self.cached_session() as sess:
       audio_out = sess.run(core.frequency_filter(self.audio,
-                                                 f32(magnitudes),
+                                                 magnitudes,
                                                  window_size=window_size,
                                                  padding='same'))
 

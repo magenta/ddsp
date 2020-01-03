@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ddsp.core import tf_float32
 import gin
 import librosa
 import tensorflow.compat.v1 as tf
@@ -41,7 +42,8 @@ def stft(audio, frame_size=2048, overlap=0.75, pad_end=False):
 
 @gin.register
 def calc_mag(audio, size=2048, overlap=0.75, pad_end=False):
-  return tf.abs(stft(audio, frame_size=size, overlap=overlap, pad_end=pad_end))
+  mag = tf.abs(stft(audio, frame_size=size, overlap=overlap, pad_end=pad_end))
+  return tf_float32(mag)
 
 
 @gin.register
@@ -103,6 +105,7 @@ def calc_mfcc(audio,
 
 def calc_loudness(audio, n_fft=2048, top_db=200.0, pmin=1e-20, hop_size=4000):
   """Perceptual loudness, following librosa implementation."""
+  audio = tf_float32(audio)
   log10 = lambda x: tf.log(x) / tf.log(10.0)
   spectra = stft(
       audio, frame_size=n_fft, overlap=1-hop_size/n_fft, pad_end=True)

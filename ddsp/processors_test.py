@@ -40,14 +40,13 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
     self.n_frames = 1000
     self.n_time = 64000
     rand_signal = lambda ch: np.random.randn(self.n_batch, self.n_frames, ch)
-    nn_outputs = {
+    self.nn_outputs = {
         'amps': rand_signal(1),
         'harmonic_distribution': rand_signal(99),
         'magnitudes': rand_signal(256),
         'f0_hz': 200 + rand_signal(1),
         'target_audio': np.random.randn(self.n_batch, self.n_time)
     }
-    self.nn_outputs = {k: core.f32(v) for k, v in nn_outputs.items()}
 
     # Create Processors.
     additive = synths.Additive(name='additive')
@@ -83,7 +82,7 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
   def _check_tensor_outputs(self, strings_to_check, outputs, processor_group):
     for tensor_string in strings_to_check:
       tensor = core.nested_lookup(tensor_string, outputs)
-      self.assertIsInstance(tensor, tf.Tensor)
+      self.assertIsInstance(tensor, (np.ndarray, tf.Tensor))
 
   def test_dag_construction(self):
     """Tests if DAG is built properly and runs.

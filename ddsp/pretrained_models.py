@@ -41,12 +41,12 @@ class PretrainedModel(object):
   def variable_scope(self):
     return self._name
 
-  def __call__(self, features):
+  def __call__(self, audio):
     with tf.variable_scope(self.variable_scope, reuse=tf.AUTO_REUSE):
-      outputs = self.get_outputs(features)
+      outputs = self.get_outputs(audio)
       return outputs
 
-  def get_outputs(self, features):
+  def get_outputs(self, audio):
     """Returns the output of the model, usually an embedding."""
     raise NotImplementedError
 
@@ -147,11 +147,11 @@ class Crepe(tfkl.Layer):
 
     return layers
 
-  def call(self, features, training=False):
+  def call(self, audio, training=False):
     # returns a dict of tensors, from layer name to layer activations.
-    assert features.shape[1] == 1024
+    assert audio.shape[1] == 1024
 
-    y = features
+    y = audio
     for _ in range(2):
       y = tf.expand_dims(y, axis=-1)  # [batch, length, 1, 1]
 
@@ -184,14 +184,14 @@ class PretrainedCREPE(PretrainedModel):
     self._model = Crepe(
         self._model_capacity, self._activation_layer, name=self._name)
 
-  def __call__(self, features):
-    return self.get_outputs(features)
+  def __call__(self, audio):
+    return self.get_outputs(audio)
 
-  def get_outputs(self, features):
+  def get_outputs(self, audio):
     """Returns the embeddings.
 
     Args:
-      features: tensors of shape [batch, length]. length must be divisible by
+      audio: tensors of shape [batch, length]. length must be divisible by
         1024.
 
     Returns:
@@ -199,8 +199,8 @@ class PretrainedCREPE(PretrainedModel):
     """
     if self._model is None:
       self._build_model()
-    batch_size = tf.shape(features)[0]
-    length = int(features.shape[1])
+    batch_size = tf.shape(audio)[0]
+    length = int(audio.shape[1])
 
     # TODO(gcj): relax this constraint by modifying the model to generate
     # outputs at every time point.
@@ -209,9 +209,9 @@ class PretrainedCREPE(PretrainedModel):
       logging.warning(
           ('Length of the tensor must be multiples of 1024, but is %d. '
            'Truncating the input length to %d.'), length, truncated_length)
-      features = tf.slice(features, [0, 0], [-1, truncated_length])
-    features = tf.reshape(features, [-1, 1024])
-    activation_dict = self._model(features)
+      audio = tf.slice(audio, [0, 0], [-1, truncated_length])
+    audio = tf.reshape(audio, [-1, 1024])
+    activation_dict = self._model(audio)
     if self._activation_layer not in activation_dict:
       raise ValueError(
           'activation layer {} not found, valid keys are {}'.format(

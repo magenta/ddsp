@@ -26,9 +26,9 @@ import tensorflow.compat.v1 as tf
 
 
 # ---------------------- Preprocess Helpers ------------------------------------
-def resample(x, time_steps):
-  """Converts tensor [batch, n_time_in] to [batch, n_time_out, 1]."""
-  return ddsp.core.resample(x[:, :, tf.newaxis], time_steps)
+def add_channel_dim(x):
+  """Adds a channel dimension."""
+  return x[:, :, tf.newaxis] if len(x.shape) == 2 else x
 
 
 # ---------------------- Preprocess objects ------------------------------------
@@ -41,13 +41,13 @@ class Preprocessor(object):
   def __call__(self, features, training=True):
     return self.get_outputs(features, training)
 
-  def _apply(self, fn, conditioning, keys, **kwargs):
+  def _apply(self, conditioning, keys, fn, **kwargs):
     """Apply preprocessing function `fn` to specific keys.
 
     Args:
-      fn: preprocessing function
       conditioning:  dict of features
       keys: key in `conditioning` dict to apply preprocessing function `fn`
+      fn: preprocessing function
       **kwargs: arguments specific to defined `fn`
 
     Returns:
@@ -62,8 +62,7 @@ class Preprocessor(object):
 
     Args:
       features: dict of feature key and tensors
-      training: boolean for controlling training-specfic preprocessing
-        behavior
+      training: boolean for controlling training-specfic preprocessing behavior
 
     Returns:
       conditioning: dict of transformed features
@@ -82,8 +81,12 @@ class DefaultPreprocessor(Preprocessor):
 
   def _default_processing(self, conditioning):
     """Always resample to `time_steps` and add `f0_hz` key."""
+    self._apply(conditioning, ('audio',), ddsp.core.tf_float32)
+    self._apply(conditioning, ('loudness', 'f0'), add_channel_dim)
     self._apply(
-        resample, conditioning, ('loudness', 'f0'), time_steps=self.time_steps)
+        conditioning, ('loudness', 'f0'),
+        ddsp.core.resample,
+        n_timesteps=self.time_steps)
     # Optionally, scale input in the range [0, 1] to hertz.
     if self.scale_f0_to_hz:
       conditioning['f0_hz'] = ddsp.core.midi_to_hz(conditioning['f0'] * 127.0)
@@ -94,4 +97,5 @@ class DefaultPreprocessor(Preprocessor):
   def get_outputs(self, features, training):
     conditioning = copy.copy(features)
     return self._default_processing(conditioning)
+
 

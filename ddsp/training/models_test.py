@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
-from ddsp import core
+from ddsp.core import tf_float32
 from ddsp.training import models
 import gin
 import numpy as np
@@ -47,7 +47,7 @@ class AutoencoderTest(parameterized.TestCase, tf.test.TestCase):
         'f0': 0.5 + np.zeros([self.n_batch, self.n_frames]),
         'audio': np.random.randn(self.n_batch, self.n_samples),
     }
-    self.inputs = {k: core.f32(v) for k, v in inputs.items()}
+    self.inputs = {k: tf_float32(v) for k, v in inputs.items()}
 
   @parameterized.named_parameters(
       ('nsynth_ae', 'papers/iclr2020/nsynth_ae.gin'),
@@ -69,7 +69,7 @@ class AutoencoderTest(parameterized.TestCase, tf.test.TestCase):
     self.assertIsInstance(outputs, dict)
     # Confirm that model generates correctly sized audio.
     audio_gen_shape = outputs['audio_gen'].shape.as_list()
-    self.assertEqual(audio_gen_shape, self.inputs['audio'].shape)
+    self.assertEqual(audio_gen_shape, list(self.inputs['audio'].shape))
 
 if __name__ == '__main__':
   tf.test.main()

@@ -31,9 +31,12 @@ Number = TypeVar('Number', int, float, np.ndarray, tf.Tensor)
 
 
 # Utility Functions ------------------------------------------------------------
-def f32(x):
+def tf_float32(x):
   """Ensure array/tensor is a float32 tf.Tensor."""
-  return tf.convert_to_tensor(x, tf.float32)
+  if isinstance(x, tf.Tensor):
+    return tf.cast(x, dtype=tf.float32)  # This is a no-op if x is float32.
+  else:
+    return tf.convert_to_tensor(x, tf.float32)
 
 
 def make_iterable(x):
@@ -65,13 +68,15 @@ def nested_lookup(nested_key: Text,
 
 def midi_to_hz(notes: Number) -> Number:
   """TF-compatible midi_to_hz function."""
-  return 440.0 * (2.0**((f32(notes) - 69.0) / 12.0))
+  notes = tf_float32(notes)
+  return 440.0 * (2.0**((notes - 69.0) / 12.0))
 
 
 def hz_to_midi(frequencies: Number) -> Number:
   """TF-compatible hz_to_midi function."""
+  frequencies = tf_float32(frequencies)
   log2 = lambda x: tf.log(x) / tf.log(2.0)
-  return 12.0 * (log2(f32(frequencies)) - log2(440.0)) + 69.0
+  return 12.0 * (log2(frequencies) - log2(440.0)) + 69.0
 
 
 def resample(inputs: tf.Tensor,
@@ -81,7 +86,8 @@ def resample(inputs: tf.Tensor,
   """Interpolates a tensor of shape [:, n_frames, :] to [:, n_timesteps, :].
 
   Args:
-    inputs: Framewise 3-D Tensor. Shape [batch_size, n_frames, channels].
+    inputs: Framewise 2-D or3-D Tensor. Shape [batch_size, n_frames] or shape
+      [batch_size, n_frames, channels].
     n_timesteps: Time resolution of the output signal.
     method: Type of resampling, must be in ['linear', 'cubic', 'window']. Linear
       and cubic ar typical bilinear, bicubic interpolation. Window uses
@@ -92,12 +98,17 @@ def resample(inputs: tf.Tensor,
       the last timestep as the endpoint, producing (n_frames - 1) segments with
       each having a length of n_timesteps / (n_frames - 1).
   Returns:
-    Interpolated 3-D Tensor. Shape [batch_size, n_timesteps, channels].
+    Interpolated 2-D or 3-D Tensor. Shape [batch_size, n_timesteps] or shape
+      [batch_size, n_timesteps, channels].
 
   Raises:
     ValueError: If method is not one of 'linear', 'cubic', or 'window'.
   """
+  inputs = tf_float32(inputs)
   methods = {'linear': 0, 'cubic': 2}
+
+  is_2d = len(inputs.shape) == 2
+  inputs = inputs[:, :, tf.newaxis] if is_2d else inputs
 
   if method in methods:
     outputs = inputs[:, :, tf.newaxis, :]
@@ -113,6 +124,8 @@ def resample(inputs: tf.Tensor,
   else:
     raise ValueError('Method ({}) is invalid. Must be one of {}.'.format(
         method, list(methods.keys()) + ['window']))
+
+  outputs = outputs[:, :, 0] if is_2d else outputs
   return outputs
 
 
@@ -138,6 +151,7 @@ def upsample_with_windows(inputs: tf.Tensor,
     ValueError: If n_timesteps is not divisible by n_frames (if add_endpoint is
       true) or n_frames - 1 (if add_endpoint is false).
   """
+  inputs = tf_float32(inputs)
   # Mimic behavior of tf.image.resize.
   # For forward (not endpointed), hold value for last interval.
   if add_endpoint:
@@ -183,7 +197,7 @@ def upsample_with_windows(inputs: tf.Tensor,
 
 # Adapted from lingvo.core.py_utils.CumSum because that function requires
 # some global FLAGS to be set which is not avaiable in our codebase.
-# See b/140143827 for more details.
+# GOOGLE-INTERNAL See b/140143827 for more details.
 def _tpu_cumsum(x, axis=0, exclusive=False):
   """A TPU efficient implementation of tf.cumsum()."""
   tf.logging.info('--------fancy cumsum---------')
@@ -209,7 +223,8 @@ def _tpu_cumsum(x, axis=0, exclusive=False):
   return result
 
 
-# TODO(b/140143827): switch back to tf.cumsum once it is fast on TPUs.
+# TODO(jesseengel): switch back to tf.cumsum once it is fast on TPUs.
+# GOOGLE-INTERNAL b/140143827
 @gin.configurable
 def cumsum(x, axis=0, exclusive=False, use_tpu=False):
   if use_tpu:
@@ -221,6 +236,7 @@ def cumsum(x, axis=0, exclusive=False, use_tpu=False):
 
 def log_scale(x, min_x, max_x):
   """Scales a -1 to 1 value logarithmically between min and max."""
+  x = tf_float32(x)
   x = (x + 1.0) / 2.0  # Scale [-1, 1] to [0, 1]
   return tf.exp((1.0 - x) * tf.log(min_x) + x * tf.log(max_x))
 
@@ -242,12 +258,14 @@ def exp_sigmoid(x, exponent=10.0, max_value=2.0, threshold=1e-7):
   Returns:
     A tensor with pointwise nonlinearity applied.
   """
+  x = tf_float32(x)
   return max_value * tf.nn.sigmoid(x)**tf.log(exponent) + threshold
 
 
 @gin.register
 def sym_exp_sigmoid(x, width=8.0):
   """Symmetrical version of exp_sigmoid centered at (0, 1e-7)."""
+  x = tf_float32(x)
   return exp_sigmoid(width * (tf.abs(x)/2.0 - 1.0))
 
 
@@ -268,6 +286,9 @@ def remove_above_nyquist(frequency_envelopes: tf.Tensor,
     amplitude_envelopes: Sample-wise filtered oscillator amplitude.
       Shape [batch_size, n_samples, n_sinusoids].
   """
+  frequency_envelopes = tf_float32(frequency_envelopes)
+  amplitude_envelopes = tf_float32(amplitude_envelopes)
+
   amplitude_envelopes = tf.where(
       tf.greater_equal(frequency_envelopes, sample_rate / 2.0),
       tf.zeros_like(amplitude_envelopes), amplitude_envelopes)
@@ -289,6 +310,9 @@ def oscillator_bank(frequency_envelopes: tf.Tensor,
   Returns:
     wav: Sample-wise audio. Shape [batch_size, n_samples, n_sinusoids].
   """
+  frequency_envelopes = tf_float32(frequency_envelopes)
+  amplitude_envelopes = tf_float32(amplitude_envelopes)
+
   # Don't exceed Nyquist.
   amplitude_envelopes = remove_above_nyquist(frequency_envelopes,
                                              amplitude_envelopes,
@@ -318,6 +342,8 @@ def get_harmonic_frequencies(frequencies: tf.Tensor,
     harmonic_frequencies: Oscillator frequencies (Hz).
       Shape [batch_size, :, n_harmonics].
   """
+  frequencies = tf_float32(frequencies)
+
   f_ratios = tf.linspace(1.0, float(n_harmonics), int(n_harmonics))
   f_ratios = f_ratios[tf.newaxis, tf.newaxis, :]
   harmonic_frequencies = frequencies * f_ratios
@@ -351,9 +377,14 @@ def harmonic_synthesis(frequencies: tf.Tensor,
   Returns:
     audio: Output audio. Shape [batch_size, n_samples, 1]
   """
+  frequencies = tf_float32(frequencies)
+  amplitudes = tf_float32(amplitudes)
+
   if harmonic_distribution is not None:
+    harmonic_distribution = tf_float32(harmonic_distribution)
     n_harmonics = int(harmonic_distribution.shape[-1])
   elif harmonic_shifts is not None:
+    harmonic_shifts = tf_float32(harmonic_shifts)
     n_harmonics = int(harmonic_shifts.shape[-1])
   else:
     n_harmonics = 1
@@ -397,6 +428,8 @@ def linear_lookup(phase: tf.Tensor,
     The resulting audio from linearly interpolated lookup of the wavetables at
       each point in time. Shape [batch_size, n_samples].
   """
+  phase, wavetables = tf_float32(phase), tf_float32(wavetables)
+
   # Add a time dimension if not present.
   if len(wavetables.shape) == 2:
     wavetables = wavetables[:, tf.newaxis, :]
@@ -450,6 +483,8 @@ def wavetable_synthesis(frequencies: tf.Tensor,
     audio: Audio at the frequency and amplitude of the inputs, with harmonics
       given by the wavetable. Shape [batch_size, n_samples].
   """
+  wavetables = tf_float32(wavetables)
+
   # Create sample-wise envelopes.
   amplitude_envelope = resample(amplitudes, n_samples, method='window')[:, :, 0]
   frequency_envelope = resample(frequencies, n_samples)  # cycles / sec
@@ -490,6 +525,8 @@ def variable_length_delay(phase: tf.Tensor,
   Returns:
     The delayed audio signal. Shape [batch_size, n_samples].
   """
+  phase, audio = tf_float32(phase), tf_float32(audio)
+
   # Make causal by zero-padding audio up front.
   audio = tf.pad(audio, [(0, 0), (max_length - 1, 0)])
   # Cut audio up into frames of max_length.
@@ -609,6 +646,8 @@ def fft_convolve(audio: tf.Tensor,
       number of impulse response frames is on the order of the audio size and
       not a multiple of the audio size.)
   """
+  audio, impulse_response = tf_float32(audio), tf_float32(impulse_response)
+
   # Add a frame dimension to impulse response if it doesn't have one.
   ir_shape = impulse_response.shape.as_list()
   if len(ir_shape) == 2:
@@ -673,6 +712,8 @@ def apply_window_to_impulse_response(impulse_response: tf.Tensor,
       dimension cropped to window_size if window_size is greater than 0 and less
       than ir_size.
   """
+  impulse_response = tf_float32(impulse_response)
+
   # If IR is in causal form, put it in zero-phase form.
   if causal:
     impulse_response = tf.signal.fftshift(impulse_response, axes=-1)
@@ -747,6 +788,7 @@ def frequency_impulse_response(magnitudes: tf.Tensor,
 
 def sinc(x, threshold=1e-20):
   """Normalized zero phase version (peak at zero)."""
+  x = tf_float32(x)
   x = tf.where(tf.abs(x) < threshold, threshold * tf.ones_like(x), x)
   x = np.pi * x
   return tf.sin(x) / x

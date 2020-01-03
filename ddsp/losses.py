@@ -23,6 +23,7 @@ import functools
 
 from ddsp import pretrained_models
 from ddsp import spectral_ops
+from ddsp.core import tf_float32
 
 import gin
 import tensorflow.compat.v1 as tf
@@ -176,6 +177,7 @@ class EmbeddingLoss(Loss):
     self.pretrained_model = pretrained_model
 
   def compute_loss(self, audio, target_audio):
+    audio, target_audio = tf_float32(audio), tf_float32(target_audio)
     target_emb = self.pretrained_model(target_audio)
     synth_emb = self.pretrained_model(audio)
     loss = self.weight * mean_difference(target_emb, synth_emb, self.loss_type)
