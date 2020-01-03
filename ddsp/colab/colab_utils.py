@@ -21,16 +21,24 @@ from __future__ import print_function
 
 import base64
 import io
+import tempfile
 
 import ddsp
 from IPython import display
+import librosa
 import matplotlib.pyplot as plt
 import numpy as np
+from pydub import AudioSegment
 from scipy.io import wavfile
 import tensorflow.compat.v1 as tf
 
+from google.colab import files
+from google.colab import output
+download = files.download
+
 DEFAULT_SAMPLE_RATE = 16000
-_play_id = 0  # Used for ephemeral colab_play.
+
+_play_count = 0  # Used for ephemeral play().
 
 
 def play(array_of_floats,
@@ -50,7 +58,9 @@ def play(array_of_floats,
     autoplay: If True, automatically start playing the sound when the widget is
       rendered.
   """
-  from google.colab.output import _js_builder as js  # pylint:disable=g-import-not-at-top,protected-accessk,import-error
+  # If batched, take first element.
+  if len(array_of_floats.shape) == 2:
+    array_of_floats = array_of_floats[0]
 
   normalizer = float(np.iinfo(np.int16).max)
   array_of_ints = np.array(
@@ -66,25 +76,141 @@ def play(array_of_floats,
       autoplay='autoplay' if autoplay else '',
       base64_wavfile=base64.b64encode(memfile.getvalue()).decode('ascii'))
   memfile.close()
-  global _play_id
-  _play_id += 1
+  global _play_count
+  _play_count += 1
   if ephemeral:
-    element = 'id_%s' % _play_id
+    element = 'id_%s' % _play_count
     display.display(display.HTML('<div id="%s"> </div>' % element))
+    js = output._js_builder  # pylint:disable=protected-access
     js.Js('document', mode=js.EVAL).getElementById(element).innerHTML = html
   else:
     display.display(display.HTML(html))
 
 
-def specplot(audio, vmin=-5, vmax=1, rotate=True, size=512 + 256):
+def record(seconds=3,
+           sample_rate=DEFAULT_SAMPLE_RATE,
+           normalize_db=0.1):
+  """Record audio from the browser in colab using javascript.
+
+  Based on: https://gist.github.com/korakot/c21c3476c024ad6d56d5f48b0bca92be
+  Args:
+    seconds: Number of seconds to record.
+    sample_rate: Resample recorded audio to this sample rate.
+    normalize_db: Normalize the audio to this many decibels. Set to None to skip
+      normalization step.
+
+  Returns:
+    An array of the recorded audio at sample_rate.
+  """
+  # Use Javascript to record audio.
+  record_js_code = """
+  const sleep  = time => new Promise(resolve => setTimeout(resolve, time))
+  const b2text = blob => new Promise(resolve => {
+    const reader = new FileReader()
+    reader.onloadend = e => resolve(e.srcElement.result)
+    reader.readAsDataURL(blob)
+  })
+
+  var record = time => new Promise(async resolve => {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    recorder = new MediaRecorder(stream)
+    chunks = []
+    recorder.ondataavailable = e => chunks.push(e.data)
+    recorder.start()
+    await sleep(time)
+    recorder.onstop = async ()=>{
+      blob = new Blob(chunks)
+      text = await b2text(blob)
+      resolve(text)
+    }
+    recorder.stop()
+  })
+  """
+  print('Starting recording for {} seconds...'.format(seconds))
+  display.display(display.Javascript(record_js_code))
+  audio_string = output.eval_js('record(%d)' % (seconds*1000.0))
+  print('Finished recording!')
+  audio_bytes = base64.b64decode(audio_string.split(',')[1])
+  return audio_bytes_to_np(audio_bytes,
+                           sample_rate=sample_rate,
+                           normalize_db=normalize_db)
+
+
+def audio_bytes_to_np(wav_data,
+                      sample_rate=DEFAULT_SAMPLE_RATE,
+                      normalize_db=0.1):
+  """Convert audio file data (in bytes) into a numpy array.
+
+  Saves to a tempfile and loads with librosa.
+  Args:
+    wav_data: A byte stream of audio data.
+    sample_rate: Resample recorded audio to this sample rate.
+    normalize_db: Normalize the audio to this many decibels. Set to None to skip
+      normalization step.
+
+  Returns:
+    An array of the recorded audio at sample_rate.
+  """
+  # Parse and normalize the audio.
+  audio = AudioSegment.from_file(io.BytesIO(wav_data))
+  audio.remove_dc_offset()
+  if normalize_db is not None:
+    audio.normalize(headroom=normalize_db)
+  # Save to tempfile and load with librosa.
+  with tempfile.NamedTemporaryFile(suffix='.wav') as temp_wav_file:
+    fname = temp_wav_file.name
+    audio.export(fname, format='wav')
+    audio_np, unused_sr = librosa.load(fname, sr=sample_rate)
+  return audio_np
+
+
+def upload(sample_rate=DEFAULT_SAMPLE_RATE, normalize_db=None):
+  """Load a collection of audio files (.wav, .mp3) from disk into colab.
+
+  Args:
+    sample_rate: Resample recorded audio to this sample rate.
+    normalize_db: Normalize the audio to this many decibels. Set to None to skip
+      normalization step.
+
+  Returns:
+    An tuple of lists, (filenames, numpy_arrays).
+  """
+  audio_files = files.upload()
+  fnames = list(audio_files.keys())
+  audio = []
+  for fname in fnames:
+    file_audio = audio_bytes_to_np(audio_files[fname],
+                                   sample_rate=sample_rate,
+                                   normalize_db=normalize_db)
+    audio.append(file_audio)
+  return fnames, audio
+
+
+def specplot(audio,
+             vmin=-5,
+             vmax=1,
+             rotate=True,
+             size=512 + 256,
+             sess=None,
+             **matshow_kwargs):
   """Plot the log magnitude spectrogram of audio."""
-  with tf.Session() as sess:
-    logmag = sess.run(
-        ddsp.spectral_ops.calc_logmag(ddsp.core.f32(audio), size=size))
+  # If batched, take first element.
+  if len(audio.shape) == 2:
+    audio = audio[0]
+
+  logmag = ddsp.spectral_ops.calc_logmag(ddsp.core.f32(audio), size=size)
+  if sess is not None:
+    logmag = sess.run(logmag)
+
   if rotate:
     logmag = np.rot90(logmag)
   # Plotting.
-  plt.matshow(logmag, vmin=vmin, vmax=vmax, cmap=plt.cm.magma, aspect='auto')
+  plt.matshow(logmag,
+              vmin=vmin,
+              vmax=vmax,
+              cmap=plt.cm.magma,
+              aspect='auto',
+              **matshow_kwargs)
   plt.xticks([])
   plt.yticks([])
   plt.xlabel('Time')
@@ -101,23 +227,27 @@ def transfer_function(ir, sample_rate=DEFAULT_SAMPLE_RATE):
 
 def plot_impulse_responses(impulse_response,
                            desired_magnitudes,
-                           sample_rate=DEFAULT_SAMPLE_RATE):
+                           sample_rate=DEFAULT_SAMPLE_RATE,
+                           sess=None):
   """Plot a target frequency response, and that of an impulse response."""
   n_fft = desired_magnitudes.shape[-1] * 2
   frequencies = np.fft.fftfreq(n_fft, 1/sample_rate)[:n_fft//2]
+  true_frequencies, true_magnitudes = transfer_function(impulse_response)
 
-  with tf.Session() as sess:
-    plt.figure(figsize=(12, 6))
-    plt.subplot(121)
-    # Desired transfer function.
-    plt.semilogy(frequencies, desired_magnitudes, label='Desired')
-    # True transfer function.
-    true_frequencies, true_magnitudes = transfer_function(impulse_response)
-    plt.semilogy(true_frequencies,
-                 sess.run(true_magnitudes)[0, 0, :], label='True')
-    plt.title('Transfer Function')
-    plt.legend()
+  if sess is not None:
+    true_magnitudes = sess.run(true_magnitudes)
+    impulse_response = sess.run(impulse_response)
 
-    plt.subplot(122)
-    plt.plot(sess.run(impulse_response)[0, 0, :])
-    plt.title('Impulse Response')
+  # Plot it.
+  plt.figure(figsize=(12, 6))
+  plt.subplot(121)
+  # Desired transfer function.
+  plt.semilogy(frequencies, desired_magnitudes, label='Desired')
+  # True transfer function.
+  plt.semilogy(true_frequencies, true_magnitudes[0, 0, :], label='True')
+  plt.title('Transfer Function')
+  plt.legend()
+
+  plt.subplot(122)
+  plt.plot(impulse_response[0, 0, :])
+  plt.title('Impulse Response')

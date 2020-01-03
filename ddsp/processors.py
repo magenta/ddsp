@@ -80,7 +80,7 @@ Node = Tuple[Processor, Sequence[Text]]
 DAG = Sequence[Node]
 
 
-@gin.register
+@gin.configurable
 class ProcessorGroup(tfkl.Layer):
   """String Proccesor() objects together into a processor_group."""
 

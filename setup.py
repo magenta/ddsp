@@ -36,6 +36,7 @@ setuptools.setup(
         'future',
         'gin-config>=0.3.0',
         'librosa',
+        'pydub',
         'numpy',
         'scipy',
         'six',
