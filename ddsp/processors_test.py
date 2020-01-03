@@ -30,6 +30,71 @@ import tensorflow.compat.v1 as tf
 tf.disable_v2_behavior()
 
 
+class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
+
+  def setUp(self):
+    """Create some dummy input data for the chain."""
+    super(ProcessorGroupTest, self).setUp()
+    # Create inputs.
+    self.n_batch = 4
+    self.n_frames = 1000
+    self.n_time = 64000
+    rand_signal = lambda ch: np.random.randn(self.n_batch, self.n_frames, ch)
+    nn_outputs = {
+        'amps': rand_signal(1),
+        'harmonic_distribution': rand_signal(99),
+        'magnitudes': rand_signal(256),
+        'f0_hz': 200 + rand_signal(1),
+        'target_audio': np.random.randn(self.n_batch, self.n_time)
+    }
+    self.nn_outputs = {k: core.f32(v) for k, v in nn_outputs.items()}
+
+    # Create Processors.
+    additive = synths.Additive(name='additive')
+    noise = synths.FilteredNoise(name='noise')
+    add = processors.Add(name='add')
+    reverb = effects.TrainableReverb(name='reverb')
+
+    # Create DAG for testing.
+    self.dag = [
+        (additive, ['amps', 'harmonic_distribution', 'f0_hz']),
+        (noise, ['magnitudes']),
+        (add, ['noise/signal', 'additive/signal']),
+        (reverb, ['add/signal']),
+    ]
+    self.expected_outputs = [
+        'amps',
+        'harmonic_distribution',
+        'magnitudes',
+        'f0_hz',
+        'target_audio',
+        'additive/signal',
+        'additive/controls/amplitudes',
+        'additive/controls/harmonic_distribution',
+        'additive/controls/f0_hz',
+        'noise/signal',
+        'noise/controls/magnitudes',
+        'add/signal',
+        'reverb/signal',
+        'reverb/controls/ir',
+        'processor_group/signal',
+    ]
+
+  def _check_tensor_outputs(self, strings_to_check, outputs, processor_group):
+    for tensor_string in strings_to_check:
+      tensor = core.nested_lookup(tensor_string, outputs)
+      self.assertIsInstance(tensor, tf.Tensor)
+
+  def test_dag_construction(self):
+    """Tests if DAG is built properly and runs.
+    """
+    processor_group = processors.ProcessorGroup(dag=self.dag,
+                                                name='processor_group')
+    outputs = processor_group.get_outputs(self.nn_outputs)
+    self.assertIsInstance(outputs, dict)
+    self._check_tensor_outputs(self.expected_outputs, outputs, processor_group)
+
+
 class AddTest(tf.test.TestCase):
 
   def test_output_is_correct(self):
@@ -58,81 +123,6 @@ class MixTest(tf.test.TestCase):
     output = processor(x1, x2, mix_level)
 
     self.assertListEqual([2, 100, 3], output.shape.as_list())
-
-
-class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
-
-  def setUp(self):
-    """Create some dummy input data for the chain."""
-    super(ProcessorGroupTest, self).setUp()
-    # Create inputs.
-    self.n_batch = 4
-    self.n_frames = 1000
-    self.n_time = 64000
-    rand_signal = lambda ch: np.random.randn(self.n_batch, self.n_frames, ch)
-    nn_outputs = {
-        'amps': rand_signal(1),
-        'harmonic_distribution': rand_signal(99),
-        'magnitudes': rand_signal(256),
-        'f0_hz': 200 + rand_signal(1),
-        'target_audio': np.random.randn(self.n_batch, self.n_time)
-    }
-    self.nn_outputs = {k: core.f32(v) for k, v in nn_outputs.items()}
-
-    # Create Processors.
-    additive = synths.Additive(name='additive')
-    noise = synths.FilteredNoise(name='noise')
-    add = processors.Add(name='add')
-    reverb = effects.TrainableReverb(name='reverb')
-
-    # Create DAG for testing.
-    dag_tuple = [
-        (additive, ['amps', 'harmonic_distribution', 'f0_hz']),
-        (noise, ['magnitudes']),
-        (add, ['noise/signal', 'additive/signal']),
-        (reverb, ['add/signal']),
-    ]
-    dag_dict = [dict(processor=t[0], inputs=t[1]) for t in dag_tuple]
-    self.dags = {'dag_tuple': dag_tuple, 'dag_dict': dag_dict}
-
-    self.expected_outputs = [
-        'amps',
-        'harmonic_distribution',
-        'magnitudes',
-        'f0_hz',
-        'target_audio',
-        'additive/signal',
-        'additive/controls/amplitudes',
-        'additive/controls/harmonic_distribution',
-        'additive/controls/f0_hz',
-        'noise/signal',
-        'noise/controls/magnitudes',
-        'add/signal',
-        'reverb/signal',
-        'reverb/controls/ir',
-        'processor_group/signal',
-    ]
-
-  def _check_tensor_outputs(self, strings_to_check, outputs, processor_group):
-    for tensor_string in strings_to_check:
-      tensor = core.nested_lookup(tensor_string, outputs)
-      self.assertIsInstance(tensor, tf.Tensor)
-
-  @parameterized.named_parameters(
-      ('dag_tuple', 'dag_tuple'),
-      ('dag_dict', 'dag_dict'),
-  )
-  def test_dag_construction(self, dag_type):
-    """Tests if DAG is built properly and runs.
-
-    Args:
-      dag_type: Text name of the type of dag to construct with.
-    """
-    dag = self.dags[dag_type]
-    processor_group = processors.ProcessorGroup(dag=dag, name='processor_group')
-    outputs = processor_group.get_outputs(self.nn_outputs)
-    self.assertIsInstance(outputs, dict)
-    self._check_tensor_outputs(self.expected_outputs, outputs, processor_group)
 
 
 if __name__ == '__main__':

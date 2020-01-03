@@ -25,7 +25,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from typing import Dict, Mapping, Sequence, Tuple, Text, TypeVar, Union
+from typing import Dict, Sequence, Tuple, Text
 
 from absl import logging
 from ddsp import core
@@ -34,6 +34,7 @@ import tensorflow.compat.v1 as tf
 
 tfkl = tf.keras.layers
 
+# Define Types.
 TensorDict = Dict[Text, tf.Tensor]
 
 
@@ -74,11 +75,8 @@ class Processor(tfkl.Layer):
 
 
 # ProcessorGroup Class ---------------------------------------------------------
-
 # Define Types.
-NodeAsTuple = Tuple[Processor, Sequence[Text]]
-NodeAsDict = Mapping[Text, Union[Processor, Sequence[Text]]]
-Node = TypeVar('Node', NodeAsTuple, NodeAsDict)
+Node = Tuple[Processor, Sequence[Text]]
 DAG = Sequence[Node]
 
 
@@ -91,8 +89,7 @@ class ProcessorGroup(tfkl.Layer):
 
     Args:
       dag: A directed acyclical graph in the form of an iterable of tuples or
-        dictionaries. Tuples are intepreted as (processor, [inputs]), or
-        dictionaries need to be of the form {"processor": , "inputs": []}.
+        dictionaries. Tuples are intepreted as (processor, [inputs]).
         "Processor" should be an instance of a Processor() object. "Inputs" is
         an iterable of strings each of which is a nested dict key. For example,
         "synth_additive/controls/f0_hz" would correspond to the value
@@ -104,12 +101,8 @@ class ProcessorGroup(tfkl.Layer):
     """
     super(ProcessorGroup, self).__init__(name=name)
     self.dag = dag
-
     # Collect a list of processors.
-    self.processors = []
-    for node in self.dag:
-      processor, _ = self._parse_node(node)
-      self.processors.append(processor)
+    self.processors = [node[0] for node in self.dag]
 
   def call(self, *args: tf.Tensor, **kwargs: tf.Tensor) -> tf.Tensor:
     """Alias for get_signal()."""
@@ -137,7 +130,7 @@ class ProcessorGroup(tfkl.Layer):
     # Run through the DAG nodes in sequential order.
     for node in self.dag:
       # Get the node processor and keys to the node input.
-      processor, keys = self._parse_node(node)
+      processor, keys = node
 
       # Logging.
       logging.info('Connecting node (%s):', processor.name)
@@ -162,29 +155,6 @@ class ProcessorGroup(tfkl.Layer):
     logging.info('ProcessorGroup output node (%s)', output_name)
 
     return outputs
-
-  def _parse_node(self, node: Node) -> NodeAsTuple:
-    """Read a node in the DAG.
-
-    Args:
-      node: Node in the DAG.
-
-    Returns:
-      processor: The Processor of the node.
-      keys: List of nested key strings that are inputs to the node.
-
-    Raises:
-      ValueError: If node is not of type Node.
-    """
-    if isinstance(node, dict):
-      processor, keys = node['processor'], node['inputs']
-    elif isinstance(node, Sequence):
-      processor, keys = node
-    else:
-      raise ValueError('Nodes of the DAG must either have the form, '
-                       '(processor, [keys]), or '
-                       '{"processor": processor, "inputs": [keys]}.')
-    return processor, keys
 
 
 # Routing processors for manipulating signals in a processor_group -------------
