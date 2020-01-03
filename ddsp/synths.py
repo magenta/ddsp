@@ -117,12 +117,14 @@ class FilteredNoise(processors.Processor):
                window_size=257,
                amp_scale_fn=core.exp_sigmoid,
                noise_fade_fn=None,
+               initial_bias=-5.0,
                name='filtered_noise'):
     super(FilteredNoise, self).__init__(name=name)
     self.n_samples = n_samples
     self.window_size = window_size
     self.amp_scale_fn = amp_scale_fn
     self.noise_fade_fn = noise_fade_fn
+    self.initial_bias = initial_bias
 
   def get_controls(self, nn_outputs):
     """Convert network outputs into a dictionary of synthesizer controls.
@@ -136,7 +138,7 @@ class FilteredNoise(processors.Processor):
     """
     # Scale the magnitudes.
     if self.amp_scale_fn is not None:
-      magnitudes = self.amp_scale_fn(nn_outputs)
+      magnitudes = self.amp_scale_fn(nn_outputs + self.initial_bias)
     else:
       magnitudes = nn_outputs
     controls = {'magnitudes': magnitudes}
