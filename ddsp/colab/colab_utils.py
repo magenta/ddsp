@@ -198,8 +198,8 @@ def specplot(audio,
   if len(audio.shape) == 2:
     audio = audio[0]
 
-  logmag = ddsp.spectral_ops.calc_logmag(ddsp.core.tf_float32(audio),
-                                         size=size)
+  logmag = ddsp.spectral_ops.compute_logmag(ddsp.core.tf_float32(audio),
+                                            size=size)
   if sess is not None:
     logmag = sess.run(logmag)
 

@@ -76,63 +76,61 @@ class ProcessTaskBeamTest(absltest.TestCase):
         self.assertFalse(any(np.isinf(arr)))
 
   def test_prepare_tfrecord(self):
-    audio_rate = 16000
-    f0_and_loudness_rate = 250
+    sample_rate = 16000
+    frame_rate = 250
     window_secs = 1
     hop_secs = 0.5
     prepare_tfrecord_lib.prepare_tfrecord(
         [self.wav_path],
         os.path.join(self.test_dir, 'output.tfrecord'),
         num_shards=2,
-        audio_rate=audio_rate,
-        f0_and_loudness_rate=f0_and_loudness_rate,
-        window_size=window_secs * audio_rate,
-        hop_size=int(hop_secs * audio_rate))
+        sample_rate=sample_rate,
+        frame_rate=frame_rate,
+        window_size=window_secs * sample_rate,
+        hop_size=int(hop_secs * sample_rate))
 
-    expected_f0_and_loudness_length = window_secs * f0_and_loudness_rate
+    expected_f0_and_loudness_length = window_secs * frame_rate
     self.validate_outputs(
         4,
         {
-            'audio': window_secs * audio_rate,
-            'f0': expected_f0_and_loudness_length,
+            'audio': window_secs * sample_rate,
+            'f0_hz': expected_f0_and_loudness_length,
             'f0_confidence': expected_f0_and_loudness_length,
-            'loudness': expected_f0_and_loudness_length,
-            'loudness_uncentered': expected_f0_and_loudness_length,
+            'loudness_db': expected_f0_and_loudness_length,
         })
 
   def test_prepare_tfrecord_no_split(self):
-    audio_rate = 16000
-    f0_and_loudness_rate = 250
+    sample_rate = 16000
+    frame_rate = 250
     prepare_tfrecord_lib.prepare_tfrecord(
         [self.wav_path],
         os.path.join(self.test_dir, 'output.tfrecord'),
         num_shards=2,
-        audio_rate=audio_rate,
-        f0_and_loudness_rate=f0_and_loudness_rate,
+        sample_rate=sample_rate,
+        frame_rate=frame_rate,
         window_size=None)
 
-    expected_f0_and_loudness_length = self.wav_secs * f0_and_loudness_rate
+    expected_f0_and_loudness_length = self.wav_secs * frame_rate
     self.validate_outputs(
         1,
         {
-            'audio': self.wav_secs * audio_rate,
-            'f0': expected_f0_and_loudness_length,
+            'audio': self.wav_secs * sample_rate,
+            'f0_hz': expected_f0_and_loudness_length,
             'f0_confidence': expected_f0_and_loudness_length,
-            'loudness': expected_f0_and_loudness_length,
-            'loudness_uncentered': expected_f0_and_loudness_length,
+            'loudness_db': expected_f0_and_loudness_length,
         })
 
   def test_prepare_tfrecord_no_f0_and_loudness(self):
-    audio_rate = 16000
+    sample_rate = 16000
     prepare_tfrecord_lib.prepare_tfrecord(
         [self.wav_path],
         os.path.join(self.test_dir, 'output.tfrecord'),
         num_shards=2,
-        audio_rate=audio_rate,
-        f0_and_loudness_rate=None,
+        sample_rate=sample_rate,
+        frame_rate=None,
         window_size=None)
 
-    self.validate_outputs(1, {'audio': self.wav_secs * audio_rate})
+    self.validate_outputs(1, {'audio': self.wav_secs * sample_rate})
 
 if __name__ == '__main__':
   absltest.main()

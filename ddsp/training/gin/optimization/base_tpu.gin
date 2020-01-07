@@ -1,0 +1,6 @@
+# -*-Python-*-
+include 'optimization/base.gin'
+
+# Larger batch size for TPU.
+learning_rate = 1e-5
+batch_size = 128  # (4x2, 8 per a core)

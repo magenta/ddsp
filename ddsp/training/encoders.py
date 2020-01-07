@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ddsp
+from ddsp import spectral_ops
 from ddsp.training import nn
 import gin
 import numpy as np
@@ -44,13 +45,15 @@ class Encoder(tfkl.Layer):
   def call(self, conditioning):
     """Updates conditioning with z and (optionally) f0."""
     if self.f0_encoder:
-      # conditioning['f0'] is a value in [0, 1]
+      # Use frequency conditioning created by the f0_encoder, not the dataset.
+      # Overwrite `f0_scaled` and `f0_hz`. 'f0_scaled' is a value in [0, 1]
       # corresponding to midi values [0..127]
-      conditioning['f0'] = self.f0_encoder(conditioning)
-      conditioning['f0_hz'] = ddsp.core.midi_to_hz(conditioning['f0'] * 127.0)
+      conditioning['f0_scaled'] = self.f0_encoder(conditioning)
+      conditioning['f0_hz'] = ddsp.core.midi_to_hz(
+          conditioning['f0_scaled'] * 127.0)
 
     z = self.compute_z(conditioning)
-    time_steps = int(conditioning['f0'].shape[1])
+    time_steps = int(conditioning['f0_scaled'].shape[1])
     conditioning['z'] = self.expand_z(z, time_steps)
 
     return conditioning
@@ -118,7 +121,7 @@ class MfccTimeDistributedRnnEncoder(Encoder):
     self.dense_out = nn.dense(z_dims)
 
   def compute_z(self, conditioning):
-    mfccs = ddsp.spectral_ops.calc_mfcc(
+    mfccs = spectral_ops.compute_mfcc(
         conditioning['audio'],
         lo_hz=20.0,
         hi_hz=8000.0,
@@ -168,7 +171,7 @@ class ResnetF0Encoder(F0Encoder):
   def __init__(self,
                size='large',
                f0_bins=128,
-               spectral_fn=lambda x: ddsp.spectral_ops.calc_mag(x, size=1024),
+               spectral_fn=lambda x: spectral_ops.compute_mag(x, size=1024),
                name='resnet_f0_encoder'):
     super(ResnetF0Encoder, self).__init__(name=name)
     self.f0_bins = f0_bins
@@ -197,7 +200,7 @@ class ResnetF0Encoder(F0Encoder):
     f0 = self._compute_unit_midi(probs)
 
     # Make same time resolution as original CREPE f0.
-    n_timesteps = int(conditioning['f0'].shape[1])
+    n_timesteps = int(conditioning['f0_scaled'].shape[1])
     f0 = ddsp.core.resample(f0, n_timesteps)
     return f0
 

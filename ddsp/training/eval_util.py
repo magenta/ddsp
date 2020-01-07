@@ -26,8 +26,7 @@ import os
 import time
 
 from absl import logging
-import crepe
-import ddsp
+from ddsp import spectral_ops
 import gin
 import librosa
 import matplotlib.pyplot as plt
@@ -36,35 +35,8 @@ from scipy.io import wavfile
 import tensorflow.compat.v1 as tf
 
 # Global values for evaluation.
-AUDIO_CONFIG = {'n_fft': 2048, 'hop_length': 64, 'sample_rate': 16000}
 MIN_F0_CONFIDENCE = 0.85
 OUTLIER_MIDI_THRESH = 12
-MAX_MIDI_PITCH = 127
-
-# Mean and std for each eps calculated from 5000 samples.
-NSYNTH_EPS_CENTER_STATS = {
-    1e-1: {'mean': -1.4405, 'std': 0.9490},
-    1e-4: {'mean': -4.0599, 'std': 3.5105}
-}
-
-
-# ---------------------- midi2wave WaveRNN L1 Metrics -------------------------
-def _center_val(value, mean, std):
-  """Center value using mean and std."""
-  return (value - mean) / std
-
-
-def _log_scaling(value, eps):
-  """Log scaling using eps as noise floor.
-
-  Args:
-    value: input value
-    eps: "noise floor". 1e-4 expands quiet portions of signals
-
-  Returns:
-    log scaled value
-  """
-  return np.log(value + eps)
 
 
 def check_and_squeeze_to_vector(input_vector):
@@ -83,93 +55,20 @@ def l1_distance(prediction, ground_truth):
   return np.abs(prediction[:min_length] - ground_truth[:min_length])
 
 
-def mean_l1_loudness(prediction, ground_truth):
-  """Mean L1 loudness across a single sample."""
-  if prediction.shape != ground_truth.shape:
-    prediction, ground_truth = np.squeeze(prediction), np.squeeze(ground_truth)
-  dist = l1_distance(prediction, ground_truth)
-  return np.mean(dist)
-
-
-def compute_loudness(input_matrix,
-                     input_type,
-                     n_fft,
-                     hop_length,
-                     sr,
-                     eps=1e-4,
-                     center_data=True):
-  """Compute centered loudness.
-
-  Perceptual loudness is more representative of amplitude envelope than direct
-  calculation of RMS energy. Note that output is not normalized to 0 to 1 to
-  reduce effects of outliers.
-
-  Args:
-    input_matrix: audio or stft input
-    input_type: "audio" or "stft"
-    n_fft: number of fft bins
-    hop_length: hop length
-    sr: sample rate
-    eps: epsilon or "noise floor".
-    center_data: whether to center data using mean and std
-
-  Returns:
-    feature vector of shape [length]
-  """
-  if input_type == 'stft':
-    # use stft as is
-    stft = input_matrix
-  elif input_type == 'audio':
-    # compute stft from audio
-    stft = librosa.stft(input_matrix, n_fft=n_fft, hop_length=hop_length)
-  db_loudness = librosa.perceptual_weighting(
-      np.abs(stft)**2,
-      librosa.fft_frequencies(sr, n_fft),
-      ref=1.0,
-      amin=1e-15,
-      top_db=200.0)
-  loudness = np.mean(
-      librosa.db_to_amplitude(db_loudness),
-      axis=0)  # mean across freq in linear scale
-  loudness = _log_scaling(loudness, eps=eps)
-  if center_data:
-    loudness = _center_val(
-        loudness,
-        mean=NSYNTH_EPS_CENTER_STATS[eps]['mean'],
-        std=NSYNTH_EPS_CENTER_STATS[eps]['std'])
-  return loudness
-
-
-def compute_f0(audio, hop_length, sr, normalize_midi=True, viterbi=True):
-  """Use CREPE to predict f0 and f0_confidence."""
-  _, f0_hz, f0_confidence, _ = crepe.predict(
-      audio, sr, viterbi=viterbi, step_size=hop_length / sr * 1000, verbose=0)
-  f0 = librosa.core.hz_to_midi(f0_hz)
-  if normalize_midi:
-    f0 /= MAX_MIDI_PITCH
-  # Set -infs introduced by hz_to_midi to 0.
-  f0[f0 == -np.inf] = 0
-  # Set nans to 0 in confidence.
-  f0_confidence = np.nan_to_num(f0_confidence)
-  return f0, f0_confidence
-
-
-def compute_audio_features(audio, audio_config=None):
+def compute_audio_features(audio,
+                           n_fft=2048,
+                           sample_rate=16000,
+                           frame_rate=250):
   """Compute features from audio."""
-  if audio_config is None:
-    audio_config = AUDIO_CONFIG
   audio_feats = {'audio': audio}
   audio = check_and_squeeze_to_vector(audio)
-  audio_feats['loudness'] = compute_loudness(audio, 'audio',
-                                             audio_config['n_fft'],
-                                             audio_config['hop_length'],
-                                             audio_config['sample_rate'])
 
-  audio_feats['f0'], audio_feats['f0_confidence'] = compute_f0(
-      audio,
-      audio_config['hop_length'],
-      audio_config['sample_rate'],
-      normalize_midi=True)
+  audio_feats['loudness_db'] = spectral_ops.compute_loudness(
+      audio, sample_rate, frame_rate, n_fft)
+
+  audio_feats['f0_hz'], audio_feats['f0_confidence'] = spectral_ops.compute_f0(
+      audio, sample_rate, frame_rate)
+
   return audio_feats
 
 
@@ -216,18 +115,23 @@ def f0_dist_conf_thresh(gen_f0,
   """
 
   if np.max(gen_f0_confidence) < f0_confidence_thresh:
-    # Generated audio is not good enough for reliable pitch tracking
+    # Generated audio is not good enough for reliable pitch tracking.
     return None
   else:
     keep_mask = ground_truth_f0_confidence >= f0_confidence_thresh
 
-    delta_f0 = l1_distance(gen_f0, ground_truth_f0)
-    delta_f0_filt = delta_f0[keep_mask]
-    delta_f0_mean = np.mean(delta_f0_filt)
-    # Report mean error in midi space for easier interpretation
-    delta_f0_mean = delta_f0_mean * MAX_MIDI_PITCH
+    # Report mean error in midi space for easier interpretation.
+    gen_f0_midi = librosa.core.hz_to_midi(gen_f0)
+    ground_truth_f0_midi = librosa.core.hz_to_midi(ground_truth_f0)
+    # Set -infs introduced by hz_to_midi to 0.
+    gen_f0_midi[gen_f0_midi == -np.inf] = 0
+    ground_truth_f0_midi[ground_truth_f0_midi == -np.inf] = 0
 
-  return delta_f0_mean
+    delta_f0_midi = l1_distance(gen_f0_midi, ground_truth_f0_midi)
+    delta_f0_midi_filt = delta_f0_midi[keep_mask]
+    delta_f0_midi_mean = np.mean(delta_f0_midi_filt)
+
+  return delta_f0_midi_mean
 
 
 # ---------------------- WAV files --------------------------------------------
@@ -247,7 +151,7 @@ def spectrogram(audio, sess=None, rotate=False, size=2048):
   if sess is None:
     sess = tf.Session()
   mag = sess.run(
-      ddsp.spectral_ops.calc_logmag(
+      spectral_ops.compute_logmag(
           tf.convert_to_tensor(audio, tf.float32), size=size))
   if rotate:
     mag = np.rot90(mag)
@@ -256,7 +160,7 @@ def spectrogram(audio, sess=None, rotate=False, size=2048):
 
 # ---------------------- Summary Writers --------------------------------------
 class Writer(object):
-  """Base Class for writing tensorboard summaries for RT Nsynth dataset."""
+  """Base Class for writing tensorboard summaries dataset."""
 
   def __init__(self, batch_size, summary_dir, global_step, verbose=True):
     """Initializes the result writer."""
@@ -316,7 +220,7 @@ class MetricsWriter(Writer):
 
   def _compute_ld_dist_and_update_counts(self, gen_ld, ground_truth_ld):
     metrics_d = self._metrics_dict
-    ld_dist = mean_l1_loudness(gen_ld, ground_truth_ld)
+    ld_dist = np.mean(l1_distance(gen_ld, ground_truth_ld))
     metrics_d['ld_dist_sum'] += ld_dist
     metrics_d['ld_count'] += 1
     return ld_dist
@@ -422,11 +326,12 @@ class MetricsWriter(Writer):
       gen_feats = compute_audio_features(gen_audio)
 
       ld_dist = self._compute_ld_dist_and_update_counts(
-          gen_feats['loudness'], ground_truth_feats['loudness'][sample_idx])
+          gen_feats['loudness_db'],
+          ground_truth_feats['loudness_db'][sample_idx])
 
       f0_dist = self._compute_f0_dist_and_update_counts(
-          gen_feats['f0'], gen_feats['f0_confidence'],
-          ground_truth_feats['f0'][sample_idx],
+          gen_feats['f0_hz'], gen_feats['f0_confidence'],
+          ground_truth_feats['f0_hz'][sample_idx],
           ground_truth_feats['f0_confidence'][sample_idx])
 
       if self._verbose:
@@ -487,7 +392,7 @@ class MetricsWriter(Writer):
     logging.info('Wrote metric summaries for step %s to %s', self._global_step,
                  self._summary_dir)
 
-    crepe.reset()  # Reset CREPE global state
+    spectral_ops.reset_crepe()  # Reset CREPE global state
 
 
 class WaveformImageWriter(Writer):
@@ -712,35 +617,35 @@ def evaluate_or_sample(data_provider,
 
     global_step = int(checkpoint.split('-')[-1])
 
-    writers = []
+    writers_list = []
 
     if mode == 'eval':
-      writers.append(
+      writers_list.append(
           MetricsWriter(
               batch_size=batch_size,
               summary_dir=base_summary_dir,
               global_step=global_step))
 
     elif mode == 'sample':
-      writers.append(
+      writers_list.append(
           SpectrogramImageWriter(
               batch_size=batch_size,
               summary_dir=base_summary_dir,
               global_step=global_step))
 
-      writers.append(
+      writers_list.append(
           WaveformImageWriter(
               batch_size=batch_size,
               summary_dir=base_summary_dir,
               global_step=global_step))
 
-      writers.append(
+      writers_list.append(
           AudioWriter(
               batch_size=batch_size,
               summary_dir=base_summary_dir,
               global_step=global_step))
 
-    nsynth_writers = Writers(writers)
+    writers = Writers(writers_list)
 
     # Setup session.
     sess = tf.Session(target=master)
@@ -758,8 +663,7 @@ def evaluate_or_sample(data_provider,
             (predictions['audio_gen'], features_tf, tensor_dict_tf))
         logging.info('Prediction took %.1f seconds', time.time() - start_time)
 
-        nsynth_writers.update(
-            audio_gen, ground_truth_feats, tensor_dict=tensor_dict)
+        writers.update(audio_gen, ground_truth_feats, tensor_dict=tensor_dict)
         logging.info('Batch index %i with size %i took %.1f seconds', batch_idx,
                      batch_size,
                      time.time() - start_time)
@@ -768,7 +672,7 @@ def evaluate_or_sample(data_provider,
         logging.info('End of dataset.')
         break
 
-    nsynth_writers.flush()
+    writers.flush()
 
     if run_once:
       break
@@ -797,16 +701,17 @@ def evaluate(data_provider,
     ckpt_delay_secs: Time to wait when a new checkpoint was not detected.
     run_once: Only run evaluation or sampling once.
   """
-  evaluate_or_sample(data_provider=data_provider,
-                     model=model,
-                     mode='eval',
-                     model_dir=model_dir,
-                     master=master,
-                     batch_size=batch_size,
-                     num_batches=num_batches,
-                     keys_to_fetch=keys_to_fetch,
-                     ckpt_delay_secs=ckpt_delay_secs,
-                     run_once=run_once)
+  evaluate_or_sample(
+      data_provider=data_provider,
+      model=model,
+      mode='eval',
+      model_dir=model_dir,
+      master=master,
+      batch_size=batch_size,
+      num_batches=num_batches,
+      keys_to_fetch=keys_to_fetch,
+      ckpt_delay_secs=ckpt_delay_secs,
+      run_once=run_once)
 
 
 @gin.configurable
@@ -832,13 +737,14 @@ def sample(data_provider,
     ckpt_delay_secs: Time to wait when a new checkpoint was not detected.
     run_once: Only run evaluation or sampling once.
   """
-  evaluate_or_sample(data_provider=data_provider,
-                     model=model,
-                     mode='sample',
-                     model_dir=model_dir,
-                     master=master,
-                     batch_size=batch_size,
-                     num_batches=num_batches,
-                     keys_to_fetch=keys_to_fetch,
-                     ckpt_delay_secs=ckpt_delay_secs,
-                     run_once=run_once)
+  evaluate_or_sample(
+      data_provider=data_provider,
+      model=model,
+      mode='sample',
+      model_dir=model_dir,
+      master=master,
+      batch_size=batch_size,
+      num_batches=num_batches,
+      keys_to_fetch=keys_to_fetch,
+      ckpt_delay_secs=ckpt_delay_secs,
+      run_once=run_once)

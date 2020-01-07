@@ -80,15 +80,16 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_enum('mode', 'train', ['train', 'eval', 'sample'],
                   'Whether to train, evaluate, or sample from the model.')
-flags.DEFINE_string('model_dir', '~/tmp/ddsp',
-                    'Path where checkpoints and summary events will be located '
-                    'during training and evaluation.')
+flags.DEFINE_string(
+    'model_dir', '~/tmp/ddsp',
+    'Path where checkpoints and summary events will be located '
+    'during training and evaluation.')
 flags.DEFINE_string('master', '', 'Name of the TensorFlow runtime to use.')
 flags.DEFINE_boolean('use_tpu', False, 'Whether training will happen on a TPU.')
 
 # Gin config flags.
-flags.DEFINE_multi_string(
-    'gin_search_path', [], 'Additional gin file search paths.')
+flags.DEFINE_multi_string('gin_search_path', [],
+                          'Additional gin file search paths.')
 flags.DEFINE_multi_string('gin_file', [], 'List of paths to the config files.')
 flags.DEFINE_multi_string('gin_param', [],
                           'Newline separated list of Gin parameter bindings.')
@@ -122,18 +123,20 @@ def parse_gin(model_dir):
   # Parse gin configs, later calls override earlier ones.
   with gin.unlock_config():
     # Optimization defaults.
-    opt_default = 'default_tpu.gin' if FLAGS.use_tpu else 'default_gpu.gin'
+    opt_default = 'base_tpu.gin' if FLAGS.use_tpu else 'base.gin'
     gin.parse_config_file(os.path.join('optimization', opt_default))
 
     # Load operative_config if it exists (model has already trained).
     operative_config = os.path.join(model_dir, 'operative_config-0.gin')
     if tf.gfile.Exists(operative_config):
-      gin.parse_config_file(operative_config)
+      gin.parse_config_file(operative_config, skip_unknown=True)
+
+    # Only use the custom cumsum for TPUs.
+    gin.parse_config('ddsp.core.cumsum.use_tpu={}'.format(FLAGS.use_tpu))
 
     # User gin config and user hyperparameters from flags.
-    gin.parse_config_files_and_bindings(FLAGS.gin_file,
-                                        FLAGS.gin_param,
-                                        skip_unknown=True)
+    gin.parse_config_files_and_bindings(
+        FLAGS.gin_file, FLAGS.gin_param, skip_unknown=True)
 
 
 def run():
@@ -144,30 +147,33 @@ def run():
 
   # Training.
   if FLAGS.mode == 'train':
-    train_util.train(data_provider=gin.REQUIRED,
-                     model=model,
-                     model_dir=model_dir,
-                     num_steps=FLAGS.num_train_steps,
-                     master=FLAGS.master,
-                     use_tpu=FLAGS.use_tpu)
+    train_util.train(
+        data_provider=gin.REQUIRED,
+        model=model,
+        model_dir=model_dir,
+        num_steps=FLAGS.num_train_steps,
+        master=FLAGS.master,
+        use_tpu=FLAGS.use_tpu)
 
   # Evaluation.
   elif FLAGS.mode == 'eval':
     delay_start()
-    eval_util.evaluate(data_provider=gin.REQUIRED,
-                       model=model,
-                       model_dir=model_dir,
-                       master=FLAGS.master,
-                       run_once=FLAGS.eval_once)
+    eval_util.evaluate(
+        data_provider=gin.REQUIRED,
+        model=model,
+        model_dir=model_dir,
+        master=FLAGS.master,
+        run_once=FLAGS.eval_once)
 
   # Sampling.
   elif FLAGS.mode == 'sample':
     delay_start()
-    eval_util.sample(data_provider=gin.REQUIRED,
-                     model=model,
-                     model_dir=model_dir,
-                     master=FLAGS.master,
-                     run_once=FLAGS.eval_once)
+    eval_util.sample(
+        data_provider=gin.REQUIRED,
+        model=model,
+        model_dir=model_dir,
+        master=FLAGS.master,
+        run_once=FLAGS.eval_once)
 
 
 def main(unused_argv):

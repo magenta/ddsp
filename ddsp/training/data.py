@@ -77,13 +77,14 @@ class DataProvider(object):
         as its first argument, with key 'batch_size', and returns a dataset
         that has a tuple of examples for each entry.
     """
+    map_fn = lambda ex: (ex, ex)
 
     def input_fn(params):
       batch_size = params['batch_size']
       dataset = self.get_batch(
           batch_size=batch_size, shuffle=shuffle, repeats=repeats)
-      dataset = dataset.map(
-          lambda ex: (ex, ex), num_parallel_calls=tf.data.experimental.AUTOTUNE)
+      dataset = dataset.map(map_fn,
+                            num_parallel_calls=tf.data.experimental.AUTOTUNE)
       return dataset
 
     return input_fn
@@ -122,6 +123,56 @@ class TfdsProvider(DataProvider):
         download=False)
 
 
+@gin.register
+class NSynthTfds(TfdsProvider):
+  """Parses features in the TFDS NSynth dataset.
+
+  If running on Cloud, it is recommended you set `data_dir` to
+  'gs://tfds-data/datasets' to avoid unnecessary downloads.
+  """
+
+  def __init__(self,
+               name='nsynth/gansynth_subset.f0_and_loudness:2.3.0',
+               split='train',
+               data_dir='gs://tfds-data/datasets'):
+    """TfdsProvider constructor.
+
+    Args:
+      name: TFDS dataset name (with optional config and version).
+      split: Dataset split to use of the TFDS dataset.
+      data_dir: The directory to read the prepared NSynth dataset from. Defaults
+        to the public TFDS GCS bucket.
+    """
+    if data_dir == 'gs://tfds-data/datasets':
+      logging.warning(
+          'Using public TFDS GCS bucket to load NSynth. If not running on '
+          'GCP, this will be very slow, and it is recommended you prepare '
+          'the dataset locally with TFDS and set the data_dir appropriately.')
+    super(NSynthTfds, self).__init__(name, split, data_dir)
+
+  def get_preprocess_fn(self):
+    def preprocess_ex(ex):
+      return {
+          'pitch':
+              ex['pitch'],
+          'audio':
+              ex['audio'],
+          'instrument_source':
+              ex['instrument']['source'],
+          'instrument_family':
+              ex['instrument']['family'],
+          'instrument':
+              ex['instrument']['label'],
+          'f0_hz':
+              ex['f0']['hz'],
+          'f0_confidence':
+              ex['f0']['confidence'],
+          'loudness_db':
+              ex['loudness']['db'],
+      }
+    return preprocess_ex
+
+
 class TFRecordProvider(DataProvider):
   """Base class for reading files and returning a dataset."""
 
@@ -136,33 +187,6 @@ class TFRecordProvider(DataProvider):
         'You must pass a "file_pattern" argument to the constructor or '
         'choose a FileDataProvider with a default_file_pattern.')
 
-  @property
-  def features_dict(self):
-    """Dictionary of features to read from dataset."""
-    return {
-        'audio': tf.FixedLenFeature([None], dtype=tf.float32),
-        'f0': tf.FixedLenFeature([None], dtype=tf.float32),
-        'f0_confidence': tf.FixedLenFeature([None], dtype=tf.float32),
-        'loudness': tf.FixedLenFeature([None], dtype=tf.float32),
-    }
-
-  @property
-  def file_reader(self):
-    """Which type of dataset from which to read."""
-    return tf.data.TFRecordDataset
-
-  def get_preprocess_fn(self):
-
-    def parse_tfexample(*args):
-      """Only parse the tf.Example string."""
-      if len(args) == 2:
-        record = args[1]
-      else:
-        record = args
-      return tf.parse_single_example(record, self.features_dict)
-
-    return parse_tfexample
-
   def get_dataset(self, shuffle=True):
     """Read dataset.
 
@@ -174,84 +198,26 @@ class TFRecordProvider(DataProvider):
     """
     filenames = tf.data.Dataset.list_files(self.file_pattern, shuffle=shuffle)
     dataset = filenames.interleave(
-        map_func=self.file_reader,
+        map_func=tf.data.TFRecordDataset,
         cycle_length=40,
         num_parallel_calls=tf.data.experimental.AUTOTUNE)
     return dataset
 
-
-# ---------- Different Dataset Types -------------------------------------------
-@gin.register
-class NSynthTfds(TfdsProvider):
-  """Parses features in the TFDS NSynth dataset.
-
-  If running on Cloud, it is recommended you set `data_dir` to
-  'gs://tfds-data/datasets' to avoid unnecessary downloads.
-  """
-
-  def __init__(self,
-               name='nsynth/gansynth_subset.f0_and_loudness:2.2.0',
-               split='train',
-               data_dir='gs://tfds-data/datasets'):
-    """TfdsProvider constructor.
-
-    Args:
-      name: TFDS dataset name (with optional config and version).
-      split: Dataset split to use of the TFDS dataset.
-      data_dir: The directory to read the prepared NSynth dataset from. Defaults
-        to the public TFDS GCS bucket.
-    """
-    if data_dir == 'gs://tfds-data/datasets':
-      logging.warning(
-          'Using public TFDS GCS bucket to load NSynth. If not running on '
-          'cloud, this will be very slow, and it is recommended you prepare '
-          'the dataset locally with TFDS and set the data_dir appropriately.')
-    super(NSynthTfds, self).__init__(name, split, data_dir)
-
   def get_preprocess_fn(self):
-    loudness_stats = tfds.builder(self.name).info.metadata
-
-    def preprocess_ex(ex):
-      return {
-          'pitch':
-              ex['pitch'],
-          'audio':
-              ex['audio'],
-          'instrument_source':
-              ex['instrument']['source'],
-          'instrument_family':
-              ex['instrument']['family'],
-          'instrument':
-              ex['instrument']['label'],
-          'f0':
-              ex['f0']['hz'],
-          'f0_confidence':
-              ex['f0']['confidence'],
-          'loudness': (
-              (ex['loudness']['db'] - loudness_stats['loudness_db_mean']) /
-              tf.math.sqrt(loudness_stats['loudness_db_variance'])),
-      }
-
-    return preprocess_ex
-
-
-@gin.register
-class NSynthTFRecord(TFRecordProvider):
-  """Parses features in the TFRecord NSynth dataset."""
+    def parse_tfexample(*args):
+      """Only parse the tf.Example string."""
+      record = args[-1]
+      return tf.parse_single_example(record, self.features_dict)
+    return parse_tfexample
 
   @property
   def features_dict(self):
+    """Dictionary of features to read from dataset."""
     return {
-        'pitch': tf.FixedLenFeature([1], dtype=tf.int64),
-        'audio': tf.FixedLenFeature([64000], dtype=tf.float32),
-        'qualities': tf.FixedLenFeature([10], dtype=tf.int64),
-        'instrument_source': tf.FixedLenFeature([1], dtype=tf.int64),
-        'instrument_family': tf.FixedLenFeature([1], dtype=tf.int64),
-        'instrument': tf.FixedLenFeature([1], dtype=tf.int64),
-        'f0': tf.FixedLenFeature([1001], dtype=tf.float32),
-        'f0_confidence': tf.FixedLenFeature([1001], dtype=tf.float32),
-        'loudness': tf.FixedLenFeature([1001], dtype=tf.float32),
-        'harmonicity': tf.FixedLenFeature([1001], dtype=tf.float32),
+        'audio': tf.FixedLenFeature([None], dtype=tf.float32),
+        'f0_hz': tf.FixedLenFeature([None], dtype=tf.float32),
+        'f0_confidence': tf.FixedLenFeature([None], dtype=tf.float32),
+        'loudness_db': tf.FixedLenFeature([None], dtype=tf.float32),
     }
 
 
@@ -263,9 +229,9 @@ class SoloInstrument(TFRecordProvider):
   def features_dict(self):
     return {
         'audio': tf.FixedLenFeature([64000], dtype=tf.float32),
-        'f0': tf.FixedLenFeature([1001], dtype=tf.float32),
-        'f0_confidence': tf.FixedLenFeature([1001], dtype=tf.float32),
-        'loudness': tf.FixedLenFeature([1001], dtype=tf.float32),
+        'f0_hz': tf.FixedLenFeature([1000], dtype=tf.float32),
+        'f0_confidence': tf.FixedLenFeature([1000], dtype=tf.float32),
+        'loudness_db': tf.FixedLenFeature([1000], dtype=tf.float32),
     }
 
 

@@ -101,7 +101,7 @@ class SpectralLoss(Loss):
     diff = spectral_ops.diff
 
     for size in self.fft_sizes:
-      loss_op = functools.partial(spectral_ops.calc_mag, size=size)
+      loss_op = functools.partial(spectral_ops.compute_mag, size=size)
       loss_ops.append(loss_op)
 
     # Compute loss for each fft size.
@@ -146,10 +146,8 @@ class SpectralLoss(Loss):
                                                      self.loss_type)
 
     if self.loudness_weight > 0:
-      target = spectral_ops.calc_loudness(
-          target_audio, n_fft=2048, top_db=200.0)
-      value = spectral_ops.calc_loudness(
-          audio, n_fft=2048, top_db=200.0)
+      target = spectral_ops.compute_loudness(target_audio, n_fft=2048)
+      value = spectral_ops.compute_loudness(audio, n_fft=2048)
       loss += self.loudness_weight * mean_difference(target, value,
                                                      self.loss_type)
 

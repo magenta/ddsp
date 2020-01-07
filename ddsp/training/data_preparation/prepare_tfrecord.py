@@ -27,7 +27,6 @@ ddsp_prepare_tfrecord \
 
 from __future__ import absolute_import
 from __future__ import division
-from __future__ import google_type_annotations
 from __future__ import print_function
 
 from absl import app
@@ -49,11 +48,11 @@ flags.DEFINE_integer(
     'The number of shards to use for the TFRecord. If None, this number will '
     'be determined automatically.')
 flags.DEFINE_integer(
-    'audio_rate', 16000,
-    'The sample to rate to use for the audio.')
+    'sample_rate', 16000,
+    'The sample rate to use for the audio.')
 flags.DEFINE_integer(
-    'f0_and_loudness_rate', 250,
-    'The sample rate to use for f0 and loudness features. If set to 0, '
+    'frame_rate', 250,
+    'The frame rate to use for f0 and loudness features. If set to 0, '
     'these features will not be computed.')
 flags.DEFINE_float(
     'example_secs', 4,
@@ -79,10 +78,10 @@ def run():
       input_audio_paths,
       FLAGS.output_tfrecord_path,
       num_shards=FLAGS.num_shards,
-      audio_rate=FLAGS.audio_rate,
-      f0_and_loudness_rate=FLAGS.f0_and_loudness_rate,
-      window_size=int(FLAGS.example_secs*FLAGS.audio_rate),
-      hop_size=int(FLAGS.sliding_window_hop_secs*FLAGS.audio_rate),
+      sample_rate=FLAGS.sample_rate,
+      frame_rate=FLAGS.frame_rate,
+      window_size=int(FLAGS.example_secs*FLAGS.sample_rate),
+      hop_size=int(FLAGS.sliding_window_hop_secs*FLAGS.sample_rate),
       pipeline_options=FLAGS.pipeline_options)
 
 

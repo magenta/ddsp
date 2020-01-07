@@ -1,4 +1,5 @@
 # -*-Python-*-
+import ddsp
 import ddsp.training
 
 # Globals for easier configuration with --gin_param

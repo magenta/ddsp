@@ -82,7 +82,9 @@ class ZRnnFcDecoder(Decoder):
     self.dense_out = nn.dense(self.n_out)
 
   def decode(self, conditioning):
-    f, l, z = conditioning['f0'], conditioning['loudness'], conditioning['z']
+    f, l, z = (conditioning['f0_scaled'],
+               conditioning['ld_scaled'],
+               conditioning['z'])
 
     # Initial processing.
     f = self.f_stack(f)
@@ -121,7 +123,7 @@ class RnnFcDecoder(Decoder):
     self.dense_out = nn.dense(self.n_out)
 
   def decode(self, conditioning):
-    f, l = conditioning['f0'], conditioning['loudness']
+    f, l = conditioning['f0_scaled'], conditioning['ld_scaled']
 
     # Initial processing.
     f = self.f_stack(f)

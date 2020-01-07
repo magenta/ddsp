@@ -23,25 +23,22 @@ import tempfile
 
 from absl import logging
 import apache_beam as beam
-import crepe
-from ddsp.spectral_ops import calc_loudness
+from ddsp.spectral_ops import compute_f0
+from ddsp.spectral_ops import compute_loudness
 import librosa
 import numpy as np
 import tensorflow.compat.v1 as tf
 
 
-_CREPE_SAMPLE_RATE = 16000
-_CREPE_FRAME_SIZE = 1024
-
 
 def _load_and_split_audio(
-    audio_path, audio_rate, window_size, hop_size, pad_end=True):
+    audio_path, sample_rate, window_size, hop_size, pad_end=True):
   """Load and split audio file with sliding window."""
   logging.info("Loading and splitting '%s'.", audio_path)
   beam.metrics.Metrics.counter('prepare-tfrecord', 'load-audio').inc()
   with tempfile.NamedTemporaryFile(suffix='.wav') as f:
     tf.io.gfile.copy(audio_path, f.name, overwrite=True)
-    audio, _ = librosa.load(f.name, sr=audio_rate)
+    audio, _ = librosa.load(f.name, sr=sample_rate)
 
   window_size = window_size or len(audio)
   if pad_end:
@@ -54,62 +51,27 @@ def _load_and_split_audio(
     yield {'audio': audio[window_end-window_size:window_end]}
 
 
-def _add_loudness(ex, audio_rate, loudness_rate):
-  """Add uncenetered loudness."""
+def _add_loudness(ex, sample_rate, frame_rate, n_fft=2048):
+  """Add loudness in dB."""
   beam.metrics.Metrics.counter('prepare-tfrecord', 'compute-loudness').inc()
-  with tf.Session() as sess:
-    mean_loudness_db = sess.run(
-        calc_loudness(ex['audio'], hop_size=audio_rate//loudness_rate)[0])
-
+  audio = ex['audio']
+  mean_loudness_db = compute_loudness(audio, sample_rate, frame_rate, n_fft)
   ex = dict(ex)
-  ex['loudness_uncentered'] = mean_loudness_db.astype(np.float32)
+  ex['loudness_db'] = mean_loudness_db.astype(np.float32)
   return ex
 
 
-def _add_f0_estimate(ex, audio_rate, f0_rate):
+def _add_f0_estimate(ex, sample_rate, frame_rate):
   """Add fundamental frequency (f0) estimate using CREPE."""
   beam.metrics.Metrics.counter('prepare-tfrecord', 'estimate-f0').inc()
   audio = ex['audio']
-
-  # Pad end so that `n_frames = n_sec * f0_rate`.
-  # We compute this using the CREPE model's sample rate and then convert back to
-  # our sample rate.
-  n_secs = len(audio) / audio_rate
-  n_samples = n_secs * _CREPE_SAMPLE_RATE
-  hop_size = audio_rate / f0_rate
-  frame_size = _CREPE_FRAME_SIZE
-  n_frames = np.ceil(n_secs * f0_rate)
-  n_samples_padded = (n_frames - 1) * hop_size + frame_size
-  n_padding = (n_samples_padded - n_samples) * audio_rate / _CREPE_SAMPLE_RATE
-  assert n_padding % 1 == 0
-  audio = np.pad(audio, (0, int(n_padding)), mode='constant')
-
-  _, f0_hz, f0_confidence, _ = crepe.predict(
-      audio,
-      sr=audio_rate,
-      viterbi=True,
-      step_size=1000/f0_rate,
-      center=False,
-      verbose=0)
-  f0_midi = librosa.core.hz_to_midi(f0_hz)
-  # Set -infs introduced by hz_to_midi to 0.
-  f0_midi[f0_midi == -np.inf] = 0
-  # Set nans to 0 in confidence.
-  f0_confidence = np.nan_to_num(f0_confidence)
+  f0_hz, f0_confidence = compute_f0(audio, sample_rate, frame_rate)
   ex = dict(ex)
   ex.update({
-      'f0': f0_hz.astype(np.float32),
+      'f0_hz': f0_hz.astype(np.float32),
       'f0_confidence': f0_confidence.astype(np.float32)
   })
   return ex
-
-
-def _add_centered_loudness(features, ld_mean, ld_variance):
-  """Compute centered loudness feature."""
-  features = dict(features)
-  features['loudness'] = (
-      features['loudness_uncentered'] - ld_mean / np.sqrt(ld_variance))
-  return features
 
 
 def _float_dict_to_tfexample(float_dict):
@@ -127,8 +89,8 @@ def prepare_tfrecord(
     input_audio_paths,
     output_tfrecord_path,
     num_shards=None,
-    audio_rate=16000,
-    f0_and_loudness_rate=250,
+    sample_rate=16000,
+    frame_rate=250,
     window_size=16000*4,
     hop_size=16000,
     pipeline_options=''):
@@ -141,8 +103,8 @@ def prepare_tfrecord(
       will be added to actual path(s).
     num_shards: The number of shards to use for the TFRecord. If None, this
       number will be determined automatically.
-    audio_rate: The sample rate to use for the audio.
-    f0_and_loudness_rate: The sample rate to use for f0 and loudness features.
+    sample_rate: The sample rate to use for the audio.
+    frame_rate: The frame rate to use for f0 and loudness features.
       If set to None, these features will not be computed.
     window_size: The size of the sliding window (in audio samples) to use to
       split the input audio. If None, the audio will not be split.
@@ -158,32 +120,15 @@ def prepare_tfrecord(
         pipeline
         | beam.Create(input_audio_paths)
         | beam.FlatMap(_load_and_split_audio,
-                       audio_rate=audio_rate,
+                       sample_rate=sample_rate,
                        window_size=window_size,
                        hop_size=hop_size))
-    if f0_and_loudness_rate:
+    if frame_rate:
       examples = (
           examples
-          | beam.Map(_add_f0_estimate, audio_rate, f0_and_loudness_rate)
-          | beam.Map(_add_loudness, audio_rate, f0_and_loudness_rate))
+          | beam.Map(_add_f0_estimate, sample_rate, frame_rate)
+          | beam.Map(_add_loudness, sample_rate, frame_rate))
 
-      # Compute centered loudness.
-      loudness = (
-          examples
-          | beam.FlatMap(lambda x: x['loudness_uncentered']))
-      loudness_mean = (
-          loudness
-          | 'loudness_mean' >> beam.combiners.Mean.Globally())
-      loudness_variance = (
-          loudness
-          | beam.Map(lambda ld, ld_mean: (ld - ld_mean)**2,
-                     ld_mean=beam.pvalue.AsSingleton(loudness_mean))
-          | 'loudness_variance' >> beam.combiners.Mean.Globally())
-      examples = (
-          examples
-          | beam.Map(_add_centered_loudness,
-                     ld_mean=beam.pvalue.AsSingleton(loudness_mean),
-                     ld_variance=beam.pvalue.AsSingleton(loudness_variance)))
     _ = (
         examples
         | beam.Reshuffle()

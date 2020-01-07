@@ -1,7 +1,7 @@
 # -*-Python-*-
 include 'datasets/base.gin'
 
-# Dataset (Different scopes to pass different args to same object)
+# Dataset (Different scopes to pass different args to different instances)
 train.data_provider = @train_data/data.NSynthTfds()
 train_data/NSynthTfds.split = 'train'
 

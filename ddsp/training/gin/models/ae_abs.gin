@@ -11,13 +11,13 @@ ResnetF0Encoder.size = 'small'
 ResnetF0Encoder.f0_bins = 256
 
 # FFT input parameters from onsets and frames transcription experiments.
-ResnetF0Encoder.spectral_fn = @f0_spectral/spectral_ops.calc_logmel
-f0_spectral/calc_logmel.lo_hz = 0.0
-f0_spectral/calc_logmel.hi_hz = 8000.0
-f0_spectral/calc_logmel.bins = 229
-f0_spectral/calc_logmel.fft_size = 2048
-f0_spectral/calc_logmel.overlap = 0.75
-f0_spectral/calc_logmel.pad_end = True
+ResnetF0Encoder.spectral_fn = @f0_spectral/spectral_ops.compute_logmel
+f0_spectral/compute_logmel.lo_hz = 0.0
+f0_spectral/compute_logmel.hi_hz = 8000.0
+f0_spectral/compute_logmel.bins = 229
+f0_spectral/compute_logmel.fft_size = 2048
+f0_spectral/compute_logmel.overlap = 0.75
+f0_spectral/compute_logmel.pad_end = True
 
 # Add perceptual loss
 Autoencoder.losses = [

@@ -24,9 +24,13 @@ import ddsp
 import gin
 import tensorflow.compat.v1 as tf
 
+hz_to_midi = ddsp.core.hz_to_midi
+F0_RANGE = ddsp.spectral_ops.F0_RANGE
+LD_RANGE = ddsp.spectral_ops.LD_RANGE
+
 
 # ---------------------- Preprocess Helpers ------------------------------------
-def add_channel_dim(x):
+def at_least_3d(x):
   """Adds a channel dimension."""
   return x[:, :, tf.newaxis] if len(x.shape) == 2 else x
 
@@ -39,25 +43,6 @@ class Preprocessor(object):
     pass
 
   def __call__(self, features, training=True):
-    return self.get_outputs(features, training)
-
-  def _apply(self, conditioning, keys, fn, **kwargs):
-    """Apply preprocessing function `fn` to specific keys.
-
-    Args:
-      conditioning:  dict of features
-      keys: key in `conditioning` dict to apply preprocessing function `fn`
-      fn: preprocessing function
-      **kwargs: arguments specific to defined `fn`
-
-    Returns:
-      conditioning: dict of transformed features
-    """
-    for k in keys:
-      conditioning[k] = fn(conditioning[k], **kwargs)
-    return conditioning
-
-  def get_outputs(self, features, training):
     """Get outputs after preprocessing functions.
 
     Args:
@@ -65,37 +50,32 @@ class Preprocessor(object):
       training: boolean for controlling training-specfic preprocessing behavior
 
     Returns:
-      conditioning: dict of transformed features
+      Dictionary of transformed features
     """
-    raise NotImplementedError
+    return copy.copy(features)
 
 
 @gin.register
 class DefaultPreprocessor(Preprocessor):
-  """Default class that resamples features and adds `f0_hz` key at end of chain."""
+  """Default class that resamples features and adds `f0_hz` key."""
 
-  def __init__(self, time_steps=1000, scale_f0_to_hz=False):
+  def __init__(self, time_steps=1000):
     super(DefaultPreprocessor, self).__init__()
     self.time_steps = time_steps
-    self.scale_f0_to_hz = scale_f0_to_hz
 
-  def _default_processing(self, conditioning):
-    """Always resample to `time_steps` and add `f0_hz` key."""
-    self._apply(conditioning, ('audio',), ddsp.core.tf_float32)
-    self._apply(conditioning, ('loudness', 'f0'), add_channel_dim)
-    self._apply(
-        conditioning, ('loudness', 'f0'),
-        ddsp.core.resample,
-        n_timesteps=self.time_steps)
-    # Optionally, scale input in the range [0, 1] to hertz.
-    if self.scale_f0_to_hz:
-      conditioning['f0_hz'] = ddsp.core.midi_to_hz(conditioning['f0'] * 127.0)
-    else:
-      conditioning['f0_hz'] = conditioning['f0']
-    return conditioning
+  def __call__(self, features, training):
+    super(DefaultPreprocessor, self).__call__(features, training)
+    return self._default_processing(features)
 
-  def get_outputs(self, features, training):
-    conditioning = copy.copy(features)
-    return self._default_processing(conditioning)
+  def _default_processing(self, features):
+    """Always resample to `time_steps` and scale 'loudness_db' and 'f0_hz'."""
+    for k in ['loudness_db', 'f0_hz']:
+      features[k] = ddsp.core.resample(features[k], n_timesteps=self.time_steps)
+      features[k] = at_least_3d(features[k])
+    # For NN training, scale frequency and loudness to the range [0, 1].
+    # Log-scale f0 features. Loudness from [-1, 0] to [1, 0].
+    features['f0_scaled'] = hz_to_midi(features['f0_hz']) / F0_RANGE
+    features['ld_scaled'] = (features['loudness_db'] / LD_RANGE) + 1.0
+    return features
 
 
