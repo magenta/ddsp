@@ -26,7 +26,7 @@ ddsp_run \
 --alsologtostderr \
 --model_dir=~/tmp/$USER-ddsp-0 \
 --gin_file=models/ae.gin \
---gin_file=datasets/nsynth_tfds.gin \
+--gin_file=datasets/nsynth.gin \
 --gin_param=batch_size=16
 
 
@@ -37,13 +37,13 @@ ddsp_run \
 --mode=eval \
 --alsologtostderr \
 --model_dir=~/tmp/$USER-ddsp-0 \
---gin_file=datasets/nsynth_tfds.gin
+--gin_file=datasets/nsynth.gin
 
 ddsp_run \
 --mode=sample \
 --alsologtostderr \
 --model_dir=~/tmp/$USER-ddsp-0 \
---gin_file=datasets/nsynth_tfds.gin
+--gin_file=datasets/nsynth.gin
 
 
 ================================================================================

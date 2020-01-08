@@ -68,7 +68,7 @@ ddsp_run \
 ddsp_run \
 --mode=eval \
 --model_dir=~/tmp/$USER-ddsp-0 \
---gin_file=dataset/nsynth_tfds.gin \
+--gin_file=dataset/nsynth.gin \
 --alsologtostderr
 ```
 
@@ -77,7 +77,7 @@ ddsp_run \
 ddsp_run \
 --mode=sample \
 --model_dir=~/tmp/$USER-ddsp-0 \
---gin_file=dataset/nsynth_tfds.gin \
+--gin_file=dataset/nsynth.gin \
 --alsologtostderr
 ```
 
