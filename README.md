@@ -36,7 +36,7 @@ audio = additive(outputs['amplitudes'],
 
 * [Read the original paper 📄](https://openreview.net/forum?id=B1x1ma4tDr)
 * [Listen to some examples 🔈](https://goo.gl/magenta/ddsp-examples)
-* [Try out the timbre transfer demo 🎤->🎻](./colab/demos/ddsp_timbre_transfer.ipynb)
+* [Try out the timbre transfer demo 🎤->🎻](https://colab.research.google.com/github/magenta/ddsp/demos/timbre_transfer.ipynb)
 
 
 <a id='Tutorials'></a>
