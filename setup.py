@@ -40,8 +40,10 @@ setuptools.setup(
         'numpy',
         'scipy',
         'six',
-        'tensorflow==2.0',  # TODO(adarob): Set to >= 2.0 once crepe is updated.
-        'tensorflow_datasets',
+        # TODO(adarob): Set to >= 2.0 once crepe is updated.
+        'tensorflow==2.0',
+        # TODO(adarob): Switch to tensorflow_datasets once includes nsynth 2.3.
+        'tfds-nightly',
     ],
     extras_require={
         'gcp': ['gevent', 'google-api-python-client', 'google-compute-engine',

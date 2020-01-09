@@ -53,7 +53,7 @@ class Processor(tfkl.Layer):
   """
 
   def __init__(self, name: Text):
-    super(Processor, self).__init__(name=name)
+    super(Processor, self).__init__(name=name, autocast=False)
 
   def build(self, *args_shape: tf.Tensor, **kwargs_shape: tf.Tensor):
     """Build variables from the shape of an arbitrary number of inputs."""
