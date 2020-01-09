@@ -1,0 +1,10 @@
+# -*-Python-*-
+include 'datasets/base.gin'
+
+# Make dataset with ddsp/training/data_preparation/prepare_tfrecord.py
+# --gin_param="TFRecordProvider.file_pattern='/path/to/dataset*.tfrecord'"
+
+# Dataset
+train.data_provider = @data.TFRecordProvider()
+evaluate.data_provider = @data.TFRecordProvider()
+sample.data_provider = @data.TFRecordProvider()

@@ -24,6 +24,8 @@ import gin
 import tensorflow.compat.v1 as tf
 import tensorflow_datasets as tfds
 
+_AUTOTUNE = tf.data.experimental.AUTOTUNE
+
 
 # ---------- Base Class --------------------------------------------------------
 class DataProvider(object):
@@ -32,16 +34,6 @@ class DataProvider(object):
   def get_dataset(self, shuffle):
     """A method that returns a tf.data.Dataset."""
     raise NotImplementedError
-
-  def get_preprocess_fn(self):
-    """A method that returns a per-record preprocess function.
-
-    Defaults to a no-op if not overriden.
-
-    Returns:
-      A callable mapping a record to a preprocessed record.
-    """
-    return lambda x: x
 
   def get_batch(self, batch_size, shuffle=True, repeats=-1):
     """Read dataset.
@@ -54,15 +46,11 @@ class DataProvider(object):
     Returns:
       A batched tf.data.Dataset.
     """
-    autotune = tf.data.experimental.AUTOTUNE
 
     dataset = self.get_dataset(shuffle)
-    dataset = dataset.map(self.get_preprocess_fn(), num_parallel_calls=autotune)
-    if shuffle:
-      dataset = dataset.shuffle(buffer_size=10 * 1000)
     dataset = dataset.repeat(repeats)
     dataset = dataset.batch(batch_size, drop_remainder=True)
-    dataset = dataset.prefetch(buffer_size=autotune)
+    dataset = dataset.prefetch(buffer_size=_AUTOTUNE)
     return dataset
 
   def get_input_fn(self, shuffle=True, repeats=-1):
@@ -81,10 +69,8 @@ class DataProvider(object):
 
     def input_fn(params):
       batch_size = params['batch_size']
-      dataset = self.get_batch(
-          batch_size=batch_size, shuffle=shuffle, repeats=repeats)
-      dataset = dataset.map(map_fn,
-                            num_parallel_calls=tf.data.experimental.AUTOTUNE)
+      dataset = self.get_batch(batch_size, shuffle, repeats)
+      dataset = dataset.map(map_fn, num_parallel_calls=_AUTOTUNE)
       return dataset
 
     return input_fn
@@ -102,9 +88,9 @@ class TfdsProvider(DataProvider):
       data_dir: The directory to read TFDS datasets from. Defaults to
         "~/tensorflow_datasets".
     """
-    self.name = name
-    self.split = split
-    self.data_dir = data_dir
+    self._name = name
+    self._split = split
+    self._data_dir = data_dir
 
   def get_dataset(self, shuffle=True):
     """Read dataset.
@@ -116,9 +102,9 @@ class TfdsProvider(DataProvider):
       dataset: A tf.data.Dataset that reads from TFDS.
     """
     return tfds.load(
-        self.name,
-        data_dir=self.data_dir,
-        split=self.split,
+        self._name,
+        data_dir=self._data_dir,
+        split=self._split,
         shuffle_files=shuffle,
         download=False)
 
@@ -150,7 +136,8 @@ class NSynthTfds(TfdsProvider):
           'the dataset locally with TFDS and set the data_dir appropriately.')
     super(NSynthTfds, self).__init__(name, split, data_dir)
 
-  def get_preprocess_fn(self):
+  def get_dataset(self, shuffle=True):
+    """Returns dataset with slight restructuring of feature dictionary."""
     def preprocess_ex(ex):
       return {
           'pitch':
@@ -170,15 +157,24 @@ class NSynthTfds(TfdsProvider):
           'loudness_db':
               ex['loudness']['db'],
       }
-    return preprocess_ex
+    dataset = super(NSynthTfds, self).get_dataset(shuffle)
+    dataset = dataset.map(preprocess_ex, num_parallel_calls=_AUTOTUNE)
+    return dataset
 
 
+@gin.register
 class TFRecordProvider(DataProvider):
-  """Base class for reading files and returning a dataset."""
+  """Class for reading TFRecord and returning a dataset."""
 
-  def __init__(self, file_pattern=None):
-    """Specifyies the regular expression of the TFRecord files."""
-    self.file_pattern = file_pattern or self.default_file_pattern
+  def __init__(self,
+               file_pattern=None,
+               example_secs=4,
+               sample_rate=16000,
+               frame_rate=250):
+    """TFRecordProvider constructor."""
+    self._file_pattern = file_pattern or self.default_file_pattern
+    self._audio_length = example_secs * sample_rate
+    self._feature_length = example_secs * frame_rate
 
   @property
   def default_file_pattern(self):
@@ -196,42 +192,29 @@ class TFRecordProvider(DataProvider):
     Returns:
       dataset: A tf.dataset that reads from the TFRecord.
     """
-    filenames = tf.data.Dataset.list_files(self.file_pattern, shuffle=shuffle)
+    def parse_tfexample(record):
+      return tf.parse_single_example(record, self.features_dict)
+
+    filenames = tf.data.Dataset.list_files(self._file_pattern, shuffle=shuffle)
     dataset = filenames.interleave(
         map_func=tf.data.TFRecordDataset,
         cycle_length=40,
-        num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        num_parallel_calls=_AUTOTUNE)
+    dataset = dataset.map(parse_tfexample, num_parallel_calls=_AUTOTUNE)
     return dataset
-
-  def get_preprocess_fn(self):
-    def parse_tfexample(*args):
-      """Only parse the tf.Example string."""
-      record = args[-1]
-      return tf.parse_single_example(record, self.features_dict)
-    return parse_tfexample
 
   @property
   def features_dict(self):
     """Dictionary of features to read from dataset."""
     return {
-        'audio': tf.FixedLenFeature([None], dtype=tf.float32),
-        'f0_hz': tf.FixedLenFeature([None], dtype=tf.float32),
-        'f0_confidence': tf.FixedLenFeature([None], dtype=tf.float32),
-        'loudness_db': tf.FixedLenFeature([None], dtype=tf.float32),
-    }
-
-
-@gin.register
-class SoloInstrument(TFRecordProvider):
-  """Parses features in a solo instrument dataset."""
-
-  @property
-  def features_dict(self):
-    return {
-        'audio': tf.FixedLenFeature([64000], dtype=tf.float32),
-        'f0_hz': tf.FixedLenFeature([1000], dtype=tf.float32),
-        'f0_confidence': tf.FixedLenFeature([1000], dtype=tf.float32),
-        'loudness_db': tf.FixedLenFeature([1000], dtype=tf.float32),
+        'audio':
+            tf.FixedLenFeature([self._audio_length], dtype=tf.float32),
+        'f0_hz':
+            tf.FixedLenFeature([self._feature_length], dtype=tf.float32),
+        'f0_confidence':
+            tf.FixedLenFeature([self._feature_length], dtype=tf.float32),
+        'loudness_db':
+            tf.FixedLenFeature([self._feature_length], dtype=tf.float32),
     }
 
 
