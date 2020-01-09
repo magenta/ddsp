@@ -40,8 +40,7 @@ setuptools.setup(
         'numpy',
         'scipy',
         'six',
-        # TODO(adarob): Set to >= 2.0 once crepe is updated.
-        'tensorflow==2.0',
+        'tensorflow>=2.1.0'
         # TODO(adarob): Switch to tensorflow_datasets once includes nsynth 2.3.
         'tfds-nightly',
     ],
