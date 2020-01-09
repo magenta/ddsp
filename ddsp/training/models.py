@@ -196,7 +196,7 @@ class Autoencoder(Model):
   @property
   def pretrained_models(self):
     pretrained_models = []
-    for loss_obj in self.losses:
+    for loss_obj in self.loss_objs:
       m = loss_obj.pretrained_model
       if m is not None:
         pretrained_models.append(m)
