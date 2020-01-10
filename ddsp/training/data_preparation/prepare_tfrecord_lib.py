@@ -126,12 +126,13 @@ def prepare_tfrecord(
     if frame_rate:
       examples = (
           examples
+          | beam.Reshuffle()
           | beam.Map(_add_f0_estimate, sample_rate, frame_rate)
           | beam.Map(_add_loudness, sample_rate, frame_rate))
 
     _ = (
         examples
-        | beam.Reshuffle()
+        | 'shuffle' >> beam.Reshuffle()
         | beam.Map(_float_dict_to_tfexample)
         | beam.io.tfrecordio.WriteToTFRecord(
             output_tfrecord_path,
