@@ -19,7 +19,7 @@ import setuptools
 
 setuptools.setup(
     name='ddsp',
-    version='0.0.0',
+    version='0.0.1',
     description='Differentiable Digital Signal Processing ',
     author='Google Inc.',
     author_email='no-reply@google.com',
@@ -40,7 +40,7 @@ setuptools.setup(
         'numpy',
         'scipy',
         'six',
-        'tensorflow>=2.1.0',
+        'tensorflow',
         # TODO(adarob): Switch to tensorflow_datasets once includes nsynth 2.3.
         'tfds-nightly',
     ],
