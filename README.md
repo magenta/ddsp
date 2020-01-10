@@ -255,9 +255,10 @@ most functions without worrying about side-effects. One exception is `ddsp.core.
 
 <a id='Installation'></a>
 # Installation
-Requires tensorflow version >= 2.0.0, but runs in either eager or graph mode.
+Requires tensorflow version >= 2.1.0, but runs in either eager or graph mode.
 
 ```bash
+sudo apt-get install libsndfile-dev
 pip install --upgrade pip
 pip install --upgrade ddsp
 ```

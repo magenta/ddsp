@@ -38,7 +38,7 @@ The main training file is `ddsp_run.py` and its helper libraries:
 
 ## Quickstart
 
-The pip installation includes several scripts that can be called directly from
+The [pip installation](../README.md#installation) includes several scripts that can be called directly from
 the command line.
 
 Hyperparameters are configured via gin, and `ddsp_run.py` must be given two
@@ -87,7 +87,20 @@ will be saved to the `${MODEL_DIR}/operative_config-0.gin` file, which is then l
 [this doc](https://github.com/google/gin-config/blob/master/docs/index.md#saving-gins-operative-config-to-a-file-and-tensorboard)
 for more details.
 
+### Using Cloud TPU
 
+To use a [Cloud TPU](https://cloud.google.com/tpu/) for any of the above commands, there are a few minor changes.
+
+First, your model directory will need to accessible to the TPU. This means it will need to be located in a [GCS bucket with proper permissions](https://cloud.google.com/tpu/docs/storage-buckets).
+
+Second, you will need to add the following flags:
+
+```
+--use_tpu \
+--master=grpc://<TPU internal IP address>:8470 \
+```
+
+The TPU internal IP address can be found in the Cloud Console.
 
 
 ## Training a model on your own data
