@@ -28,7 +28,7 @@ import ddsp
 outputs = network(inputs)
 
 # Initialize signal processors.
-additive = ddsp.synths.Additve()
+additive = ddsp.synths.Additive()
 
 # Generates audio from additive synthesizer.
 audio = additive(outputs['amplitudes'],
