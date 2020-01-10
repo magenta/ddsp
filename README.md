@@ -17,7 +17,9 @@ as the output layers for audio generation.
 
 ## Getting Started
 
-DDSP modules can be used to generate and manipulate audio from neural network outputs as in this simple example:
+First, follow the steps in the [**Installation**](#Installation) section
+to install the DDSP package and its dependencies. DDSP modules can be used to
+generate and manipulate audio from neural network outputs as in this simple example:
 
 ```python
 import ddsp
