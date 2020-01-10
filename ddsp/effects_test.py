@@ -30,8 +30,8 @@ class ReverbTest(tf.test.TestCase):
   def test_output_shape_is_correct(self):
     processor = effects.Reverb()
 
-    audio = tf.zeros((3, 16000), dtype=tf.float32)
-    ir = tf.zeros((3, 100, 1), dtype=tf.float32)
+    audio = tf.zeros((3, 16000))
+    ir = tf.zeros((3, 100, 1))
 
     output = processor(audio, ir)
 
@@ -43,7 +43,7 @@ class TrainableReverbTest(tf.test.TestCase):
   def test_output_shape_is_correct(self):
     processor = effects.TrainableReverb(reverb_length=100)
 
-    audio = tf.zeros((3, 16000), dtype=tf.float32)
+    audio = tf.zeros((3, 16000))
 
     output = processor(audio)
 
@@ -55,9 +55,9 @@ class ExpDecayReverbTest(tf.test.TestCase):
   def test_output_shape_is_correct(self):
     processor = effects.ExpDecayReverb(reverb_length=100)
 
-    audio = tf.zeros((3, 16000), dtype=tf.float32)
-    gain = tf.zeros((3, 1), dtype=tf.float32)
-    decay = tf.zeros((3, 1), dtype=tf.float32)
+    audio = tf.zeros((3, 16000))
+    gain = tf.zeros((3, 1))
+    decay = tf.zeros((3, 1))
 
     output = processor(audio, gain, decay)
 
@@ -69,7 +69,7 @@ class TrainableExpDecayReverbTest(tf.test.TestCase):
   def test_output_shape_is_correct(self):
     processor = effects.TrainableExpDecayReverb(reverb_length=100)
 
-    audio = tf.zeros((3, 16000), dtype=tf.float32)
+    audio = tf.zeros((3, 16000))
 
     output = processor(audio)
 

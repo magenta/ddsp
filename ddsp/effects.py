@@ -24,6 +24,8 @@ from ddsp import processors
 import gin
 import tensorflow.compat.v1 as tf
 
+tf_float32 = core.tf_float32
+
 
 #------------------ Reverberation ----------------------------------------------
 @gin.register
@@ -76,6 +78,7 @@ class Reverb(processors.Processor):
     Returns:
       tensor of shape [batch, n_samples]
     """
+    audio, ir = tf_float32(audio), tf_float32(ir)
     ir = self._mask_dry_ir(ir)
     wet = core.fft_convolve(audio, ir, padding='same', delay_compensation=0)
     return wet if self._reverb_only else (wet + audio)
