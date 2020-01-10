@@ -99,7 +99,7 @@ Where:
 * `controls` is a dictionary of tensors scaled and constrained specifically for the processor.
 * `signal` is an output tensor (usually audio or control signal for another processor).
 
-For example, here are of some inputs to an `Additve()` synthesizer:
+For example, here are of some inputs to an `Additive()` synthesizer:
 
 <div align="center">
 <img src="https://storage.googleapis.com/ddsp/github_images/example_inputs.png" width="800px" alt="logo"></img>
@@ -129,7 +129,7 @@ import ddsp
 outputs = network(audio_input)
 
 # Initialize signal processors.
-additive = ddsp.synths.Additve()
+additive = ddsp.synths.Additive()
 filtered_noise = ddsp.synths.FilteredNoise()
 reverb = ddsp.effects.TrainableReverb()
 spectral_loss = ddsp.losses.SpectralLoss()
@@ -163,7 +163,7 @@ import gin
 outputs = network(audio_input)
 
 # Initialize signal processors.
-additive = ddsp.synths.Additve()
+additive = ddsp.synths.Additive()
 filtered_noise = ddsp.synths.FilteredNoise()
 add = ddsp.processors.Add()
 reverb = ddsp.effects.TrainableReverb()
