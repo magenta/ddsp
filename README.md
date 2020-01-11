@@ -2,8 +2,8 @@
 <img src="https://storage.googleapis.com/ddsp/github_images/ddsp_logo.png" width="200px" alt="logo"></img>
 </div>
 
-<!-- TODO(jesseengel): Replace with DDSP build status -->
-# DDSP: Differentiable Digital Signal Processing [![Test status](https://travis-ci.org/google/jax.svg?branch=master)](https://travis-ci.org/google/jax)
+<!-- TODO(jesseengel): Add DDSP build status -->
+# DDSP: Differentiable Digital Signal Processing
 
 [**Tutorials**](#Tutorials)
 | [**Overview**](#Overview)
@@ -188,9 +188,6 @@ audio = processor_group(outputs)
 # Multi-scale spectrogram reconstruction loss.
 loss = spectral_loss(audio, audio_input)
 ```
-
-
-audio_out = processor_group.get_signal(inputs)
 
 
 ### ProcessorGroup (with `gin`)
