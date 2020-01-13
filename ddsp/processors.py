@@ -52,8 +52,10 @@ class Processor(tfkl.Layer):
   output dictionary with all controls and signals.
   """
 
-  def __init__(self, name: Text):
-    super(Processor, self).__init__(name=name, autocast=False)
+  def __init__(self, name: Text, trainable: bool = False):
+    super(Processor, self).__init__(name=name,
+                                    trainable=trainable,
+                                    autocast=False)
 
   def build(self, *args_shape: tf.Tensor, **kwargs_shape: tf.Tensor):
     """Build variables from the shape of an arbitrary number of inputs."""

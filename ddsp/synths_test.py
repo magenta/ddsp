@@ -31,7 +31,7 @@ class AdditiveTest(tf.test.TestCase):
     synthesizer = synths.Additive(
         n_samples=64000,
         sample_rate=16000,
-        amp_scale_fn=None,
+        scale_fn=None,
         normalize_below_nyquist=True)
     batch_size = 3
     num_frames = 1000
@@ -61,7 +61,7 @@ class WavetableTest(tf.test.TestCase):
     synthesizer = synths.Wavetable(
         n_samples=64000,
         sample_rate=16000,
-        amp_scale_fn=None)
+        scale_fn=None)
     batch_size = 3
     num_frames = 1000
     n_wavetable = 1024

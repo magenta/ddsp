@@ -60,13 +60,13 @@ Additive.name = 'additive'
 Additive.n_samples = 64000
 Additive.sample_rate = 16000
 Additive.normalize_below_nyquist = True
-Additive.amp_scale_fn = @core.exp_sigmoid
+Additive.scale_fn = @core.exp_sigmoid
 
 # Filtered Noise Synthesizer
 FilteredNoise.name = 'filtered_noise'
 FilteredNoise.n_samples = 64000
 FilteredNoise.window_size = 0
-FilteredNoise.amp_scale_fn = @core.exp_sigmoid
+FilteredNoise.scale_fn = @core.exp_sigmoid
 
 # Add
 Add.name = 'add'

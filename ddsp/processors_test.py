@@ -52,7 +52,7 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
     additive = synths.Additive(name='additive')
     noise = synths.FilteredNoise(name='noise')
     add = processors.Add(name='add')
-    reverb = effects.TrainableReverb(name='reverb')
+    reverb = effects.Reverb(trainable=True, name='reverb')
 
     # Create DAG for testing.
     self.dag = [
