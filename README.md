@@ -38,24 +38,24 @@ audio = additive(outputs['amplitudes'],
 
 * [Read the original paper 📄](https://openreview.net/forum?id=B1x1ma4tDr)
 * [Listen to some examples 🔈](https://goo.gl/magenta/ddsp-examples)
-* [Try out the timbre transfer demo 🎤->🎻](https://colab.research.google.com/github/magenta/ddsp/demos/timbre_transfer.ipynb)
+* [Try out the timbre transfer demo 🎤->🎻](./ddsp/colab/demo/timbre_transfer.ipynb)
 
 
 <a id='Tutorials'></a>
 ### Tutorials
 
 The best place to start is the step-by-step tutorials for all the major library components that can be found in
-[`colabs/tutorials`](./colabs/tutorials).
+[`colabs/tutorials`](./ddsp/colabs/tutorials).
 
-*   [0_processor](./colab/tutorials/0_processor.ipynb):
+*   [0_processor](./ddsp/colab/tutorials/0_processor.ipynb):
     Introduction to the Processor class.
-*   [1_synths_and_effects](./colab/tutorials/1_synths_and_effects.ipynb):
+*   [1_synths_and_effects](./ddsp/colab/tutorials/1_synths_and_effects.ipynb):
     Example usage of processors.
-*   [2_processor_group](./colab/tutorials/2_processor_group.ipynb):
+*   [2_processor_group](./ddsp/colab/tutorials/2_processor_group.ipynb):
     Stringing processors together in a ProcessorGroup.
-*   [3_training](./colab/tutorials/3_training.ipynb):
+*   [3_training](./ddsp/colab/tutorials/3_training.ipynb):
     Example of training on a single sound.
-*   [4_core_functions](./colab/tutorials/3_training.ipynb):
+*   [4_core_functions](./ddsp/colab/tutorials/3_training.ipynb):
     Extensive examples for most of the core DDSP functions.
 
 
@@ -65,17 +65,17 @@ The DDSP library code is separated into several modules:
 
 *   [Core](./core.py):
     All the core differentiable DSP functions.
-*   [Processors](./processors.py):
+*   [Processors](./ddsp/processors.py):
     Base classes for Processor and ProcessorGroup.
-*   [Synths](./synths.py):
+*   [Synths](./ddsp/synths.py):
     Processors that generate audio from network outputs.
-*   [Effects](./effects.py):
+*   [Effects](./ddsp/effects.py):
     Processors that transorm audio according to network outputs.
-*   [Losses](./losses.py):
+*   [Losses](./ddsp/losses.py):
     Loss functions relevant to DDSP applications.
-*   [Spectral Ops](./spectral_ops.py):
+*   [Spectral Ops](./ddsp/spectral_ops.py):
     Helper library of Fourier and related transforms.
-*   [Pretrained Models](./pretrained_models.py):
+*   [Pretrained Models](./ddsp/pretrained_models.py):
     Helper library of models for perceptual loss functions.
 
 
