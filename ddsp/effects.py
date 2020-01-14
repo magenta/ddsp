@@ -60,8 +60,17 @@ class Reverb(processors.Processor):
     if len(ir.shape) == 3:
       ir = ir[:, :, 0]  # Remove unnessary channel dimension.
     # Mask the dry signal.
-    dry_ir = tf.zeros([int(ir.shape[0]), 1], tf.float32)
-    return tf.concat([dry_ir, ir[:, 1:]], axis=1)
+    dry_mask = tf.zeros([int(ir.shape[0]), 1], tf.float32)
+    return tf.concat([dry_mask, ir[:, 1:]], axis=1)
+
+  def _match_dimensions(self, audio, ir):
+    """Tile the impulse response variable to match the batch size."""
+    # Add batch dimension.
+    if len(ir.shape) == 1:
+      ir = ir[tf.newaxis, :]
+    # Match batch dimension.
+    batch_size = int(audio.shape[0])
+    return tf.tile(ir, [batch_size, 1])
 
   def build(self, audio_shape):
     """Initialize impulse response."""
@@ -88,10 +97,7 @@ class Reverb(processors.Processor):
       ValueError: If trainable=False and ir is not provided.
     """
     if self.trainable:
-      ir = self._ir[tf.newaxis, :]
-      # Match batch dimension.
-      batch_size = int(audio.shape[0])
-      ir = tf.tile(ir, [batch_size, 1])
+      ir = self._match_dimensions(audio, self._ir)
     else:
       if ir is None:
         raise ValueError('Must provide "ir" tensor if Reverb trainable=False.')
@@ -112,7 +118,7 @@ class Reverb(processors.Processor):
     audio, ir = tf_float32(audio), tf_float32(ir)
     ir = self._mask_dry_ir(ir)
     wet = core.fft_convolve(audio, ir, padding='same', delay_compensation=0)
-    return (wet + audio)if self._add_dry else wet
+    return (wet + audio) if self._add_dry else wet
 
 
 @gin.register
@@ -188,12 +194,11 @@ class ExpDecayReverb(Reverb):
       if gain is None or decay is None:
         raise ValueError('Must provide "gain" and "decay" tensors if '
                          'ExpDecayReverb trainable=False.')
+
     ir = self._get_ir(gain, decay)
 
-    # Match batch dimension.
     if self.trainable:
-      batch_size = int(audio.shape[0])
-      ir = tf.tile(ir, [batch_size, 1])
+      ir = self._match_dimensions(audio, ir)
 
     return {'audio': audio, 'ir': ir}
 
@@ -270,12 +275,11 @@ class FilteredNoiseReverb(Reverb):
       if magnitudes is None:
         raise ValueError('Must provide "magnitudes" tensor if '
                          'FilteredNoiseReverb trainable=False.')
+
     ir = self._synth(magnitudes)
 
-    # Match batch dimension.
     if self.trainable:
-      batch_size = int(audio.shape[0])
-      ir = tf.tile(ir, [batch_size, 1])
+      ir = self._match_dimensions(audio, ir)
 
     return {'audio': audio, 'ir': ir}
 
