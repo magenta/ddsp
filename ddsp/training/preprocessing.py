@@ -63,7 +63,7 @@ class DefaultPreprocessor(Preprocessor):
     super(DefaultPreprocessor, self).__init__()
     self.time_steps = time_steps
 
-  def __call__(self, features, training):
+  def __call__(self, features, training=True):
     super(DefaultPreprocessor, self).__call__(features, training)
     return self._default_processing(features)
 

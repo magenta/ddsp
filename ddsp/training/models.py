@@ -91,7 +91,6 @@ class Model(tfkl.Layer):
       del labels
       del config
       outputs = self.get_outputs(features)
-      scaffold_fn = self.get_scaffold_fn()
       model_dir = params['model_dir']
 
       host_call = (train_util.get_host_call_fn(model_dir), self.tb_metrics)
@@ -101,7 +100,7 @@ class Model(tfkl.Layer):
           mode,
           model_dir,
           use_tpu=use_tpu,
-          scaffold_fn=scaffold_fn,
+          scaffold_fn=self.get_scaffold_fn(),
           variables_to_optimize=self.get_variables_to_optimize(),
           host_call=host_call)
       return estimator_spec

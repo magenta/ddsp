@@ -731,7 +731,7 @@ class FiniteImpulseResponseTest(parameterized.TestCase, tf.test.TestCase):
           core.frequency_impulse_response(magnitudes, window_size))
 
     target_size = fft_size
-    if (window_size >= 1) and (window_size < target_size):
+    if target_size > window_size >= 1:
       target_size = window_size
       is_even = target_size % 2 == 0
       target_size -= int(is_even)

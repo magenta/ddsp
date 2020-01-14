@@ -220,7 +220,7 @@ def _tpu_cumsum(x, axis=0, exclusive=False):
       comparator(tf.expand_dims(my_range, 1), tf.expand_dims(my_range, 0)),
       x.dtype)
   result = tf.tensordot(x, mask, axes=[[axis], [0]])
-  if axis != -1 and axis != rank - 1:
+  if axis not in (-1, rank - 1):
     result = tf.transpose(
         result,
         list(range(axis)) + [rank - 1] + list(range(axis, rank - 1)))

@@ -171,7 +171,7 @@ def split_to_dict(tensor, tensor_splits):
   labels = [v[0] for v in tensor_splits]
   sizes = [v[1] for v in tensor_splits]
   tensors = tf.split(tensor, sizes, axis=-1)
-  return {k: v for k, v in zip(labels, tensors)}
+  return dict(zip(labels, tensors))
 
 
 # ------------------ Fade-in/out during training -------------------------------

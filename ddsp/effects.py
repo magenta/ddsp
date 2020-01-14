@@ -72,7 +72,7 @@ class Reverb(processors.Processor):
     batch_size = int(audio.shape[0])
     return tf.tile(ir, [batch_size, 1])
 
-  def build(self, audio_shape):
+  def build(self, unused_shape):
     """Initialize impulse response."""
     if self.trainable:
       initializer = tf.random_normal_initializer(mean=0, stddev=1e-6)

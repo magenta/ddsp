@@ -148,7 +148,7 @@ def get_estimator_spec(loss,
 
 
 def get_host_call_fn(model_dir):
-  """`host_call` function used for creating training summaries when using TPU."""
+  """`host_call` function for creating training summaries when using TPU."""
 
   def host_call_fn(**kwargs):
     """Host_call_fn.

@@ -61,9 +61,6 @@ class Additive(processors.Processor):
     if self.scale_fn is not None:
       amplitudes = self.scale_fn(amplitudes)
       harmonic_distribution = self.scale_fn(harmonic_distribution)
-    else:
-      amplitudes = amplitudes
-      harmonic_distribution = harmonic_distribution
 
     # Bandlimit the harmonic distribution.
     if self.normalize_below_nyquist:

@@ -79,7 +79,7 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
         'processor_group/signal',
     ]
 
-  def _check_tensor_outputs(self, strings_to_check, outputs, processor_group):
+  def _check_tensor_outputs(self, strings_to_check, outputs):
     for tensor_string in strings_to_check:
       tensor = core.nested_lookup(tensor_string, outputs)
       self.assertIsInstance(tensor, (np.ndarray, tf.Tensor))
@@ -91,7 +91,7 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
                                                 name='processor_group')
     outputs = processor_group.get_outputs(self.nn_outputs)
     self.assertIsInstance(outputs, dict)
-    self._check_tensor_outputs(self.expected_outputs, outputs, processor_group)
+    self._check_tensor_outputs(self.expected_outputs, outputs)
 
 
 class AddTest(tf.test.TestCase):
