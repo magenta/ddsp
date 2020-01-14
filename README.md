@@ -38,7 +38,7 @@ audio = additive(outputs['amplitudes'],
 
 * [Read the original paper 📄](https://openreview.net/forum?id=B1x1ma4tDr)
 * [Listen to some examples 🔈](https://goo.gl/magenta/ddsp-examples)
-* [Try out the timbre transfer demo 🎤->🎻](./ddsp/colab/demo/timbre_transfer.ipynb)
+* [Try out the timbre transfer demo 🎤->🎻](./ddsp/colab/demos/timbre_transfer.ipynb)
 
 
 <a id='Tutorials'></a>
@@ -63,7 +63,7 @@ The best place to start is the step-by-step tutorials for all the major library 
 
 The DDSP library code is separated into several modules:
 
-*   [Core](./core.py):
+*   [Core](./ddsp/core.py):
     All the core differentiable DSP functions.
 *   [Processors](./ddsp/processors.py):
     Base classes for Processor and ProcessorGroup.
