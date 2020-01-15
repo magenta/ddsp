@@ -80,8 +80,8 @@ def run():
       num_shards=FLAGS.num_shards,
       sample_rate=FLAGS.sample_rate,
       frame_rate=FLAGS.frame_rate,
-      window_size=int(FLAGS.example_secs*FLAGS.sample_rate),
-      hop_size=int(FLAGS.sliding_window_hop_secs*FLAGS.sample_rate),
+      window_secs=FLAGS.example_secs,
+      hop_secs=FLAGS.sliding_window_hop_secs,
       pipeline_options=FLAGS.pipeline_options)
 
 

@@ -24,9 +24,10 @@ import sys
 from absl import flags
 from absl.testing import absltest
 from ddsp.training.data_preparation import prepare_tfrecord_lib
-import librosa
 import numpy as np
+import scipy.io.wavfile
 import tensorflow.compat.v1 as tf
+
 
 tf.disable_v2_behavior()
 tf.enable_eager_execution()
@@ -50,10 +51,12 @@ class ProcessTaskBeamTest(absltest.TestCase):
     self.wav_sr = 22050
     self.wav_secs = 2.1
     self.wav_path = os.path.join(self.test_dir, 'test.wav')
-    librosa.output.write_wav(
+    scipy.io.wavfile.write(
         self.wav_path,
-        np.random.rand(int(self.wav_sr * self.wav_secs)),
-        sr=self.wav_sr)
+        self.wav_sr,
+        np.random.randint(
+            np.iinfo(np.int16).min, np.iinfo(np.int16).max,
+            size=int(self.wav_sr * self.wav_secs), dtype=np.int16))
 
   def parse_tfrecord(self, path):
     return [tf.train.Example.FromString(record.numpy()) for record in
@@ -86,8 +89,8 @@ class ProcessTaskBeamTest(absltest.TestCase):
         num_shards=2,
         sample_rate=sample_rate,
         frame_rate=frame_rate,
-        window_size=window_secs * sample_rate,
-        hop_size=int(hop_secs * sample_rate))
+        window_secs=window_secs,
+        hop_secs=hop_secs)
 
     expected_f0_and_loudness_length = window_secs * frame_rate
     self.validate_outputs(
@@ -108,7 +111,7 @@ class ProcessTaskBeamTest(absltest.TestCase):
         num_shards=2,
         sample_rate=sample_rate,
         frame_rate=frame_rate,
-        window_size=None)
+        window_secs=None)
 
     expected_f0_and_loudness_length = self.wav_secs * frame_rate
     self.validate_outputs(
@@ -128,7 +131,7 @@ class ProcessTaskBeamTest(absltest.TestCase):
         num_shards=2,
         sample_rate=sample_rate,
         frame_rate=None,
-        window_size=None)
+        window_secs=None)
 
     self.validate_outputs(1, {'audio': self.wav_secs * sample_rate})
 

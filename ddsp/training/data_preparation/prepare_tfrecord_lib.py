@@ -19,36 +19,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tempfile
-
 from absl import logging
 import apache_beam as beam
 from ddsp.spectral_ops import compute_f0
 from ddsp.spectral_ops import compute_loudness
-import librosa
 import numpy as np
+import pydub
 import tensorflow.compat.v1 as tf
 
 
 
-def _load_and_split_audio(
-    audio_path, sample_rate, window_size, hop_size, pad_end=True):
-  """Load and split audio file with sliding window."""
-  logging.info("Loading and splitting '%s'.", audio_path)
+def _load_audio(audio_path, sample_rate):
+  """Load audio file."""
+  logging.info("Loading '%s'.", audio_path)
   beam.metrics.Metrics.counter('prepare-tfrecord', 'load-audio').inc()
-  with tempfile.NamedTemporaryFile(suffix='.wav') as f:
-    tf.io.gfile.copy(audio_path, f.name, overwrite=True)
-    audio, _ = librosa.load(f.name, sr=sample_rate)
-
-  window_size = window_size or len(audio)
-  if pad_end:
-    n_windows = int(np.ceil((len(audio) - window_size) / hop_size))  + 1
-    n_samples_padded = (n_windows - 1) * hop_size + window_size
-    n_padding = n_samples_padded - len(audio)
-    audio = np.pad(audio, (0, n_padding), mode='constant')
-  for window_end in range(window_size, len(audio) + 1, hop_size):
-    beam.metrics.Metrics.counter('prepare-tfrecord', 'split-audio').inc()
-    yield {'audio': audio[window_end-window_size:window_end]}
+  with tf.io.gfile.GFile(audio_path, 'rb') as f:
+    audio_segment = (
+        pydub.AudioSegment.from_file(f)
+        .set_channels(1).set_frame_rate(sample_rate))
+  audio = np.array(audio_segment.get_array_of_samples()).astype(np.float32)
+  # Convert from int to float representation.
+  audio /= 2**(8 * audio_segment.sample_width)
+  return {'audio': audio}
 
 
 def _add_loudness(ex, sample_rate, frame_rate, n_fft=2048):
@@ -74,6 +66,34 @@ def _add_f0_estimate(ex, sample_rate, frame_rate):
   return ex
 
 
+def _split_example(
+    ex, sample_rate, frame_rate, window_secs, hop_secs):
+  """Splits example into windows, padding final window if needed."""
+
+  def get_windows(sequence, rate):
+    window_size = int(window_secs * rate)
+    hop_size = int(hop_secs * rate)
+    n_windows = int(np.ceil((len(sequence) - window_size) / hop_size))  + 1
+    n_samples_padded = (n_windows - 1) * hop_size + window_size
+    n_padding = n_samples_padded - len(sequence)
+    sequence = np.pad(sequence, (0, n_padding), mode='constant')
+    for window_end in range(window_size, len(sequence) + 1, hop_size):
+      yield sequence[window_end-window_size:window_end]
+
+  for audio, loudness_db, f0_hz, f0_confidence in zip(
+      get_windows(ex['audio'], sample_rate),
+      get_windows(ex['loudness_db'], frame_rate),
+      get_windows(ex['f0_hz'], frame_rate),
+      get_windows(ex['f0_confidence'], frame_rate)):
+    beam.metrics.Metrics.counter('prepare-tfrecord', 'split-example').inc()
+    yield {
+        'audio': audio,
+        'loudness_db': loudness_db,
+        'f0_hz': f0_hz,
+        'f0_confidence': f0_confidence
+    }
+
+
 def _float_dict_to_tfexample(float_dict):
   """Convert dictionary of float arrays to tf.train.Example proto."""
   return tf.train.Example(
@@ -91,8 +111,8 @@ def prepare_tfrecord(
     num_shards=None,
     sample_rate=16000,
     frame_rate=250,
-    window_size=16000*4,
-    hop_size=16000,
+    window_secs=4,
+    hop_secs=1,
     pipeline_options=''):
   """Prepares a TFRecord for use in training, evaluation, and prediction.
 
@@ -106,9 +126,9 @@ def prepare_tfrecord(
     sample_rate: The sample rate to use for the audio.
     frame_rate: The frame rate to use for f0 and loudness features.
       If set to None, these features will not be computed.
-    window_size: The size of the sliding window (in audio samples) to use to
-      split the input audio. If None, the audio will not be split.
-    hop_size: The number of audio samples to hop when computing the sliding
+    window_secs: The size of the sliding window (in seconds) to use to
+      split the audio and features. If None, they will not be split.
+    hop_secs: The number of seconds to hop when computing the sliding
       windows.
     pipeline_options: An iterable of command line arguments to be used as
       options for the Beam Pipeline.
@@ -119,20 +139,21 @@ def prepare_tfrecord(
     examples = (
         pipeline
         | beam.Create(input_audio_paths)
-        | beam.FlatMap(_load_and_split_audio,
-                       sample_rate=sample_rate,
-                       window_size=window_size,
-                       hop_size=hop_size))
+        | beam.Map(_load_audio, sample_rate))
+
     if frame_rate:
       examples = (
           examples
-          | beam.Reshuffle()
           | beam.Map(_add_f0_estimate, sample_rate, frame_rate)
           | beam.Map(_add_loudness, sample_rate, frame_rate))
 
+    if window_secs:
+      examples |= beam.FlatMap(
+          _split_example, sample_rate, frame_rate, window_secs, hop_secs)
+
     _ = (
         examples
-        | 'shuffle' >> beam.Reshuffle()
+        | beam.Reshuffle()
         | beam.Map(_float_dict_to_tfexample)
         | beam.io.tfrecordio.WriteToTFRecord(
             output_tfrecord_path,
