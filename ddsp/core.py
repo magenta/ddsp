@@ -201,7 +201,6 @@ def upsample_with_windows(inputs: tf.Tensor,
 
 # Adapted from lingvo.core.py_utils.CumSum because that function requires
 # some global FLAGS to be set which is not avaiable in our codebase.
-# GOOGLE-INTERNAL See b/140143827 for more details.
 def _tpu_cumsum(x, axis=0, exclusive=False):
   """A TPU efficient implementation of tf.cumsum()."""
   tf.logging.info('--------fancy cumsum---------')
@@ -228,7 +227,6 @@ def _tpu_cumsum(x, axis=0, exclusive=False):
 
 
 # TODO(jesseengel): switch back to tf.cumsum once it is fast on TPUs.
-# GOOGLE-INTERNAL b/140143827
 @gin.configurable
 def cumsum(x, axis=0, exclusive=False, use_tpu=False):
   if use_tpu:
