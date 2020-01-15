@@ -173,7 +173,7 @@ class PretrainedCREPE(PretrainedModel):
                model_capacity='tiny',
                activation_layer='classifier',
                name='crepe',
-               checkpoint='/path/to/crepe/model-tiny.ckpt'):
+               checkpoint='gs://ddsp/crepe/model-tiny.ckpt'):
     super(PretrainedCREPE, self).__init__(name=name, checkpoint=checkpoint)
     self._model_capacity = model_capacity
     self._activation_layer = activation_layer

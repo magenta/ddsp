@@ -31,4 +31,4 @@ PretrainedCREPEEmbeddingLoss.loss_type = 'L1'
 PretrainedCREPEEmbeddingLoss.weight = 0.1
 PretrainedCREPEEmbeddingLoss.activation_layer = 'conv5-maxpool'
 PretrainedCREPEEmbeddingLoss.model_capacity = 'tiny'
-PretrainedCREPEEmbeddingLoss.checkpoint = '/path/to/model-tiny.ckpt'
+PretrainedCREPEEmbeddingLoss.checkpoint = 'gs://ddsp/crepe/model-tiny.ckpt'

@@ -191,7 +191,7 @@ class PretrainedCREPEEmbeddingLoss(EmbeddingLoss):
                loss_type='L1',
                model_capacity='tiny',
                activation_layer='classifier',
-               checkpoint='/path/to/crepe/model-tiny.ckpt',
+               checkpoint='gs://ddsp/crepe/model-tiny.ckpt',
                name='pretrained_crepe_embedding_loss'):
     # Scale each layer activation loss to comparable scales.
     scale = {
