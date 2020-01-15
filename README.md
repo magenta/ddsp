@@ -2,8 +2,8 @@
 <img src="https://storage.googleapis.com/ddsp/github_images/ddsp_logo.png" width="200px" alt="logo"></img>
 </div>
 
-<!-- TODO(jesseengel): Add DDSP build status -->
 # DDSP: Differentiable Digital Signal Processing
+[![Build Status](https://travis-ci.org/magenta/ddsp.svg?branch=master)](https://travis-ci.org/magenta/ddsp)
 
 [**Tutorials**](#Tutorials)
 | [**Overview**](#Overview)
@@ -36,7 +36,7 @@ audio = additive(outputs['amplitudes'],
                  outputs['f0_hz'])
 ```
 
-* [Read the original paper 📄](https://openreview.net/forum?id=B1x1ma4tDr)
+* [Read the original paper 📄](https://arxiv.org/abs/2001.04643)
 * [Listen to some examples 🔈](https://goo.gl/magenta/ddsp-examples)
 * [Try out the timbre transfer demo 🎤->🎻](./ddsp/colab/demos/timbre_transfer.ipynb)
 
