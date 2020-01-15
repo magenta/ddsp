@@ -48,7 +48,7 @@ setuptools.setup(
         'gcp': ['gevent', 'google-api-python-client', 'google-compute-engine',
                 'google-cloud-storage', 'oauth2client'],
         'data_preparation': ['apache_beam'],
-        'test': ['pytest'],
+        'test': ['pytest', 'pylint'],
     },
     entry_points={
         'console_scripts': [
@@ -63,7 +63,6 @@ setuptools.setup(
         'License :: OSI Approved :: Apache Software License',
         'Topic :: Scientific/Engineering :: Artificial Intelligence',
     ],
-    # TODO(adarob): Add pylint.
     tests_require=['pytest'],
     setup_requires=['pytest-runner'],
     keywords='audio dsp signalprocessing machinelearning music',

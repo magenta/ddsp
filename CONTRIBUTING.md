@@ -25,7 +25,10 @@ use GitHub pull requests for this purpose. Consult
 [GitHub Help](https://help.github.com/articles/about-pull-requests/) for more
 information on using pull requests.
 
-[[More details about how PR process goes]]
+Please be sure to test your code by running `pytest` and `pylint` before
+submitting a pull request for review. The easiest way to do this is to run
+`sh ci-test.sh` from the base directory. Note that code cannot be merged until
+these tests pass on [Travis](https://travis-ci.org/magenta/ddsp).
 
 
 ## Getting Started
