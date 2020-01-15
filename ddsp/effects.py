@@ -156,7 +156,7 @@ class ExpDecayReverb(Reverb):
     ir = gain * tf.exp(-decay_exponent * time) * noise
     return ir
 
-  def build(self, audio_shape):
+  def build(self, unused_shape):
     """Initialize impulse response."""
     if self.trainable:
       self._gain = self.add_weight(
@@ -245,7 +245,7 @@ class FilteredNoiseReverb(Reverb):
                                        scale_fn=scale_fn,
                                        initial_bias=initial_bias)
 
-  def build(self, audio_shape):
+  def build(self, unused_shape):
     """Initialize impulse response."""
     if self.trainable:
       initializer = tf.random_normal_initializer(mean=0, stddev=1e-2)
