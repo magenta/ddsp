@@ -3,6 +3,7 @@ python:
   - "3.6"
 # command to install dependencies
 install:
+  - sudo apt-get -y install ffmpeg
   - pip install -e .[data_preparation,test]
 # command to run tests
 script:
