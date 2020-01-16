@@ -19,7 +19,7 @@ import setuptools
 
 setuptools.setup(
     name='ddsp',
-    version='0.0.1',
+    version='0.0.5',
     description='Differentiable Digital Signal Processing ',
     author='Google Inc.',
     author_email='no-reply@google.com',
