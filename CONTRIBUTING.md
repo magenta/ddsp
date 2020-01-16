@@ -37,7 +37,7 @@ If you're looking for a way to contribute, but not sure where to start, you
 could:
 
 * Add some documentation to an existing function.
-* Add a missing test to improve converage.
+* Add a missing test to improve coverage.
 * Add type hints to functions in a new file.
 * Add a new colab tutorial or demo, covering a typical use case or showing something cool.
 * Respond to a bug or feature request in the github [Issues](github.com/magenta/ddsp/issues).
