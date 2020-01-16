@@ -1,7 +1,7 @@
 # How to Contribute
 
 We'd love to accept your patches and contributions to this project.
-DDSP can be subtle to get completely right, so we particularly appreciate the
+DSP can be subtle to get completely right, so we particularly appreciate the
 contributions of those with expertise in signal processing to help fix any
 mistakes we may have made 😄.
 
