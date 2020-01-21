@@ -42,7 +42,7 @@ def get_train_op(loss,
                  lr_decay_steps=10000,
                  lr_decay_rate=0.98,
                  gradient_clip_norm=3.0,
-                 use_tpu=True,
+                 use_tpu=False,
                  variables=None):
   """Get training operation with gradient clipping and learning rate decay.
 
@@ -111,7 +111,7 @@ def get_train_op(loss,
 def get_estimator_spec(loss,
                        mode,
                        model_dir,
-                       use_tpu=True,
+                       use_tpu=False,
                        scaffold_fn=None,
                        variables_to_optimize=None,
                        host_call=None):
@@ -216,7 +216,7 @@ def train(data_provider,
           model_dir='~/tmp/ddsp',
           num_steps=1000000,
           master='',
-          use_tpu=True):
+          use_tpu=False):
   """Main training loop."""
   input_fn = data_provider.get_input_fn(shuffle=True, repeats=-1)
   model_fn = model.get_model_fn(use_tpu=use_tpu)
