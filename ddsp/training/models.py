@@ -83,7 +83,7 @@ class Model(tfkl.Layer):
     metric_tensor = tf.expand_dims(metric_tensor, axis=0)
     self.tb_metrics[name] = metric_tensor
 
-  def get_model_fn(self, use_tpu=True):
+  def get_model_fn(self, use_tpu=False):
     """Returns function for Estimator."""
 
     def model_fn(features, labels, mode, params, config):
