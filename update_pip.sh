@@ -2,7 +2,7 @@
 set -ex
 
 orig_dir=$(pwd)
-tmp_dir=$(mktemp -d -t ddsp)
+tmp_dir=$(mktemp -d -t ddsp-XXXX)
 git clone https://github.com/magenta/ddsp.git $tmp_dir
 cd $tmp_dir
 
