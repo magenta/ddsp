@@ -143,7 +143,7 @@ class ProcessorGroup(tfkl.Layer):
       inputs = [core.nested_lookup(key, outputs) for key in keys]
 
       # Build the processor (does nothing if not the first time).
-      processor.build(*[tensor.shape for tensor in inputs])
+      processor.build([tensor.shape for tensor in inputs])
       # Run processor.
       controls = processor.get_controls(*inputs)
       signal = processor.get_signal(**controls)
