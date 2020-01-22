@@ -70,7 +70,7 @@ The DDSP library code is separated into several modules:
 *   [Synths](./ddsp/synths.py):
     Processors that generate audio from network outputs.
 *   [Effects](./ddsp/effects.py):
-    Processors that transorm audio according to network outputs.
+    Processors that transform audio according to network outputs.
 *   [Losses](./ddsp/losses.py):
     Loss functions relevant to DDSP applications.
 *   [Spectral Ops](./ddsp/spectral_ops.py):
@@ -87,7 +87,7 @@ The DDSP library code is separated into several modules:
 The `Processor` is the main object type and preferred API of the DDSP library. It inherits from `tfkl.Layer` and can be used like any other differentiable module.
 
 Unlike other layers, Processors (such as Synthesizers and Effects) specifically format their `inputs` into `controls` that are physically meaningful.
-For instance, a synthesizer might need to remove frequencies above the [Nyquist frquency](https://en.wikipedia.org/wiki/Nyquist_frequency) to avoid [aliasing](https://en.wikipedia.org/wiki/Aliasing) or ensure that its amplitudes are strictly positive. To this end, they have the methods:
+For instance, a synthesizer might need to remove frequencies above the [Nyquist frequency](https://en.wikipedia.org/wiki/Nyquist_frequency) to avoid [aliasing](https://en.wikipedia.org/wiki/Aliasing) or ensure that its amplitudes are strictly positive. To this end, they have the methods:
 
 * `get_controls()`: inputs -> controls.
 * `get_signal()`: controls -> signal.
