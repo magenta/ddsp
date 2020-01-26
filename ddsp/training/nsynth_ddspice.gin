@@ -1,0 +1,16 @@
+# -*-Python-*-
+include 'datasets/base.gin'
+
+# Dataset (Different scopes to pass different args to different instances)
+train.data_provider = @train_data/data.NSynthTfdsDdspice()
+train_data/NSynthTfdsDdspice.split = 'train'
+
+evaluate.data_provider = @eval_data/data.NSynthTfdsDdspice()
+eval_data/data.NSynthTfdsDdspice.split = 'valid'
+
+sample.data_provider = @sample_data/data.NSynthTfdsDdspice()
+sample_data/data.NSynthTfdsDdspice.split = 'test'
+
+# Evaluate
+evaluate.num_batches = 50  # Full test set ~17000 samples
+

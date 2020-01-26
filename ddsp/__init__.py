@@ -26,6 +26,7 @@ from ddsp import losses
 from ddsp import processors
 from ddsp import spectral_ops
 from ddsp import synths
+from ddsp import untrained_models
 
 # Version number.
 from ddsp.version import __version__

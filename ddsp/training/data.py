@@ -20,9 +20,12 @@ from __future__ import division
 from __future__ import print_function
 
 from absl import logging
+import librosa
+import numpy as np
 import gin
 import tensorflow.compat.v1 as tf
 import tensorflow_datasets as tfds
+
 
 _AUTOTUNE = tf.data.experimental.AUTOTUNE
 
@@ -218,3 +221,74 @@ class TFRecordProvider(DataProvider):
     }
 
 
+@gin.register
+class NSynthTfdsDdspice(TfdsProvider):
+  """Parses features in the TFDS NSynth dataset for DDSPICE experiment
+
+  If running on Cloud, it is recommended you set `data_dir` to
+  'gs://tfds-data/datasets' to avoid unnecessary downloads.
+  """
+
+  def __init__(self,
+               name='nsynth/gansynth_subset.f0_and_loudness:2.3.0',
+               split='train',
+               data_dir='gs://tfds-data/datasets'):
+    """TfdsProvider constructor.
+
+    Args:
+      name: TFDS dataset name (with optional config and version).
+      split: Dataset split to use of the TFDS dataset.
+      data_dir: The directory to read the prepared NSynth dataset from. Defaults
+        to the public TFDS GCS bucket.
+    """
+    if data_dir == 'gs://tfds-data/datasets':
+      logging.warning(
+          'Using public TFDS GCS bucket to load NSynth. If not running on '
+          'GCP, this will be very slow, and it is recommended you prepare '
+          'the dataset locally with TFDS and set the data_dir appropriately.')
+    super(NSynthTfdsDdspice, self).__init__(name, split, data_dir)
+
+    print('NsynthTfdsDdspiceDdspice initiated')
+
+
+  def get_dataset(self, shuffle=True):
+    """Returns dataset with slight restructuring of feature dictionary."""
+    def preprocess_ex(ex):
+      pitch_shift_steps = np.float(np.random.randint(-12, 13))
+      shifted_audio = _pitch_shift(ex['audio'], pitch_shift_steps)
+      example_dict = {
+          'pitch':
+              ex['pitch'],
+          'audio':
+              ex['audio'],
+          'shifted_audio':
+              shifted_audio,
+          'pitch_shift_steps':
+              tf.constant(pitch_shift_steps, dtype=tf.float32),
+          'instrument_source':
+              ex['instrument']['source'],
+          'instrument_family':
+              ex['instrument']['family'],
+          'instrument':
+              ex['instrument']['label'],
+          'f0_hz':
+              ex['f0']['hz'],
+          'f0_confidence':
+              ex['f0']['confidence'],
+          'loudness_db':
+              ex['loudness']['db'],
+            }
+      return example_dict
+
+    dataset = super(NSynthTfdsDdspice, self).get_dataset(shuffle)
+    dataset = dataset.map(preprocess_ex, num_parallel_calls=_AUTOTUNE)
+    return dataset
+
+
+def _pitch_shift(waveform: tf.Tensor, n_steps: np.float):
+  def pitch_shift_py(waveform, n_steps):
+    return librosa.effects.pitch_shift(
+          waveform, 16000, n_steps, 12, 'kaiser_fast'
+    )
+
+  return tf.py_func(pitch_shift_py, [waveform, n_steps], tf.float32, stateful=False)

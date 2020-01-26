@@ -26,6 +26,7 @@ from absl import logging
 
 import ddsp
 from ddsp.training import train_util
+from ddsp import untrained_models
 
 import gin
 import tensorflow.compat.v1 as tf
@@ -232,3 +233,117 @@ class Autoencoder(Model):
         logging.info('!skipping frozen variable %s (shape=%s, dtype=%s).',
                      x.name, x.shape, x.dtype)
     return trainables
+
+
+@gin.configurable
+class AutoencoderDdspice(Autoencoder):
+  """Wrap the model function for dependency injection with gin."""
+
+  def __init__(self,
+               preprocessor=None,
+               encoder=None,
+               decoder=None,
+               processor_group=None,
+               losses=None,
+               name='autoencoder_ddspice'):
+
+    super(AutoencoderDdspice, self).__init__(preprocessor=preprocessor,
+                                             encoder=encoder,
+                                             decoder=decoder,
+                                             processor_group=processor_group,
+                                             losses=losses,
+                                             name=name)
+
+    self.trainable_crepe = untrained_models.Crepe(model_capacity='tiny',
+                                                  activation_layer='classifier')
+
+  def _crepe_predict_pitch(self, audio):
+    """
+    Args:
+      audio: tensor shape of (batch, 64000)
+
+    Returns:
+      f0_hz, f0_confidence
+    """
+    salience = self.trainable_crepe(audio)  # (batch, 1000, 360)
+    pitch_idxs = tf.argmax(salience, axis=-1, name='pitch_idxs')  # (batch, 1000)
+    # todo: crepe.core.to_local_average_cents should be applied here.. right?
+    # but for now; just a simple argmax for temporary.
+    # see crepe.core.py L95.
+    cent_pred = tf.cast(pitch_idxs, tf.float32) * 360 + 1997.3794084
+    f0_hz = 10 * 2 ** (cent_pred / 1200)
+    f0_confidence = tf.math.reduce_max(salience, axis=-1)
+
+    # todo; to think - how do we make sure this salience would mean certain..
+    # todo; ..frequency[hz]?? why would it learn that??
+
+    # features['audio'] --> shape=(16, 64000)
+    # todo; f0 = untrained_crepe(audio)
+    # then pass it to self.preprocessor
+    # f0 should be (16, 1000, 1)
+    return f0_hz, f0_confidence
+
+
+  def get_outputs(self, features, training=True):
+    """Run the core of the network, get predictions and loss.
+
+    Args:
+      features: An input dictionary of audio features. Requires at least the
+        item "audio" (tensor[batch, n_samples]).
+      training: Different behavior for training.
+
+    Returns:
+      Dictionary of all inputs, decoder outputs, signal processor intermediates,
+        and losses. Includes total loss and audio_gen.
+    """
+    # ---------------------- Data Preprocessing --------------------------------
+    # Returns a modified copy of features.
+    f0_hz, f0_confidence = self._crepe_predict_pitch(features['audio'])
+    features['f0_hz'] = f0_hz
+    features['f0_confidence'] = f0_confidence
+
+    conditioning = self.preprocessor(features, training=training)
+
+    # ---------------------- Pitch prediction for shifted audio ----------------
+    f0_hz_shift, f0_confidence_shift = self._crepe_predict_pitch(features['shifted_audio'])
+    pitch_shift_steps = features['pitch_shift_steps']
+
+    # ---------------------- Encoder -------------------------------------------
+    if self.encoder is not None:
+      conditioning = self.encoder(conditioning)
+
+    # ---------------------- Decoder -------------------------------------------
+    conditioning = self.decoder(conditioning)
+
+    # ---------------------- Synthesizer ---------------------------------------
+    outputs = self.processor_group.get_outputs(conditioning)
+    audio_gen = outputs[self.processor_group.name]['signal']
+    outputs['audio_gen'] = audio_gen
+
+    # ---------------------- Losses --------------------------------------------
+    total_loss = 0.0
+    loss_dict = {}
+    for loss_obj in self.loss_objs:
+      loss_term = loss_obj(features['audio'], audio_gen)
+      total_loss += loss_term
+      loss_name = 'losses/{}'.format(loss_obj.name)
+      loss_dict[loss_name] = loss_term
+      self.add_tb_metric(loss_name, loss_term)
+
+    # ---------------------- Also losses: shifted audio ------------------------
+
+    pitch_loss = tf.compat.v1.losses.huber_loss(pitch_shift_steps,
+                                                f0_hz_shift - f0_hz)
+    pitch_coeff = 1.0  # todo: enable hyperparam search
+    loss_dict['pitch_loss'] = pitch_coeff * pitch_loss
+    self.add_tb_metric('pitch_loss', pitch_loss)
+    # todo; do i need fancier loss here?
+
+    # Update tb and outputs.
+    self.add_tb_metric('loss', total_loss)
+    self.add_tb_metric('global_step', tf.train.get_or_create_global_step())
+    outputs.update(loss_dict)
+    outputs['total_loss'] = total_loss
+
+    return outputs
+

@@ -79,3 +79,28 @@ class DefaultPreprocessor(Preprocessor):
     return features
 
 
+@gin.register
+class DdspicePreprocessor(DefaultPreprocessor):
+  """Default class that resamples features and adds `f0_hz` key."""
+
+  def __init__(self, time_steps=1000):
+    super(DdspicePreprocessor, self).__init__(time_steps=time_steps)
+
+  def _default_processing(self, features):
+    """Always resample to `time_steps` and scale 'loudness_db'.
+    Unlike DDSP preprocessor, it does not output `f0_hz` or  'f0_scaled', and
+    they have to be processed later in the model.
+    """
+    # import ipdb; ipdb.set_trace()
+    for k in ['loudness_db']:  # (batch, 1000, 1)
+      features[k] = ddsp.core.resample(features[k], n_timesteps=self.time_steps)
+      features[k] = at_least_3d(features[k])
+    # For NN training, scale frequency and loudness to the range [0, 1].
+    # Log-scale f0 features. Loudness from [-1, 0] to [1, 0].
+
+    # F0_range = 127.0
+    # features['f0_scaled'] = hz_to_midi(features['f0_hz']) / F0_RANGE
+    features['ld_scaled'] = (features['loudness_db'] / LD_RANGE) + 1.0
+
+    return features
+
