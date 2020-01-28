@@ -107,17 +107,17 @@ class Crepe(tfkl.Layer):
     # layers.append(k.Permute((2, 1, 3), name='transpose'))
     # layers.append(k.Flatten(name='flatten'))
     # layers.append(k.Dense(360, activation='sigmoid', name='classifier'))
-    layers.append(k.Conv2d(360, (4, 1),
+    layers.append(k.Conv2D(360, (4, 1),
                            padding='same',
                            activation='sigmoid',
                            name='dense_alternative'))
-    layers.append(k.Reshape((250, 360), name='classifier'))
+    layers.append(k.Reshape((1000, 360), name='classifier'))
 
     return layers
 
   def call(self, audio, training=False):
     # returns a dict of tensors, from layer name to layer activations.
-    assert audio.shape[1] == 64000
+    assert audio.shape[1] == 64000, audio.shape
 
     y = audio
     for _ in range(2):
@@ -134,14 +134,14 @@ class Crepe(tfkl.Layer):
     return activation_dict  # final shape: (batch, 1000, 360)
 
 
-class UntrainedCREPE(UntrainedModel):
+class TrainableCREPE(UntrainedModel):
   """CREPE model."""
 
   def __init__(self,
                model_capacity='tiny',
                activation_layer='classifier',
                name='crepe'):
-    super(UntrainedCREPE, self).__init__(name=name)
+    super(TrainableCREPE, self).__init__(name=name)
     self._model_capacity = model_capacity
     self._activation_layer = activation_layer
     self._model = None

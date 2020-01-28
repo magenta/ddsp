@@ -256,6 +256,7 @@ class NSynthTfdsDdspice(TfdsProvider):
     def preprocess_ex(ex):
       pitch_shift_steps = np.float(np.random.randint(-12, 13))
       shifted_audio = _pitch_shift(ex['audio'], pitch_shift_steps)
+      shifted_audio.set_shape(ex['audio'].shape)
       example_dict = {
           'pitch':
               ex['pitch'],

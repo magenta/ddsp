@@ -254,8 +254,9 @@ class AutoencoderDdspice(Autoencoder):
                                              losses=losses,
                                              name=name)
 
-    self.trainable_crepe = untrained_models.Crepe(model_capacity='tiny',
-                                                  activation_layer='classifier')
+    self.trainable_crepe = untrained_models.TrainableCREPE(
+      model_capacity='tiny',
+      activation_layer='classifier')
 
   def _crepe_predict_pitch(self, audio):
     """
@@ -265,13 +266,33 @@ class AutoencoderDdspice(Autoencoder):
     Returns:
       f0_hz, f0_confidence
     """
+    def softargmax(x, beta=1e6, name='softargmax'):
+      """
+      Approximating argmax. beta=1e5 turns out to be large enough.
+
+      Args:
+        x: a 3-dim tensor, (batch, time, axis-to-reduce)
+
+      Returns:
+        Approximated argmax tensor shape of (batch, time)
+      """
+      x_range = tf.range(x.shape.as_list()[-1], dtype=x.dtype)  # shape: (N, )
+      for _ in range(2):
+        x_range = tf.expand_dims(x_range, 0)   # shape: (1, 1, N)
+      return tf.reduce_sum(tf.nn.softmax(x * beta) * x_range, axis=-1, name=name)
+
     salience = self.trainable_crepe(audio)  # (batch, 1000, 360)
-    pitch_idxs = tf.argmax(salience, axis=-1, name='pitch_idxs')  # (batch, 1000)
+    salience = tf.debugging.check_numerics(salience, 'salience')
+    # pitch_idxs = tf.argmax(salience, axis=-1, name='pitch_idxs')  # (batch, 1000)
+    pitch_idxs = softargmax(salience, name='pitch_idxs')
+    pitch_idxs = tf.debugging.check_numerics(pitch_idxs, 'pitch_idx')
     # todo: crepe.core.to_local_average_cents should be applied here.. right?
     # but for now; just a simple argmax for temporary.
     # see crepe.core.py L95.
-    cent_pred = tf.cast(pitch_idxs, tf.float32) * 360 + 1997.3794084
-    f0_hz = 10 * 2 ** (cent_pred / 1200)
+    # cent_pred = tf.cast(pitch_idxs, tf.float32) * 360 + 1997.3794084
+    cent_pred = 20.0 * pitch_idxs + tf.constant(1997.3794084, dtype=tf.float32)
+    cent_pred = tf.debugging.check_numerics(cent_pred, 'cent_pred')
+    f0_hz = 10.0 * tf.math.pow(2.0, (cent_pred / 1200.0))
     f0_confidence = tf.math.reduce_max(salience, axis=-1)
 
     # todo; to think - how do we make sure this salience would mean certain..
@@ -331,12 +352,15 @@ class AutoencoderDdspice(Autoencoder):
       self.add_tb_metric(loss_name, loss_term)
 
     # ---------------------- Also losses: shifted audio ------------------------
+    # todo; maybe compute loss only where confidence > threshold
+    pitch_shift_steps = tf.expand_dims(pitch_shift_steps, axis=1)  # (16, 1)
+    pitch_shift_steps = pitch_shift_steps * tf.ones_like(f0_hz_shift - f0_hz)  # (16, 1000)
+    # pitch_loss = tf.compat.v1.losses.huber_loss(pitch_shift_steps,
+    #                                             f0_hz_shift - f0_hz)
 
-    pitch_loss = tf.compat.v1.losses.huber_loss(pitch_shift_steps,
-                                                f0_hz_shift - f0_hz)
-    pitch_coeff = 1.0  # todo: enable hyperparam search
-    loss_dict['pitch_loss'] = pitch_coeff * pitch_loss
-    self.add_tb_metric('pitch_loss', pitch_loss)
+    # pitch_coeff = 1e-3  # todo: enable hyperparam search
+    # loss_dict['pitch_loss'] = pitch_coeff * pitch_loss
+    # self.add_tb_metric('pitch_loss', pitch_loss)
     # todo; do i need fancier loss here?
 
     # Update tb and outputs.

@@ -92,14 +92,14 @@ class DdspicePreprocessor(DefaultPreprocessor):
     they have to be processed later in the model.
     """
     # import ipdb; ipdb.set_trace()
-    for k in ['loudness_db']:  # (batch, 1000, 1)
+    for k in ['loudness_db', 'f0_hz']:  # (batch, 1000, 1)
       features[k] = ddsp.core.resample(features[k], n_timesteps=self.time_steps)
       features[k] = at_least_3d(features[k])
     # For NN training, scale frequency and loudness to the range [0, 1].
     # Log-scale f0 features. Loudness from [-1, 0] to [1, 0].
 
     # F0_range = 127.0
-    # features['f0_scaled'] = hz_to_midi(features['f0_hz']) / F0_RANGE
+    features['f0_scaled'] = hz_to_midi(features['f0_hz']) / F0_RANGE
     features['ld_scaled'] = (features['loudness_db'] / LD_RANGE) + 1.0
 
     return features
