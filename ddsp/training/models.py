@@ -355,12 +355,12 @@ class AutoencoderDdspice(Autoencoder):
     # todo; maybe compute loss only where confidence > threshold
     pitch_shift_steps = tf.expand_dims(pitch_shift_steps, axis=1)  # (16, 1)
     pitch_shift_steps = pitch_shift_steps * tf.ones_like(f0_hz_shift - f0_hz)  # (16, 1000)
-    # pitch_loss = tf.compat.v1.losses.huber_loss(pitch_shift_steps,
-    #                                             f0_hz_shift - f0_hz)
+    pitch_loss = tf.compat.v1.losses.huber_loss(pitch_shift_steps,
+                                                f0_hz_shift - f0_hz)
 
-    # pitch_coeff = 1e-3  # todo: enable hyperparam search
-    # loss_dict['pitch_loss'] = pitch_coeff * pitch_loss
-    # self.add_tb_metric('pitch_loss', pitch_loss)
+    pitch_coeff = 1e-3  # todo: enable hyperparam search
+    loss_dict['pitch_loss'] = pitch_coeff * pitch_loss
+    self.add_tb_metric('pitch_loss', pitch_loss)
     # todo; do i need fancier loss here?
 
     # Update tb and outputs.
