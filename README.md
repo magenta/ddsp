@@ -276,7 +276,7 @@ If you use this code please cite it as:
 ```latex
 @inproceedings{
   engel2020ddsp,
-  title={{\{}DDSP{\}}: Differentiable Digital Signal Processing},
+  title={DDSP: Differentiable Digital Signal Processing},
   author={Jesse Engel and Lamtharn (Hanoi) Hantrakul and Chenjie Gu and Adam Roberts},
   booktitle={International Conference on Learning Representations},
   year={2020},

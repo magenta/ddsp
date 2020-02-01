@@ -8,6 +8,11 @@ The current supported models are variants of an audio autoencoder.
 <img src="https://storage.googleapis.com/ddsp/additive_diagram/ddsp_autoencoder.png" width="800px" alt="logo"></img>
 </div>
 
+# Disclaimer
+*Unlike the base `ddsp/` library, this folder is actively modified for new
+experiments and has a higher chance of making breaking changes in the future.*
+
+
 ## Modules
 
 The DDSP training libraries are separated into several modules:
@@ -126,9 +131,3 @@ ddsp_run \
 --gin_param="batch_size=16" \
 --alsologtostderr
 ```
-
-
-# Disclaimer
-*Unlike the base `ddsp/` library, this folder is actively modified for new
-experiments and has a higher chance of making breaking changes in the future.*
-
