@@ -6,5 +6,6 @@ evaluate.batch_size = 32
 evaluate.num_batches = 5  # Depends on dataset size.
 
 # Sample
-sample.batch_size = 21
+sample.batch_size = 16
+sample.num_batches = 1
 sample.ckpt_delay_secs = 300  # 5 minutes

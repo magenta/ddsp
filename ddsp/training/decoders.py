@@ -21,7 +21,7 @@ from __future__ import print_function
 
 from ddsp.training import nn
 import gin
-import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf
 
 tfkl = tf.keras.layers
 

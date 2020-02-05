@@ -21,12 +21,14 @@ from __future__ import print_function
 
 import functools
 
-from ddsp import pretrained_models
+import crepe
 from ddsp import spectral_ops
 from ddsp.core import tf_float32
 
 import gin
-import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf
+
+tfkl = tf.keras.layers
 
 
 # ---------------------- Losses ------------------------------------------------
@@ -40,36 +42,8 @@ def mean_difference(target, value, loss_type='L1'):
     return tf.losses.cosine_distance(target, value, axis=-1)
 
 
-class Loss(object):
-  """Base class to implement any loss.
-
-  Users should override compute_loss() to define the actual loss.
-  Hyper-parameters of the loss will be passed through the constructor.
-  """
-
-  def __init__(self, name):
-    self.name = name
-    self.pretrained_model = None
-
-  def __call__(self, *args, **kwargs):
-    """Alias to compute_loss."""
-    return self.compute_loss(*args, **kwargs)
-
-  def compute_loss(self, audio, target_audio):
-    """Subclasses must implement compute_loss().
-
-    Args:
-      audio: 2D tensor of shape [batch, time].
-      target_audio: 2D tensor of shape [batch, time].
-
-    Returns:
-      A scalar tensor of the loss.
-    """
-    raise NotImplementedError
-
-
 @gin.register
-class SpectralLoss(Loss):
+class SpectralLoss(tfkl.Layer):
   """Multi-scale spectrogram loss."""
 
   def __init__(self,
@@ -94,7 +68,7 @@ class SpectralLoss(Loss):
     self.logmag_weight = logmag_weight
     self.loudness_weight = loudness_weight
 
-  def compute_loss(self, audio, target_audio):
+  def call(self, audio, target_audio):
 
     loss = 0.0
     loss_ops = []
@@ -155,7 +129,7 @@ class SpectralLoss(Loss):
 
 
 @gin.register
-class EmbeddingLoss(Loss):
+class EmbeddingLoss(tfkl.Layer):
   """Embedding loss for a given pretrained model.
 
   Calculates the embedding loss given a pretrained model.
@@ -174,7 +148,7 @@ class EmbeddingLoss(Loss):
     self.loss_type = loss_type
     self.pretrained_model = pretrained_model
 
-  def compute_loss(self, audio, target_audio):
+  def call(self, audio, target_audio):
     audio, target_audio = tf_float32(audio), tf_float32(target_audio)
     target_emb = self.pretrained_model(target_audio)
     synth_emb = self.pretrained_model(audio)
@@ -191,31 +165,92 @@ class PretrainedCREPEEmbeddingLoss(EmbeddingLoss):
                loss_type='L1',
                model_capacity='tiny',
                activation_layer='classifier',
-               checkpoint='gs://ddsp/crepe/model-tiny.ckpt',
                name='pretrained_crepe_embedding_loss'):
     # Scale each layer activation loss to comparable scales.
     scale = {
-        'classifier': 6.8e-4,
-        'conv6-maxpool': 2.5e4,
-        'conv5-maxpool': 4.0e4,
-        'conv4-maxpool': 4.9e3,
-        'conv3-maxpool': 4.0e2,
-        'conv2-maxpool': 3.0e1,
-        'conv1-maxpool': 1.3e0,
-        'conv6-BN': 1.8e4,
-        'conv5-BN': 3.5e4,
-        'conv4-BN': 3.9e3,
-        'conv3-BN': 2.6e2,
-        'conv2-BN': 2.1e1,
-        'conv1-BN': 1.0e0,
+        'conv1-BN': 1.3,
+        'conv1-maxpool': 1.0,
+        'conv2-BN': 1.4,
+        'conv2-maxpool': 1.1,
+        'conv3-BN': 1.9,
+        'conv3-maxpool': 1.6,
+        'conv4-BN': 1.5,
+        'conv4-maxpool': 1.4,
+        'conv5-BN': 1.9,
+        'conv5-maxpool': 1.7,
+        'conv6-BN': 30,
+        'conv6-maxpool': 25,
+        'classifier': 130,
     }[activation_layer]
     super(PretrainedCREPEEmbeddingLoss, self).__init__(
-        weight=20 / scale * weight,
+        weight=20.0 * scale * weight,
         loss_type=loss_type,
         name=name,
-        pretrained_model=pretrained_models.PretrainedCREPE(
-            model_capacity=model_capacity,
-            activation_layer=activation_layer,
-            checkpoint=checkpoint))
+        pretrained_model=PretrainedCREPE(model_capacity=model_capacity,
+                                         activation_layer=activation_layer))
 
 
+class PretrainedCREPE(tfkl.Layer):
+  """Pretrained CREPE model with frozen weights."""
+
+  def __init__(self,
+               model_capacity='tiny',
+               activation_layer='conv5-maxpool',
+               name='pretrained_crepe',
+               trainable=False):
+    super(PretrainedCREPE, self).__init__(name=name, trainable=trainable)
+    self._model_capacity = model_capacity
+    self._activation_layer = activation_layer
+    spectral_ops.reset_crepe()
+    self._model = crepe.core.build_and_load_model(self._model_capacity)
+    self.frame_length = 1024
+
+  def build(self, x_shape):
+    self.layer_names = [l.name for l in self._model.layers]
+
+    if self._activation_layer not in self.layer_names:
+      raise ValueError(
+          'activation layer {} not found, valid names are {}'.format(
+              self._activation_layer, self.layer_names))
+
+    self._activation_model = tf.keras.Model(
+        inputs=self._model.input,
+        outputs=self._model.get_layer(self._activation_layer).output)
+
+    # Variables are not to be trained.
+    self._model.trainable = self.trainable
+    self._activation_model.trainable = self.trainable
+
+  def frame_audio(self, audio, hop_length=1024, center=True):
+    """Slice audio into frames for crepe."""
+    # Pad so that frames are centered around their timestamps.
+    # (i.e. first frame is zero centered).
+    pad = int(self.frame_length / 2)
+    audio = tf.pad(audio, ((0, 0), (pad, pad))) if center else audio
+    frames = tf.signal.frame(audio,
+                             frame_length=self.frame_length,
+                             frame_step=hop_length)
+
+    # Normalize each frame -- this is expected by the model.
+    mean, var = tf.nn.moments(frames, [-1], keepdims=True)
+    frames -= mean
+    frames /= (var**0.5 + 1e-5)
+    return frames
+
+  def call(self, audio):
+    """Returns the embeddings.
+
+    Args:
+      audio: tensors of shape [batch, length]. Length must be divisible by 1024.
+
+    Returns:
+      activations of shape [batch, depth]
+    """
+    frames = self.frame_audio(audio)
+    batch_size = int(frames.shape[0])
+    n_frames = int(frames.shape[1])
+    # Get model predictions.
+    frames = tf.reshape(frames, [-1, self.frame_length])
+    outputs = self._activation_model(frames)
+    outputs = tf.reshape(outputs, [batch_size, n_frames, -1])
+    return outputs

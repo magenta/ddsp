@@ -21,7 +21,7 @@ from __future__ import print_function
 
 from absl import logging
 import gin
-import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf
 import tensorflow_datasets as tfds
 
 _AUTOTUNE = tf.data.experimental.AUTOTUNE
@@ -46,34 +46,11 @@ class DataProvider(object):
     Returns:
       A batched tf.data.Dataset.
     """
-
     dataset = self.get_dataset(shuffle)
     dataset = dataset.repeat(repeats)
     dataset = dataset.batch(batch_size, drop_remainder=True)
     dataset = dataset.prefetch(buffer_size=_AUTOTUNE)
     return dataset
-
-  def get_input_fn(self, shuffle=True, repeats=-1):
-    """Wrapper to make get_batch() compatible with tf.Estimator.
-
-    Args:
-      shuffle: Whether to shuffle the examples.
-      repeats: Number of times to repeat dataset. -1 for endless repeats.
-
-    Returns:
-      An input_fn() for a tf.Estimator. Function takes in a dictionary 'params'
-        as its first argument, with key 'batch_size', and returns a dataset
-        that has a tuple of examples for each entry.
-    """
-    map_fn = lambda ex: (ex, ex)
-
-    def input_fn(params):
-      batch_size = params['batch_size']
-      dataset = self.get_batch(batch_size, shuffle, repeats)
-      dataset = dataset.map(map_fn, num_parallel_calls=_AUTOTUNE)
-      return dataset
-
-    return input_fn
 
 
 class TfdsProvider(DataProvider):
@@ -193,7 +170,7 @@ class TFRecordProvider(DataProvider):
       dataset: A tf.dataset that reads from the TFRecord.
     """
     def parse_tfexample(record):
-      return tf.parse_single_example(record, self.features_dict)
+      return tf.io.parse_single_example(record, self.features_dict)
 
     filenames = tf.data.Dataset.list_files(self._file_pattern, shuffle=shuffle)
     dataset = filenames.interleave(
@@ -208,13 +185,13 @@ class TFRecordProvider(DataProvider):
     """Dictionary of features to read from dataset."""
     return {
         'audio':
-            tf.FixedLenFeature([self._audio_length], dtype=tf.float32),
+            tf.io.FixedLenFeature([self._audio_length], dtype=tf.float32),
         'f0_hz':
-            tf.FixedLenFeature([self._feature_length], dtype=tf.float32),
+            tf.io.FixedLenFeature([self._feature_length], dtype=tf.float32),
         'f0_confidence':
-            tf.FixedLenFeature([self._feature_length], dtype=tf.float32),
+            tf.io.FixedLenFeature([self._feature_length], dtype=tf.float32),
         'loudness_db':
-            tf.FixedLenFeature([self._feature_length], dtype=tf.float32),
+            tf.io.FixedLenFeature([self._feature_length], dtype=tf.float32),
     }
 
 

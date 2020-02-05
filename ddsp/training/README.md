@@ -36,10 +36,12 @@ The main training file is `ddsp_run.py` and its helper libraries:
 *   [ddsp_run](./ddsp_run.py):
     Main file for training, evaluating, and sampling from models.
 *   [train_util](./train_util.py):
-    Helper functions for training.
+    Helper functions for training including the Trainer object.
 *   [eval_util](./eval_util.py):
     Helper functions for evaluation and sampling.
 
+While the modules in the `ddsp/` base directory can be used to train models
+with `tf.compat.v1` or `tf.compat.v2` this directory only uses `tf.compat.v2`.
 
 ## Quickstart
 
@@ -61,29 +63,29 @@ If not running on GCP, it is much faster to first download the dataset with
 ### Train
 ```bash
 ddsp_run \
---mode=train \
---model_dir=~/tmp/$USER-ddsp-0 \
---gin_file=papers/iclr2020/nsynth_ae.gin \
---gin_param="batch_size=16" \
---alsologtostderr
+  --mode=train \
+  --model_dir=~/tmp/$USER-ddsp-0 \
+  --gin_file=papers/iclr2020/nsynth_ae.gin \
+  --gin_param="batch_size=16" \
+  --alsologtostderr
 ```
 
 ### Evaluate
 ```bash
 ddsp_run \
---mode=eval \
---model_dir=~/tmp/$USER-ddsp-0 \
---gin_file=dataset/nsynth.gin \
---alsologtostderr
+  --mode=eval \
+  --model_dir=~/tmp/$USER-ddsp-0 \
+  --gin_file=dataset/nsynth.gin \
+  --alsologtostderr
 ```
 
 ### Sample
 ```bash
 ddsp_run \
---mode=sample \
---model_dir=~/tmp/$USER-ddsp-0 \
---gin_file=dataset/nsynth.gin \
---alsologtostderr
+  --mode=sample \
+  --model_dir=~/tmp/$USER-ddsp-0 \
+  --gin_file=dataset/nsynth.gin \
+  --alsologtostderr
 ```
 
 When training, all gin parameters in the
@@ -98,11 +100,10 @@ To use a [Cloud TPU](https://cloud.google.com/tpu/) for any of the above command
 
 First, your model directory will need to accessible to the TPU. This means it will need to be located in a [GCS bucket with proper permissions](https://cloud.google.com/tpu/docs/storage-buckets).
 
-Second, you will need to add the following flags:
+Second, you will need to add the following flag:
 
 ```
---use_tpu \
---master=grpc://<TPU internal IP address>:8470 \
+--tpu=grpc://<TPU internal IP address>:8470 \
 ```
 
 The TPU internal IP address can be found in the Cloud Console.
@@ -114,20 +115,23 @@ TFRecord dataset out of a folder of .wav or .mp3 files
 
 ```bash
 ddsp_prepare_tfrecord \
---input_audio_filepatterns=/path/to/wavs/*wav \
---output_tfrecord_path=/path/to/dataset_name.tfrecord \
---num_shards=10 \
---alsologtostderr
+  --input_audio_filepatterns=/path/to/wavs/*wav \
+  --output_tfrecord_path=/path/to/dataset_name.tfrecord \
+  --num_shards=10 \
+  --alsologtostderr
 ```
 
 ### Train
 ```bash
 ddsp_run \
---mode=train \
---model_dir=~/tmp/$USER-ddsp-0 \
---gin_file=models/solo_instrument.gin \
---gin_file=datasets/tfrecord.gin \
---gin_param="TFRecordProvider.file_pattern='/path/to/dataset_name*.tfrecord'" \
---gin_param="batch_size=16" \
---alsologtostderr
+  --mode=train \
+  --model_dir=~/tmp/$USER-ddsp-0 \
+  --gin_file=models/solo_instrument.gin \
+  --gin_file=datasets/tfrecord.gin \
+  --gin_param="TFRecordProvider.file_pattern='/path/to/dataset_name*.tfrecord'" \
+  --gin_param="batch_size=16" \
+  --alsologtostderr
 ```
+
+
+

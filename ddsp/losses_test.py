@@ -20,15 +20,26 @@ from __future__ import division
 from __future__ import print_function
 
 from ddsp import losses
-import tensorflow.compat.v1 as tf
-
-tf.disable_v2_behavior()
+import tensorflow.compat.v2 as tf
 
 
 class SpectralLossTest(tf.test.TestCase):
 
   def test_output_shape_is_correct(self):
     loss_obj = losses.SpectralLoss()
+
+    input_audio = tf.random.uniform((3, 16000), dtype=tf.float32)
+    target_audio = tf.random.uniform((3, 16000), dtype=tf.float32)
+
+    loss = loss_obj(input_audio, target_audio)
+
+    self.assertListEqual([], loss.shape.as_list())
+
+
+class PretrainedCREPEEmbeddingLossTest(tf.test.TestCase):
+
+  def test_output_shape_is_correct(self):
+    loss_obj = losses.PretrainedCREPEEmbeddingLoss()
 
     input_audio = tf.random.uniform((3, 16000), dtype=tf.float32)
     target_audio = tf.random.uniform((3, 16000), dtype=tf.float32)

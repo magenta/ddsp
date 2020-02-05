@@ -23,7 +23,7 @@ from ddsp import core
 from ddsp import processors
 from ddsp import synths
 import gin
-import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf
 
 tf_float32 = core.tf_float32
 
@@ -72,8 +72,9 @@ class Reverb(processors.Processor):
     batch_size = int(audio.shape[0])
     return tf.tile(ir, [batch_size, 1])
 
-  def build(self, unused_shape):
+  def build(self, input_shape):
     """Initialize impulse response."""
+    super(Reverb, self).build(input_shape)
     if self.trainable:
       initializer = tf.random_normal_initializer(mean=0, stddev=1e-6)
       self._ir = self.add_weight(
@@ -152,12 +153,13 @@ class ExpDecayReverb(Reverb):
     gain = self._scale_fn(gain)
     decay_exponent = 2.0 + tf.exp(decay)
     time = tf.linspace(0.0, 1.0, self._reverb_length)[tf.newaxis, :]
-    noise = tf.random_uniform([1, self._reverb_length], minval=-1.0, maxval=1.0)
+    noise = tf.random.uniform([1, self._reverb_length], minval=-1.0, maxval=1.0)
     ir = gain * tf.exp(-decay_exponent * time) * noise
     return ir
 
-  def build(self, unused_shape):
+  def build(self, input_shape):
     """Initialize impulse response."""
+    super(ExpDecayReverb, self).build(input_shape)
     if self.trainable:
       self._gain = self.add_weight(
           name='gain',
@@ -245,8 +247,9 @@ class FilteredNoiseReverb(Reverb):
                                        scale_fn=scale_fn,
                                        initial_bias=initial_bias)
 
-  def build(self, unused_shape):
+  def build(self, input_shape):
     """Initialize impulse response."""
+    super(FilteredNoiseReverb, self).build(input_shape)
     if self.trainable:
       initializer = tf.random_normal_initializer(mean=0, stddev=1e-2)
       self._magnitudes = self.add_weight(

@@ -24,7 +24,7 @@ from ddsp.core import tf_float32
 import gin
 import librosa
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf
 
 _CREPE_SAMPLE_RATE = 16000
 _CREPE_FRAME_SIZE = 1024
@@ -34,7 +34,7 @@ LD_RANGE = 120.0  # dB
 
 
 def safe_log(x, eps=1e-5):
-  return tf.log(x + eps)
+  return tf.math.log(x + eps)
 
 
 def stft(audio, frame_size=2048, overlap=0.75, pad_end=True):
@@ -214,7 +214,7 @@ def compute_loudness(audio,
 
   # Compute power
   amplitude = lib.abs(s)
-  log10 = (lambda x: tf.log(x) / tf.log(10.0)) if use_tf else np.log10
+  log10 = (lambda x: tf.math.log(x) / tf.math.log(10.0)) if use_tf else np.log10
   amin = 1e-20  # Avoid log(0) instabilities.
   power_db = log10(lib.maximum(amin, amplitude))
   power_db *= 20.0

@@ -21,9 +21,7 @@ from __future__ import print_function
 
 from ddsp import spectral_ops
 import numpy as np
-import tensorflow.compat.v1 as tf
-
-tf.disable_v2_behavior()
+import tensorflow.compat.v2 as tf
 
 
 class STFTTest(tf.test.TestCase):
@@ -39,11 +37,8 @@ class STFTTest(tf.test.TestCase):
     s_np = spectral_ops.stft_np(
         audio, frame_size=frame_size, overlap=overlap, pad_end=pad_end)
 
-    sess = tf.Session()
-    with self.cached_session() as sess:
-      s_tf = sess.run(
-          spectral_ops.stft(
-              audio, frame_size=frame_size, overlap=overlap, pad_end=pad_end))
+    s_tf = spectral_ops.stft(
+        audio, frame_size=frame_size, overlap=overlap, pad_end=pad_end)
 
     # TODO(jesseengel): The phase comes out a little different, figure out why.
     self.assertAllClose(np.abs(s_np), np.abs(s_tf), rtol=1e-3, atol=1e-3)
@@ -57,10 +52,8 @@ class LoudnessTest(tf.test.TestCase):
     frame_size = 2048
     frame_rate = 250
 
-    with self.cached_session() as sess:
-      ld_tf = sess.run(
-          spectral_ops.compute_loudness(
-              audio, n_fft=frame_size, frame_rate=frame_rate, use_tf=True))
+    ld_tf = spectral_ops.compute_loudness(
+        audio, n_fft=frame_size, frame_rate=frame_rate, use_tf=True)
 
     ld_np = spectral_ops.compute_loudness(
         audio, n_fft=frame_size, frame_rate=frame_rate, use_tf=False)

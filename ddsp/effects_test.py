@@ -21,9 +21,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 from ddsp import effects
-import tensorflow.compat.v1 as tf
-
-tf.disable_v2_behavior()
+import tensorflow.compat.v2 as tf
 
 
 class ReverbTest(parameterized.TestCase, tf.test.TestCase):

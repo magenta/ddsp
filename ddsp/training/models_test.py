@@ -25,9 +25,7 @@ from ddsp.training import models
 import gin
 import numpy as np
 import pkg_resources
-import tensorflow.compat.v1 as tf
-
-tf.disable_v2_behavior()
+import tensorflow.compat.v2 as tf
 
 GIN_PATH = pkg_resources.resource_filename(__name__, 'gin')
 gin.add_config_file_search_path(GIN_PATH)
@@ -65,10 +63,10 @@ class AutoencoderTest(parameterized.TestCase, tf.test.TestCase):
       gin.parse_config_file(gin_file)
 
     model = models.Autoencoder()
-    outputs = model.get_outputs(self.inputs)
-    self.assertIsInstance(outputs, dict)
+    controls = model.get_controls(self.inputs)
+    self.assertIsInstance(controls, dict)
     # Confirm that model generates correctly sized audio.
-    audio_gen_shape = outputs['audio_gen'].shape.as_list()
+    audio_gen_shape = controls['processor_group']['signal'].shape.as_list()
     self.assertEqual(audio_gen_shape, list(self.inputs['audio'].shape))
 
 if __name__ == '__main__':

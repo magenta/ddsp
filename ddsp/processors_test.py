@@ -25,9 +25,7 @@ from ddsp import effects
 from ddsp import processors
 from ddsp import synths
 import numpy as np
-import tensorflow.compat.v1 as tf
-
-tf.disable_v2_behavior()
+import tensorflow.compat.v2 as tf
 
 
 class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
@@ -89,7 +87,7 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
     """
     processor_group = processors.ProcessorGroup(dag=self.dag,
                                                 name='processor_group')
-    outputs = processor_group.get_outputs(self.nn_outputs)
+    outputs = processor_group.get_controls(self.nn_outputs)
     self.assertIsInstance(outputs, dict)
     self._check_tensor_outputs(self.expected_outputs, outputs)
 
@@ -100,14 +98,11 @@ class AddTest(tf.test.TestCase):
     processor = processors.Add(name='add')
     x = tf.zeros((2, 3), dtype=tf.float32) + 1.0
     y = tf.zeros((2, 3), dtype=tf.float32) + 2.0
+
     output = processor(x, y)
 
-    with self.cached_session() as sess:
-      actual = sess.run(output)
-
     expected = np.zeros((2, 3), dtype=np.float32) + 3.0
-
-    self.assertAllEqual(expected, actual)
+    self.assertAllEqual(expected, output)
 
 
 class MixTest(tf.test.TestCase):

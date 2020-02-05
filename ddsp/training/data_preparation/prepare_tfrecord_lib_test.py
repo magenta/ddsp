@@ -26,11 +26,7 @@ from absl.testing import absltest
 from ddsp.training.data_preparation import prepare_tfrecord_lib
 import numpy as np
 import scipy.io.wavfile
-import tensorflow.compat.v1 as tf
-
-
-tf.disable_v2_behavior()
-tf.enable_eager_execution()
+import tensorflow.compat.v2 as tf
 
 
 class ProcessTaskBeamTest(absltest.TestCase):

@@ -32,7 +32,7 @@ from __future__ import print_function
 from absl import app
 from absl import flags
 from ddsp.training.data_preparation.prepare_tfrecord_lib import prepare_tfrecord
-import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf
 
 FLAGS = flags.FLAGS
 
