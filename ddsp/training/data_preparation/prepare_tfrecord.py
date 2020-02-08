@@ -57,7 +57,7 @@ flags.DEFINE_integer(
 flags.DEFINE_float(
     'example_secs', 4,
     'The length of each example in seconds. Input audio will be split to this '
-    'length using a sliding window. If None, each full piece of audio will be '
+    'length using a sliding window. If 0, each full piece of audio will be '
     'used as an example.')
 flags.DEFINE_float(
     'sliding_window_hop_secs', 1,

@@ -86,7 +86,7 @@ def write_gin_config(summary_writer, model_dir, step):
   config_str = gin.operative_config_str()
 
   # Save the original config string to a file.
-  base_name = 'operative_config_{}'.format(step)
+  base_name = 'operative_config-{}'.format(step)
   fname = os.path.join(model_dir, base_name + '.gin')
   with tf.io.gfile.GFile(fname, 'w') as f:
     f.write(config_str)
@@ -184,15 +184,9 @@ class Trainer(object):
         logging.info('Loaded checkpoint %s', latest_checkpoint)
       logging.info('Loading model took %.1f seconds', time.time() - start_time)
 
-  def distribute_dataset(self, dataset):
-    """Create a distributed dataset."""
-    if isinstance(dataset, tf.data.Dataset):
-      return self.strategy.experimental_distribute_dataset(dataset)
-    else:
-      return dataset
-
   @property
   def step(self):
+    """The number of training steps completed."""
     return self.optimizer.iterations
 
   def psum(self, x, axis=None):
@@ -203,36 +197,39 @@ class Trainer(object):
     """Distribute and run function on processors."""
     return self.strategy.experimental_run_v2(fn, args=args, kwargs=kwargs)
 
-  @tf.function
   def build(self, batch):
     """Build the model by running a batch through it."""
-    with self.strategy.scope():
-      def call_model(batch):
-        _ = self.model(batch)
-      self.run(call_model, batch)
+    _ = self.run(tf.function(self.model.__call__), batch)
     self.model.summary()
+
+  def distribute_dataset(self, dataset):
+    """Create a distributed dataset."""
+    if isinstance(dataset, tf.data.Dataset):
+      return self.strategy.experimental_distribute_dataset(dataset)
+    else:
+      return dataset
 
   @tf.function
   def train_step(self, dataset_iter):
     """Distributed training step."""
-
-    def step_fn(batch):
-      """Per-Replica training step."""
-      with tf.GradientTape() as tape:
-        _ = self.model(batch, training=True)
-        total_loss = tf.reduce_sum(self.model.losses)
-
-      grads = tape.gradient(total_loss, self.model.trainable_variables)
-      grads, _ = tf.clip_by_global_norm(grads, self.grad_clip_norm)
-      self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
-      return self.model.losses_dict
-
     # Wrap in distribution strategy, slight speedup passing in iter vs batch.
     batch = next(dataset_iter)
-    losses = self.run(step_fn, batch)
+    losses = self.run(self.step_fn, batch)
     # Add up the scalar losses across replicas.
     n_replicas = self.strategy.num_replicas_in_sync
     return {k: self.psum(v, axis=None) / n_replicas for k, v in losses.items()}
+
+  @tf.function
+  def step_fn(self, batch):
+    """Per-Replica training step."""
+    with tf.GradientTape() as tape:
+      _ = self.model(batch, training=True)
+      total_loss = tf.reduce_sum(self.model.losses)
+    # Clip and apply gradients.
+    grads = tape.gradient(total_loss, self.model.trainable_variables)
+    grads, _ = tf.clip_by_global_norm(grads, self.grad_clip_norm)
+    self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
+    return self.model.losses_dict
 
 
 @gin.configurable

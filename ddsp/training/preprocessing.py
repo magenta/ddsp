@@ -31,8 +31,11 @@ LD_RANGE = ddsp.spectral_ops.LD_RANGE
 
 # ---------------------- Preprocess Helpers ------------------------------------
 def at_least_3d(x):
-  """Adds a channel dimension."""
-  return x[:, :, tf.newaxis] if len(x.shape) == 2 else x
+  """Optionally adds time, batch, then channel dimension."""
+  x = x[tf.newaxis] if not x.shape else x
+  x = x[tf.newaxis, :] if len(x.shape) == 1 else x
+  x = x[:, :, tf.newaxis] if len(x.shape) == 2 else x
+  return x
 
 
 # ---------------------- Preprocess objects ------------------------------------
@@ -70,8 +73,8 @@ class DefaultPreprocessor(Preprocessor):
   def _default_processing(self, features):
     """Always resample to `time_steps` and scale 'loudness_db' and 'f0_hz'."""
     for k in ['loudness_db', 'f0_hz']:
-      features[k] = ddsp.core.resample(features[k], n_timesteps=self.time_steps)
       features[k] = at_least_3d(features[k])
+      features[k] = ddsp.core.resample(features[k], n_timesteps=self.time_steps)
     # For NN training, scale frequency and loudness to the range [0, 1].
     # Log-scale f0 features. Loudness from [-1, 0] to [1, 0].
     features['f0_scaled'] = hz_to_midi(features['f0_hz']) / F0_RANGE

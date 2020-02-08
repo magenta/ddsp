@@ -127,7 +127,7 @@ def prepare_tfrecord(
     frame_rate: The frame rate to use for f0 and loudness features.
       If set to None, these features will not be computed.
     window_secs: The size of the sliding window (in seconds) to use to
-      split the audio and features. If None, they will not be split.
+      split the audio and features. If 0, they will not be split.
     hop_secs: The number of seconds to hop when computing the sliding
       windows.
     pipeline_options: An iterable of command line arguments to be used as
