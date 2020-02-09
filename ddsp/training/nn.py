@@ -15,10 +15,6 @@
 # Lint as: python3
 """Library of neural network functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gin
 import tensorflow.compat.v2 as tf
 
@@ -42,7 +38,7 @@ class Normalize(tfkl.Layer):
   """Normalization layer with learnable parameters."""
 
   def __init__(self, norm_type='layer'):
-    super(Normalize, self).__init__()
+    super().__init__()
     self.norm_type = norm_type
 
   def build(self, x_shape):
@@ -78,7 +74,7 @@ class ResidualLayer(tfkl.Layer):
 
   def __init__(self, ch, stride, shortcut, norm_type, name='residual_layer'):
     """Downsample frequency by stride, upsample channels by 4."""
-    super(ResidualLayer, self).__init__(name=name)
+    super().__init__(name=name)
     ch_out = 4 * ch
     self.shortcut = shortcut
 

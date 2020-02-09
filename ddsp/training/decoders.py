@@ -15,10 +15,6 @@
 # Lint as: python3
 """Library of encoder objects."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ddsp.training import nn
 import gin
 import tensorflow.compat.v2 as tf
@@ -37,7 +33,7 @@ class Decoder(tfkl.Layer):
   def __init__(self,
                output_splits=(('amps', 1), ('harmonic_distribution', 40)),
                name='decoder'):
-    super(Decoder, self).__init__(name=name)
+    super().__init__(name=name)
     self.output_splits = output_splits
     self.n_out = sum([v[1] for v in output_splits])
 
@@ -69,7 +65,7 @@ class ZRnnFcDecoder(Decoder):
                append_f0_loudness=True,
                output_splits=(('amps', 1), ('harmonic_distribution', 40)),
                name='z_rnn_fc_decoder'):
-    super(ZRnnFcDecoder, self).__init__(output_splits=output_splits, name=name)
+    super().__init__(output_splits=output_splits, name=name)
     self.append_f0_loudness = append_f0_loudness
     stack = lambda: nn.fc_stack(ch, layers_per_stack)
 
@@ -112,7 +108,7 @@ class RnnFcDecoder(Decoder):
                layers_per_stack=3,
                output_splits=(('amps', 1), ('harmonic_distribution', 40)),
                name='rnn_fc_decoder'):
-    super(RnnFcDecoder, self).__init__(output_splits=output_splits, name=name)
+    super().__init__(output_splits=output_splits, name=name)
     stack = lambda: nn.fc_stack(ch, layers_per_stack)
 
     # Layers.

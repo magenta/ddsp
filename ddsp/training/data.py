@@ -15,10 +15,6 @@
 # Lint as: python3
 """Library of functions to help loading data."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl import logging
 import gin
 import tensorflow.compat.v2 as tf
@@ -111,7 +107,7 @@ class NSynthTfds(TfdsProvider):
           'Using public TFDS GCS bucket to load NSynth. If not running on '
           'GCP, this will be very slow, and it is recommended you prepare '
           'the dataset locally with TFDS and set the data_dir appropriately.')
-    super(NSynthTfds, self).__init__(name, split, data_dir)
+    super().__init__(name, split, data_dir)
 
   def get_dataset(self, shuffle=True):
     """Returns dataset with slight restructuring of feature dictionary."""
@@ -134,7 +130,7 @@ class NSynthTfds(TfdsProvider):
           'loudness_db':
               ex['loudness']['db'],
       }
-    dataset = super(NSynthTfds, self).get_dataset(shuffle)
+    dataset = super().get_dataset(shuffle)
     dataset = dataset.map(preprocess_ex, num_parallel_calls=_AUTOTUNE)
     return dataset
 

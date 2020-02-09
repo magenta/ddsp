@@ -53,9 +53,7 @@ class Processor(tfkl.Layer):
   """
 
   def __init__(self, name: Text, trainable: bool = False):
-    super(Processor, self).__init__(name=name,
-                                    trainable=trainable,
-                                    autocast=False)
+    super().__init__(name=name, trainable=trainable, autocast=False)
 
   def call(self, *args: tf.Tensor, **kwargs: tf.Tensor) -> tf.Tensor:
     """Convert input tensors arguments into a signal tensor."""

@@ -15,10 +15,6 @@
 # Lint as: python3
 """Tests for ddsp.training.nn."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 from ddsp.core import tf_float32
 from ddsp.training import models
@@ -35,7 +31,7 @@ class AutoencoderTest(parameterized.TestCase, tf.test.TestCase):
 
   def setUp(self):
     """Create some dummy input data for the chain."""
-    super(AutoencoderTest, self).setUp()
+    super().setUp()
     # Create inputs.
     self.n_batch = 4
     self.n_frames = 1001

@@ -15,10 +15,6 @@
 # Lint as: python3
 """Tests for ddsp.core."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 from ddsp import core
 import librosa
@@ -48,7 +44,7 @@ class ResampleTest(parameterized.TestCase, tf.test.TestCase):
 
   def setUp(self):
     """Creates some common default values for the tests."""
-    super(ResampleTest, self).setUp()
+    super().setUp()
     self.n_smaller = 5
     self.n_larger = 16000
 
@@ -267,7 +263,7 @@ class AdditiveSynthTest(parameterized.TestCase, tf.test.TestCase):
 
   def setUp(self):
     """Creates some common default values for the tests."""
-    super(AdditiveSynthTest, self).setUp()
+    super().setUp()
     self.batch_size = 2
     self.sample_rate = 16000
     self.seconds = 1.0
@@ -554,7 +550,7 @@ class FiniteImpulseResponseTest(parameterized.TestCase, tf.test.TestCase):
 
   def setUp(self):
     """Creates some common default values for the tests."""
-    super(FiniteImpulseResponseTest, self).setUp()
+    super().setUp()
     self.audio_size = 1000
     self.audio = np.random.randn(1, self.audio_size).astype(np.float32)
 

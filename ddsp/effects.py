@@ -15,10 +15,6 @@
 # Lint as: python3
 """Library of effects functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ddsp import core
 from ddsp import processors
 from ddsp import synths
@@ -48,7 +44,7 @@ class Reverb(processors.Processor):
       add_dry: Add dry signal to reverberated signal on output.
       name: Name of processor module.
     """
-    super(Reverb, self).__init__(name=name, trainable=trainable)
+    super().__init__(name=name, trainable=trainable)
     self._reverb_length = reverb_length
     self._add_dry = add_dry
 
@@ -74,7 +70,7 @@ class Reverb(processors.Processor):
 
   def build(self, input_shape):
     """Initialize impulse response."""
-    super(Reverb, self).build(input_shape)
+    super().build(input_shape)
     if self.trainable:
       initializer = tf.random_normal_initializer(mean=0, stddev=1e-6)
       self._ir = self.add_weight(
@@ -142,9 +138,7 @@ class ExpDecayReverb(Reverb):
       add_dry: Add dry signal to reverberated signal on output.
       name: Name of processor module.
     """
-    super(ExpDecayReverb, self).__init__(name=name,
-                                         add_dry=add_dry,
-                                         trainable=trainable)
+    super().__init__(name=name, add_dry=add_dry, trainable=trainable)
     self._reverb_length = reverb_length
     self._scale_fn = scale_fn
 
@@ -159,7 +153,7 @@ class ExpDecayReverb(Reverb):
 
   def build(self, input_shape):
     """Initialize impulse response."""
-    super(ExpDecayReverb, self).build(input_shape)
+    super().build(input_shape)
     if self.trainable:
       self._gain = self.add_weight(
           name='gain',
@@ -237,9 +231,7 @@ class FilteredNoiseReverb(Reverb):
       add_dry: Add dry signal to reverberated signal on output.
       name: Name of processor module.
     """
-    super(FilteredNoiseReverb, self).__init__(name=name,
-                                              add_dry=add_dry,
-                                              trainable=trainable)
+    super().__init__(name=name, add_dry=add_dry, trainable=trainable)
     self._n_frames = n_frames
     self._n_filter_banks = n_filter_banks
     self._synth = synths.FilteredNoise(n_samples=reverb_length,
@@ -249,7 +241,7 @@ class FilteredNoiseReverb(Reverb):
 
   def build(self, input_shape):
     """Initialize impulse response."""
-    super(FilteredNoiseReverb, self).build(input_shape)
+    super().build(input_shape)
     if self.trainable:
       initializer = tf.random_normal_initializer(mean=0, stddev=1e-2)
       self._magnitudes = self.add_weight(
@@ -296,7 +288,7 @@ class FIRFilter(processors.Processor):
                window_size=257,
                scale_fn=core.exp_sigmoid,
                name='fir_filter'):
-    super(FIRFilter, self).__init__(name=name)
+    super().__init__(name=name)
     self.window_size = window_size
     self.scale_fn = scale_fn
 
@@ -345,7 +337,7 @@ class ModDelay(processors.Processor):
                phase_scale_fn=tf.nn.sigmoid,
                add_dry=True,
                name='mod_delay'):
-    super(ModDelay, self).__init__(name=name)
+    super().__init__(name=name)
     self.center_ms = center_ms
     self.depth_ms = depth_ms
     self.sample_rate = sample_rate

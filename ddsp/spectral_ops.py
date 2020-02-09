@@ -15,10 +15,6 @@
 # Lint as: python3
 """Library of FFT operations for loss functions and conditioning."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import crepe
 from ddsp.core import tf_float32
 import gin

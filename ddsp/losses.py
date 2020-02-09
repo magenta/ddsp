@@ -15,10 +15,6 @@
 # Lint as: python3
 """Library of loss functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 import crepe
@@ -57,7 +53,7 @@ class SpectralLoss(tfkl.Layer):
                logmag_weight=0.0,
                loudness_weight=0.0,
                name='spectral_loss'):
-    super(SpectralLoss, self).__init__(name=name)
+    super().__init__(name=name)
     self.fft_sizes = fft_sizes
     self.loss_type = loss_type
     self.mag_weight = mag_weight
@@ -143,7 +139,7 @@ class EmbeddingLoss(tfkl.Layer):
                loss_type='L1',
                pretrained_model=None,
                name='embedding_loss'):
-    super(EmbeddingLoss, self).__init__(name=name)
+    super().__init__(name=name)
     self.weight = weight
     self.loss_type = loss_type
     self.pretrained_model = pretrained_model
@@ -182,7 +178,7 @@ class PretrainedCREPEEmbeddingLoss(EmbeddingLoss):
         'conv6-maxpool': 25,
         'classifier': 130,
     }[activation_layer]
-    super(PretrainedCREPEEmbeddingLoss, self).__init__(
+    super().__init__(
         weight=20.0 * scale * weight,
         loss_type=loss_type,
         name=name,

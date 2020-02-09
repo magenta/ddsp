@@ -25,10 +25,6 @@ ddsp_prepare_tfrecord \
 
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl import app
 from absl import flags
 from ddsp.training.data_preparation.prepare_tfrecord_lib import prepare_tfrecord

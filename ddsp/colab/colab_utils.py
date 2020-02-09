@@ -15,10 +15,6 @@
 # Lint as: python3
 """Helper functions for running DDSP colab notebooks."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import base64
 import io
 import tempfile

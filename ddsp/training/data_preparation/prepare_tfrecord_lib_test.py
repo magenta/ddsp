@@ -12,11 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Tests for ddsp.training.data_preparation.prepare_tfrecord_lib."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 import sys
@@ -40,7 +37,7 @@ class ProcessTaskBeamTest(absltest.TestCase):
     return self.create_tempdir().full_path
 
   def setUp(self):
-    super(ProcessTaskBeamTest, self).setUp()
+    super().setUp()
     self.test_dir = self.get_tempdir()
 
     # Write test wav file.

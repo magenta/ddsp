@@ -15,10 +15,6 @@
 # Lint as: python3
 """Tests for ddsp.effects."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 from ddsp import effects
 import tensorflow.compat.v2 as tf
@@ -28,7 +24,7 @@ class ReverbTest(parameterized.TestCase, tf.test.TestCase):
 
   def setUp(self):
     """Creates some test specific attributes."""
-    super(ReverbTest, self).setUp()
+    super().setUp()
     self.reverb_class = effects.Reverb
     self.audio = tf.zeros((3, 16000))
     self.construct_args = {'reverb_length': 100}
@@ -61,7 +57,7 @@ class ExpDecayReverbTest(ReverbTest):
 
   def setUp(self):
     """Creates some test specific attributes."""
-    super(ExpDecayReverbTest, self).setUp()
+    super().setUp()
     self.reverb_class = effects.ExpDecayReverb
     self.audio = tf.zeros((3, 16000))
     self.construct_args = {'reverb_length': 100}
@@ -73,7 +69,7 @@ class FilteredNoiseReverbTest(ReverbTest):
 
   def setUp(self):
     """Creates some test specific attributes."""
-    super(FilteredNoiseReverbTest, self).setUp()
+    super().setUp()
     self.reverb_class = effects.FilteredNoiseReverb
     self.audio = tf.zeros((3, 16000))
     self.construct_args = {'reverb_length': 100,

@@ -15,10 +15,6 @@
 # Lint as: python3
 """Tests for ddsp.processors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 from ddsp import core
 from ddsp import effects
@@ -32,7 +28,7 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
 
   def setUp(self):
     """Create some dummy input data for the chain."""
-    super(ProcessorGroupTest, self).setUp()
+    super().setUp()
     # Create inputs.
     self.n_batch = 4
     self.n_frames = 1000

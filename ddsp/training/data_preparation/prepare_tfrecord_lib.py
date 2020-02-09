@@ -15,10 +15,6 @@
 # Lint as: python3
 """Apache Beam pipeline for computing TFRecord dataset from audio files."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl import logging
 import apache_beam as beam
 from ddsp.spectral_ops import compute_f0

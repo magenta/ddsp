@@ -15,10 +15,6 @@
 # Lint as: python3
 """Model that outputs coefficeints of an additive synthesizer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 from absl import logging
@@ -48,7 +44,7 @@ class Model(tf.keras.Model):
   """Wrap the model function for dependency injection with gin."""
 
   def __init__(self, losses=None, name='model'):
-    super(Model, self).__init__(name=name)
+    super().__init__(name=name)
     self.loss_objs = ddsp.core.make_iterable(losses)
     self.loss_names = [loss_obj.name
                        for loss_obj in self.loss_objs] + ['total_loss']
@@ -90,7 +86,7 @@ class Autoencoder(Model):
                processor_group=None,
                losses=None,
                name='autoencoder'):
-    super(Autoencoder, self).__init__(name=name, losses=losses)
+    super().__init__(name=name, losses=losses)
     self.preprocessor = preprocessor
     self.encoder = encoder
     self.decoder = decoder

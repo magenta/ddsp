@@ -15,10 +15,6 @@
 # Lint as: python3
 """Library of preprocess functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import ddsp
 import gin
@@ -63,11 +59,11 @@ class DefaultPreprocessor(Preprocessor):
   """Default class that resamples features and adds `f0_hz` key."""
 
   def __init__(self, time_steps=1000):
-    super(DefaultPreprocessor, self).__init__()
+    super().__init__()
     self.time_steps = time_steps
 
   def __call__(self, features, training=True):
-    super(DefaultPreprocessor, self).__call__(features, training)
+    super().__call__(features, training)
     return self._default_processing(features)
 
   def _default_processing(self, features):
