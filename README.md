@@ -5,7 +5,9 @@
 # DDSP: Differentiable Digital Signal Processing
 [![Build Status](https://travis-ci.org/magenta/ddsp.svg?branch=master)](https://travis-ci.org/magenta/ddsp)
 
-[**Tutorials**](#Tutorials)
+[**Demos**](./ddsp/colab/demos)
+| [**Tutorials**](./ddsp/colab/tutorials)
+| [**Blog Post**](https://magenta.tensorflow.org/ddsp)
 | [**Overview**](#Overview)
 | [**Installation**](#Installation)
 
@@ -13,7 +15,6 @@ DDSP is a library of differentiable versions of common DSP functions (such as
 synthesizers, waveshapers, and filters). This allows these
 interpretable elements to be used as part of an deep learning model, especially
 as the output layers for audio generation.
-
 
 ## Getting Started
 
@@ -36,6 +37,9 @@ audio = additive(outputs['amplitudes'],
                  outputs['f0_hz'])
 ```
 
+### More resources
+
+* [Check out the blog post 💻](https://magenta.tensorflow.org/ddsp)
 * [Read the original paper 📄](https://arxiv.org/abs/2001.04643)
 * [Listen to some examples 🔈](https://goo.gl/magenta/ddsp-examples)
 * [Try out the timbre transfer demo 🎤->🎻](./ddsp/colab/demos/timbre_transfer.ipynb)
@@ -45,7 +49,7 @@ audio = additive(outputs['amplitudes'],
 ### Tutorials
 
 The best place to start is the step-by-step tutorials for all the major library components that can be found in
-[`colabs/tutorials`](./ddsp/colabs/tutorials).
+[`ddsp/colab/tutorials`](./ddsp/colab/tutorials).
 
 *   [0_processor](./ddsp/colab/tutorials/0_processor.ipynb):
     Introduction to the Processor class.
@@ -61,10 +65,10 @@ The best place to start is the step-by-step tutorials for all the major library 
 
 ### Modules
 
-The DDSP library code is separated into several modules:
+The DDSP library consists of a [core library](./ddsp) (`ddsp/`) and a [self-contained training library](./ddsp/training) (`ddsp/training/`). The core library is split up into  into several modules:
 
 *   [Core](./ddsp/core.py):
-    All the core differentiable DSP functions.
+    All the differentiable DSP functions.
 *   [Processors](./ddsp/processors.py):
     Base classes for Processor and ProcessorGroup.
 *   [Synths](./ddsp/synths.py):
@@ -75,9 +79,8 @@ The DDSP library code is separated into several modules:
     Loss functions relevant to DDSP applications.
 *   [Spectral Ops](./ddsp/spectral_ops.py):
     Helper library of Fourier and related transforms.
-*   [Pretrained Models](./ddsp/pretrained_models.py):
-    Helper library of models for perceptual loss functions.
 
+Besides the tutorials, each module has its own test file that can be helpful for examples of usage.
 
 <a id='Overview'></a>
 # Overview
@@ -247,14 +250,14 @@ or object with gin, and only sets the default argument values when the function 
 
 To "use gin responsibly", by wrapping most
 functions with `@gin.register` so that they can be specified as arguments of more "global" `@gin.configurable` functions/objects such as `ProcessorGroup` in the main library and
-`Model`, `train()`, `evaluate()`, and `sample()` in [ddsp/training](./ddsp/training).
+`Model`, `train()`, `evaluate()`, and `sample()` in [`ddsp/training`](./ddsp/training).
 
 As you can see in the code, this allows us to flexibly define hyperparameters of
 most functions without worrying about side-effects. One exception is `ddsp.core.cumsum` where we configure special optimizations for TPU.
 
 <a id='Installation'></a>
 # Installation
-Requires tensorflow version >= 2.1.0, but runs in either eager or graph mode.
+Requires tensorflow version >= 2.1.0, but the core library runs in either eager or graph mode.
 
 ```bash
 sudo apt-get install libsndfile-dev
