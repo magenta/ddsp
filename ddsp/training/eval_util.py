@@ -21,6 +21,7 @@ import time
 
 from absl import logging
 from ddsp import spectral_ops
+from ddsp.core import hz_to_midi
 from ddsp.core import tf_float32
 import gin
 import librosa
@@ -131,12 +132,20 @@ class F0LoudnessMetrics(object):
   def __init__(self):
     self.metrics = {
         'loudness_db': tf.keras.metrics.Mean('loudness_db'),
-        'f0_midi': tf.keras.metrics.Mean('f0_midi'),
-        'f0_outlier_ratio': tf.keras.metrics.Accuracy('f0_outlier_ratio')
+        'f0_encoder': tf.keras.metrics.Mean('f0_encoder'),
+        'f0_crepe': tf.keras.metrics.Mean('f0_crepe'),
+        'f0_crepe_outlier_ratio':
+            tf.keras.metrics.Accuracy('f0_crepe_outlier_ratio'),
     }
 
-  def update_state(self, batch, audio_gen):
-    """Update metrics based on a batch of audio."""
+  def update_state(self, batch, audio_gen, f0_hz_predict):
+    """Update metrics based on a batch of audio.
+
+    Args:
+      batch: Dictionary of input features.
+      audio_gen: Batch of generated audio.
+      f0_hz_predict: Batch of encoded f0, same as input f0 if no f0 encoder.
+    """
     batch_size = int(audio_gen.shape[0])
     # Compute metrics per sample. No batch operations possible.
     for i in range(batch_size):
@@ -153,25 +162,31 @@ class F0LoudnessMetrics(object):
       # F0 metric.
       if is_outlier(feats['f0_confidence']):
         # Ground truth f0 was unreliable to begin with. Discard.
-        f0_dist = None
+        f0_crepe_dist = None
       else:
         # Gound truth f0 was reliable, compute f0 distance with generated audio
-        f0_dist = f0_dist_conf_thresh(feats['f0_hz'],
-                                      feats_gen['f0_hz'],
-                                      feats['f0_confidence'])
+        f0_crepe_dist = f0_dist_conf_thresh(feats['f0_hz'],
+                                            feats_gen['f0_hz'],
+                                            feats['f0_confidence'])
 
-        if f0_dist is None or f0_dist > OUTLIER_MIDI_THRESH:
+        # Compute distance original f0_hz labels and f0 encoder values.
+        f0_encoder_dist = f0_dist_conf_thresh(feats['f0_hz'],
+                                              f0_hz_predict[i],
+                                              feats['f0_confidence'])
+        self.metrics['f0_encoder'].update_state(f0_encoder_dist)
+
+        if f0_crepe_dist is None or f0_crepe_dist > OUTLIER_MIDI_THRESH:
           # Generated audio had untrackable pitch content or is an outlier.
-          self.metrics['f0_outlier_ratio'].update_state(True, True)
-
+          self.metrics['f0_crepe_outlier_ratio'].update_state(True, True)
           logging.info('Sample %d has untrackable pitch content', i)
         else:
           # Generated audio had trackable pitch content and is within tolerance
-          self.metrics['f0_midi'].update_state(f0_dist)
-          self.metrics['f0_outlier_ratio'].update_state(True, False)
-
-          logging.info('sample {} | ld_dist(db): {:.3f} '
-                       '| f0_dist(midi): {:.3f}'.format(i, ld_dist, f0_dist))
+          self.metrics['f0_crepe'].update_state(f0_crepe_dist)
+          self.metrics['f0_crepe_outlier_ratio'].update_state(True, False)
+          logging.info(
+              'sample {} | ld_dist(db): {:.3f} | f0_crepe_dist(midi): {:.3f} | '
+              'f0_encoder_dist(midi): {:.3f}'.format(
+                  i, ld_dist, f0_crepe_dist, f0_encoder_dist))
 
   def flush(self, step):
     """Add summaries for each metric and reset the state."""
@@ -212,25 +227,30 @@ def fig_summary(tag, fig, step):
   tf.summary.experimental.write_raw_pb(serialized, step=step, name=tag)
 
 
-def waveform_summary(name, audio, step):
+def waveform_summary(audio, audio_gen, step, name=''):
   """Creates a waveform plot summary for a batch of audio."""
 
-  def plot_waveform(sample_idx, length=None, prefix='waveform'):
+  def plot_waveform(i, length=None, prefix='waveform', name=''):
     """Plots a waveforms."""
-    waveform = squeeze(audio[sample_idx])
+    waveform = squeeze(audio[i])
     waveform = waveform[:length] if length is not None else waveform
+    waveform_gen = squeeze(audio_gen[i])
+    waveform_gen = waveform_gen[:length] if length is not None else waveform_gen
     # Manually specify exact size of fig for tensorboard
-    fig, ax = plt.subplots(1, 1, figsize=(2.5, 2.5))
-    ax.plot(waveform)
+    fig, (ax0, ax1) = plt.subplots(2, 1, figsize=(2.5, 2.5))
+    ax0.plot(waveform)
+    ax1.plot(waveform_gen)
 
     # Format and save plot to image
-    tag = 'waveform/{}_{}_{}'.format(name, prefix, sample_idx)
+    name = name + '_' if name else ''
+    tag = 'waveform/{}{}_{}'.format(name, prefix, i + 1)
     fig_summary(tag, fig, step)
 
+  # Make plots at multiple lengths.
   batch_size = int(audio.shape[0])
-  for sample_idx in range(batch_size):
-    plot_waveform(sample_idx, length=None, prefix='full')
-    plot_waveform(sample_idx, length=2000, prefix='125ms')
+  for i in range(batch_size):
+    plot_waveform(i, length=None, prefix='full', name=name)
+    plot_waveform(i, length=2000, prefix='125ms', name=name)
 
 
 def get_spectrogram(audio, rotate=False, size=1024):
@@ -241,7 +261,7 @@ def get_spectrogram(audio, rotate=False, size=1024):
   return mag
 
 
-def spectrogram_summary(name, audio, audio_gen, step):
+def spectrogram_summary(audio, audio_gen, step, name=''):
   """Writes a summary of spectrograms for a batch of images."""
   specgram = lambda a: spectral_ops.compute_logmag(tf_float32(a), size=768)
 
@@ -250,30 +270,31 @@ def spectrogram_summary(name, audio, audio_gen, step):
   spectrograms_gen = specgram(audio_gen)
 
   batch_size = int(audio.shape[0])
-  for sample_idx in range(batch_size):
+  for i in range(batch_size):
     # Manually specify exact size of fig for tensorboard
     fig, axs = plt.subplots(2, 1, figsize=(8, 8))
 
     ax = axs[0]
-    spec = np.rot90(spectrograms[sample_idx])
+    spec = np.rot90(spectrograms[i])
     ax.matshow(spec, vmin=-5, vmax=1, aspect='auto', cmap=plt.cm.magma)
     ax.set_title('original')
     ax.set_xticks([])
     ax.set_yticks([])
 
     ax = axs[1]
-    spec = np.rot90(spectrograms_gen[sample_idx])
+    spec = np.rot90(spectrograms_gen[i])
     ax.matshow(spec, vmin=-5, vmax=1, aspect='auto', cmap=plt.cm.magma)
     ax.set_title('synthesized')
     ax.set_xticks([])
     ax.set_yticks([])
 
     # Format and save plot to image
-    tag = 'spectrogram/{}_{}'.format(name, sample_idx)
+    name = name + '_' if name else ''
+    tag = 'spectrogram/{}{}'.format(name, i + 1)
     fig_summary(tag, fig, step)
 
 
-def audio_summary(name, audio, step, sample_rate=16000):
+def audio_summary(audio, step, sample_rate=16000, name='audio'):
   """Update metrics dictionary given a batch of audio."""
   # Ensure there is a single channel dimension.
   batch_size = int(audio.shape[0])
@@ -281,6 +302,24 @@ def audio_summary(name, audio, step, sample_rate=16000):
     audio = audio[:, :, tf.newaxis]
   tf.summary.audio(
       name, audio, sample_rate, step, max_outputs=batch_size, encoding='wav')
+
+
+def f0_summary(f0_hz, f0_hz_predict, step, name=''):
+  """Creates a plot comparison of ground truth f0_hz and predicted values."""
+  batch_size = int(f0_hz.shape[0])
+
+  for i in range(batch_size):
+    f0_midi = hz_to_midi(squeeze(f0_hz[i]))
+    f0_midi_predict = hz_to_midi(squeeze(f0_hz_predict[i]))
+    # Manually specify exact size of fig for tensorboard
+    fig, ax = plt.subplots(1, 1, figsize=(2.5, 2.5))
+    ax.plot(f0_midi)
+    ax.plot(f0_midi_predict)
+
+    # Format and save plot to image
+    name = name + '_' if name else ''
+    tag = 'f0_midi/{}{}'.format(name, i + 1)
+    fig_summary(tag, fig, step)
 
 
 # ---------------------- Evaluation --------------------------------------------
@@ -312,9 +351,17 @@ def evaluate_or_sample(data_provider,
   checkpoints_iterator = tf.train.checkpoints_iterator(model_dir,
                                                        ckpt_delay_secs)
 
+  # Get the dataset.
+  dataset = data_provider.get_batch(batch_size=batch_size,
+                                    shuffle=False,
+                                    repeats=-1)
+
   with summary_writer.as_default():
     for checkpoint_path in checkpoints_iterator:
       step = int(checkpoint_path.split('-')[-1])
+
+      # Redefine thte dataset iterator each time to make deterministic.
+      dataset_iter = iter(dataset)
 
       # Load model.
       model.restore(checkpoint_path)
@@ -325,11 +372,6 @@ def evaluate_or_sample(data_provider,
         avg_losses = {name: tf.keras.metrics.Mean(name=name, dtype=tf.float32)
                       for name in model.loss_names}
 
-      # Redefine thte dataset each time to make deterministic.
-      dataset = data_provider.get_batch(
-          batch_size=batch_size, shuffle=False, repeats=-1)
-      dataset_iter = iter(dataset)
-
       # Iterate through dataset and make predictions
       checkpoint_start_time = time.time()
       for batch_idx in range(1, num_batches + 1):
@@ -337,9 +379,11 @@ def evaluate_or_sample(data_provider,
           start_time = time.time()
           logging.info('Predicting batch %d of size %d', batch_idx, batch_size)
 
+          # Predict a batch of audio.
           batch = next(dataset_iter)
           audio = batch['audio']
-          audio_gen = model(batch)
+          audio_gen = model(batch, training=True)
+          outputs = model.get_controls(batch, training=False)
 
           logging.info('Prediction took %.1f seconds', time.time() - start_time)
 
@@ -347,11 +391,14 @@ def evaluate_or_sample(data_provider,
             start_time = time.time()
             logging.info('Writing summmaries for batch %d', batch_idx)
 
-            audio_summary('audio', audio, step)
-            audio_summary('audio_gen', audio_gen, step)
-            waveform_summary('audio', audio, step)
-            waveform_summary('audio_gen', audio_gen, step)
-            spectrogram_summary('spectrogram', audio, audio_gen, step)
+            # Add audio.
+            audio_summary(audio_gen, step, name='audio_generated')
+            audio_summary(audio, step, name='audio_original')
+
+            # Add plots.
+            waveform_summary(audio, audio_gen, step)
+            spectrogram_summary(audio, audio_gen, step)
+            f0_summary(batch['f0_hz'], outputs['f0_hz'], step)
 
             logging.info('Writing batch %i with size %i took %.1f seconds',
                          batch_idx, batch_size, time.time() - start_time)
@@ -361,7 +408,7 @@ def evaluate_or_sample(data_provider,
             logging.info('Calculating metrics for batch %d', batch_idx)
 
             # F0 and loudness.
-            f0_loudness_metrics.update_state(batch, audio_gen)
+            f0_loudness_metrics.update_state(batch, audio_gen, outputs['f0_hz'])
 
             # Loss.
             losses = model.losses_dict

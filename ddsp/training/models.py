@@ -115,5 +115,6 @@ class Autoencoder(Model):
     conditioning = self.encode(features, training=training)
     processor_inputs = self.decoder(conditioning)
     controls = self.processor_group.get_controls(processor_inputs)
+    # If wrapped in tf.function, only calculates keys of interest.
     return controls if keys is None else {k: controls[k] for k in keys}
 
