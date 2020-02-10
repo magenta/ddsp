@@ -10,5 +10,5 @@ This is the best place to start is the step-by-step tutorials for all the major 
     Stringing processors together in a ProcessorGroup.
 *   [3_training](./3_training.ipynb):
     Example of training on a single sound.
-*   [4_core_functions](./3_training.ipynb):
+*   [4_core_functions](./4_core_functions.ipynb):
     Extensive examples for most of the core DDSP functions.

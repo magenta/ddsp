@@ -59,7 +59,7 @@ The best place to start is the step-by-step tutorials for all the major library 
     Stringing processors together in a ProcessorGroup.
 *   [3_training](./ddsp/colab/tutorials/3_training.ipynb):
     Example of training on a single sound.
-*   [4_core_functions](./ddsp/colab/tutorials/3_training.ipynb):
+*   [4_core_functions](./ddsp/colab/tutorials/4_core_functions.ipynb):
     Extensive examples for most of the core DDSP functions.
 
 
