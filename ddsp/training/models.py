@@ -188,6 +188,7 @@ class Autoencoder(Model):
     # Update tb and outputs.
     self.add_tb_metric('loss', total_loss)
     self.add_tb_metric('global_step', tf.train.get_or_create_global_step())
+    self.add_tb_metric('global_step_ddspae', tf.train.get_or_create_global_step())
     outputs.update(loss_dict)
     outputs['total_loss'] = total_loss
 
@@ -358,16 +359,21 @@ class AutoencoderDdspice(Autoencoder):
     pitch_loss = tf.compat.v1.losses.huber_loss(pitch_shift_steps,
                                                 f0_hz_shift - f0_hz)
 
-    pitch_coeff = 1e-3  # todo: enable hyperparam search
-    loss_dict['pitch_loss'] = pitch_coeff * pitch_loss
-    self.add_tb_metric('pitch_loss', pitch_loss)
-    # todo; do i need fancier loss here?
+    pitch_coeff = 1.0  # todo: enable hyperparam search
+    total_loss += pitch_coeff * pitch_loss
+
+    loss_dict['losses/pitch_loss'] = pitch_coeff * pitch_loss
+    self.add_tb_metric('losses/pitch_loss', pitch_loss)
 
     # Update tb and outputs.
     self.add_tb_metric('loss', total_loss)
     self.add_tb_metric('global_step', tf.train.get_or_create_global_step())
+    self.add_tb_metric('global_step_ddspice', tf.train.get_or_create_global_step())
+
     outputs.update(loss_dict)
     outputs['total_loss'] = total_loss
+
+    # raise RuntimeError('SHEESH....')
 
     return outputs
 
