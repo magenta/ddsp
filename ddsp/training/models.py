@@ -366,9 +366,8 @@ class AutoencoderDdspice(Autoencoder):
     self.add_tb_metric('losses/pitch_loss', pitch_loss)
 
     # Update tb and outputs.
-    self.add_tb_metric('loss', total_loss)
+    self.add_tb_metric('total_loss', total_loss)
     self.add_tb_metric('global_step', tf.train.get_or_create_global_step())
-    self.add_tb_metric('global_step_ddspice', tf.train.get_or_create_global_step())
 
     outputs.update(loss_dict)
     outputs['total_loss'] = total_loss

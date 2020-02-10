@@ -254,7 +254,7 @@ class NSynthTfdsDdspice(TfdsProvider):
   def get_dataset(self, shuffle=True):
     """Returns dataset with slight restructuring of feature dictionary."""
     def preprocess_ex(ex):
-      pitch_shift_steps = np.float(np.random.randint(-12, 13))
+      pitch_shift_steps = tf.random.uniform([], minval=-12, maxval=13)
       shifted_audio = _pitch_shift(ex['audio'], pitch_shift_steps)
       shifted_audio.set_shape(ex['audio'].shape)
       example_dict = {
@@ -265,7 +265,7 @@ class NSynthTfdsDdspice(TfdsProvider):
           'shifted_audio':
               shifted_audio,
           'pitch_shift_steps':
-              tf.constant(pitch_shift_steps, dtype=tf.float32),
+              tf.cast(pitch_shift_steps, dtype=tf.float32),
           'instrument_source':
               ex['instrument']['source'],
           'instrument_family':
@@ -286,7 +286,7 @@ class NSynthTfdsDdspice(TfdsProvider):
     return dataset
 
 
-def _pitch_shift(waveform: tf.Tensor, n_steps: np.float):
+def _pitch_shift(waveform: tf.Tensor, n_steps):
   def pitch_shift_py(waveform, n_steps):
     return librosa.effects.pitch_shift(
           waveform, 16000, n_steps, 12, 'kaiser_fast'
