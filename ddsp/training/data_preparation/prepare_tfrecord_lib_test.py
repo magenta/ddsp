@@ -12,11 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Tests for ddsp.training.data_preparation.prepare_tfrecord_lib."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 import sys
@@ -26,11 +23,7 @@ from absl.testing import absltest
 from ddsp.training.data_preparation import prepare_tfrecord_lib
 import numpy as np
 import scipy.io.wavfile
-import tensorflow.compat.v1 as tf
-
-
-tf.disable_v2_behavior()
-tf.enable_eager_execution()
+import tensorflow.compat.v2 as tf
 
 
 class ProcessTaskBeamTest(absltest.TestCase):
@@ -44,7 +37,7 @@ class ProcessTaskBeamTest(absltest.TestCase):
     return self.create_tempdir().full_path
 
   def setUp(self):
-    super(ProcessTaskBeamTest, self).setUp()
+    super().setUp()
     self.test_dir = self.get_tempdir()
 
     # Write test wav file.

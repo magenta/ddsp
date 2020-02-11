@@ -15,14 +15,10 @@
 # Lint as: python3
 """Library of synthesizer functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ddsp import core
 from ddsp import processors
 import gin
-import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf
 
 
 @gin.register
@@ -35,7 +31,7 @@ class Additive(processors.Processor):
                scale_fn=core.exp_sigmoid,
                normalize_below_nyquist=True,
                name='additive'):
-    super(Additive, self).__init__(name=name)
+    super().__init__(name=name)
     self.n_samples = n_samples
     self.sample_rate = sample_rate
     self.scale_fn = scale_fn
@@ -112,14 +108,12 @@ class FilteredNoise(processors.Processor):
                n_samples=64000,
                window_size=257,
                scale_fn=core.exp_sigmoid,
-               noise_fade_fn=None,
                initial_bias=-5.0,
                name='filtered_noise'):
-    super(FilteredNoise, self).__init__(name=name)
+    super().__init__(name=name)
     self.n_samples = n_samples
     self.window_size = window_size
     self.scale_fn = scale_fn
-    self.noise_fade_fn = noise_fade_fn
     self.initial_bias = initial_bias
 
   def get_controls(self, magnitudes):
@@ -149,16 +143,11 @@ class FilteredNoise(processors.Processor):
       signal: A tensor of harmonic waves of shape [batch, n_samples, 1].
     """
     batch_size = int(magnitudes.shape[0])
-    signal = tf.random_uniform([batch_size, self.n_samples],
-                               minval=-1.0,
-                               maxval=1.0)
-    signal = core.frequency_filter(
-        signal, magnitudes, window_size=self.window_size)
-
-    if self.noise_fade_fn is not None:
-      signal = signal * self.noise_fade_fn()  # pylint: disable=not-callable
-
-    return signal
+    signal = tf.random.uniform(
+        [batch_size, self.n_samples], minval=-1.0, maxval=1.0)
+    return core.frequency_filter(signal,
+                                 magnitudes,
+                                 window_size=self.window_size)
 
 
 @gin.register
@@ -170,7 +159,7 @@ class Wavetable(processors.Processor):
                sample_rate=16000,
                scale_fn=core.exp_sigmoid,
                name='wavetable'):
-    super(Wavetable, self).__init__(name=name)
+    super().__init__(name=name)
     self.n_samples = n_samples
     self.sample_rate = sample_rate
     self.scale_fn = scale_fn

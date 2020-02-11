@@ -25,7 +25,7 @@ from typing import Any, Dict, Text, TypeVar
 import gin
 import numpy as np
 from scipy import fftpack
-import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf
 
 Number = TypeVar('Number', int, float, np.ndarray, tf.Tensor)
 
@@ -75,11 +75,11 @@ def midi_to_hz(notes: Number) -> Number:
 def hz_to_midi(frequencies: Number) -> Number:
   """TF-compatible hz_to_midi function."""
   frequencies = tf_float32(frequencies)
-  log2 = lambda x: tf.log(x) / tf.log(2.0)
+  log2 = lambda x: tf.math.log(x) / tf.math.log(2.0)
   notes = 12.0 * (log2(frequencies) - log2(440.0)) + 69.0
   # Map 0 Hz to MIDI 0 (Replace -inf with 0.)
   cond = tf.equal(notes, -np.inf)
-  notes = tf.where_v2(cond, 0.0, notes)
+  notes = tf.where(cond, 0.0, notes)
   return notes
 
 
@@ -116,10 +116,10 @@ def resample(inputs: tf.Tensor,
 
   if method in methods:
     outputs = inputs[:, :, tf.newaxis, :]
-    outputs = tf.image.resize(outputs,
-                              [n_timesteps, 1],
-                              method=methods[method],
-                              align_corners=not add_endpoint)
+    outputs = tf.compat.v1.image.resize(outputs,
+                                        [n_timesteps, 1],
+                                        method=methods[method],
+                                        align_corners=not add_endpoint)
     outputs = outputs[:, :, 0, :]
 
   elif method == 'window':
@@ -203,7 +203,6 @@ def upsample_with_windows(inputs: tf.Tensor,
 # some global FLAGS to be set which is not avaiable in our codebase.
 def _tpu_cumsum(x, axis=0, exclusive=False):
   """A TPU efficient implementation of tf.cumsum()."""
-  tf.logging.info('--------fancy cumsum---------')
   x_shape = x.shape.as_list()
   rank = len(x_shape)
 
@@ -240,7 +239,7 @@ def log_scale(x, min_x, max_x):
   """Scales a -1 to 1 value logarithmically between min and max."""
   x = tf_float32(x)
   x = (x + 1.0) / 2.0  # Scale [-1, 1] to [0, 1]
-  return tf.exp((1.0 - x) * tf.log(min_x) + x * tf.log(max_x))
+  return tf.exp((1.0 - x) * tf.math.log(min_x) + x * tf.math.log(max_x))
 
 
 @gin.register
@@ -261,7 +260,7 @@ def exp_sigmoid(x, exponent=10.0, max_value=2.0, threshold=1e-7):
     A tensor with pointwise nonlinearity applied.
   """
   x = tf_float32(x)
-  return max_value * tf.nn.sigmoid(x)**tf.log(exponent) + threshold
+  return max_value * tf.nn.sigmoid(x)**tf.math.log(exponent) + threshold
 
 
 @gin.register
@@ -688,7 +687,7 @@ def fft_convolve(audio: tf.Tensor,
   audio_ir_fft = tf.multiply(audio_fft, ir_fft)
 
   # Take the IFFT to resynthesize audio.
-  audio_frames_out = tf.spectral.irfft(audio_ir_fft)
+  audio_frames_out = tf.signal.irfft(audio_ir_fft)
   audio_out = tf.signal.overlap_and_add(audio_frames_out, hop_size)
 
   # Crop and shift the output audio.
@@ -739,7 +738,7 @@ def apply_window_to_impulse_response(impulse_response: tf.Tensor,
 
   # Apply the window, to get new IR (both in zero-phase form).
   window = tf.broadcast_to(window, impulse_response.shape)
-  impulse_response = window * tf.real(impulse_response)
+  impulse_response = window * tf.math.real(impulse_response)
 
   # Put IR in causal form and trim zero padding.
   if padding > 0:
@@ -827,7 +826,7 @@ def sinc_impulse_response(cutoff_frequency, window_size=512, sample_rate=None):
   # Window the impulse response.
   window = tf.signal.hamming_window(full_size)
   window = tf.broadcast_to(window, impulse_response.shape)
-  impulse_response = window * tf.real(impulse_response)
+  impulse_response = window * tf.math.real(impulse_response)
 
   # Normalize for unity gain.
   impulse_response /= tf.reduce_sum(impulse_response, axis=-1, keepdims=True)

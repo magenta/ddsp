@@ -15,216 +15,274 @@
 # Lint as: python3
 """Library of training functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import functools
 import os
+import time
 
+from absl import logging
 import gin
-import gin.tf
-import tensorflow.compat.v1 as tf
-import tensorflow.compat.v2.summary as tf_summary
+import tensorflow.compat.v2 as tf
 
 
-# ---------------------- Train op ----------------------------------------------
-def _clip_gradients_by_norm(grads_and_vars, gradient_clip_norm):
-  """Clips gradients by global norm."""
-  gradients, variables = zip(*grads_and_vars)
-  clipped_gradients, _ = tf.clip_by_global_norm(gradients, gradient_clip_norm)
-  return list(zip(clipped_gradients, variables))
+def get_strategy(tpu='', gpus=None):
+  """Create a distribution strategy.
 
-
-@gin.configurable
-def get_train_op(loss,
-                 learning_rate=0.001,
-                 lr_decay_steps=10000,
-                 lr_decay_rate=0.98,
-                 gradient_clip_norm=3.0,
-                 use_tpu=False,
-                 variables=None):
-  """Get training operation with gradient clipping and learning rate decay.
-
-  Distilled from tf.contrib.layers.optimize_loss().
   Args:
-    loss: Scalar tensor of the loss function.
-    learning_rate: Scalar initial learning rate.
-    lr_decay_steps: Exponential decay timescale.
-    lr_decay_rate: Exponential decay magnitude.
-    gradient_clip_norm: Global norm by which to scale gradients.
-    use_tpu: Use tpu for training.
-    variables: List of variables to optimize. tf.trainable_variables() if None.
+    tpu: Address of the TPU. No TPU if left blank.
+    gpus: List of GPU addresses for synchronous training.
 
   Returns:
-    train_op: Operation that runs one iteration of training.
+    A distribution strategy.
   """
-  global_step = tf.train.get_or_create_global_step()
-
-  with tf.variable_scope('training', values=[loss, global_step]):
-    # Make sure update ops run before computing loss.
-    update_ops = list(set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)))
-    with tf.control_dependencies(update_ops):
-      loss = tf.identity(loss)
-
-    # Learning rate variable, with decay.
-    learning_rate_decay_fn = functools.partial(
-        tf.train.exponential_decay,
-        decay_steps=lr_decay_steps,
-        decay_rate=lr_decay_rate,
-        staircase=True)
-    lr = tf.get_variable(
-        'learning_rate', [],
-        trainable=False,
-        initializer=tf.constant_initializer(learning_rate))
-    lr = learning_rate_decay_fn(lr, global_step)
-
-    # Optimizer.
-    opt = tf.train.AdamOptimizer(lr)
-    if use_tpu:
-      opt = tf.tpu.CrossShardOptimizer(opt)
-
-    # All trainable variables, if specific variables are not specified.
-    if variables is None:
-      variables = tf.trainable_variables()
-
-    # Compute gradients.
-    gradients = opt.compute_gradients(
-        loss, variables, colocate_gradients_with_ops=False)
-
-    # Optionally clip gradients by global norm.
-    if isinstance(gradient_clip_norm, float):
-      gradients = _clip_gradients_by_norm(gradients, gradient_clip_norm)
-
-    # Create gradient updates.
-    grad_updates = opt.apply_gradients(
-        gradients, global_step=global_step, name='train')
-
-    # Ensure the train_op computes grad_updates.
-    with tf.control_dependencies([grad_updates]):
-      train_op = tf.identity(loss)
-
-    return train_op
-
-
-# ---------------------- Estimators --------------------------------------------
-def get_estimator_spec(loss,
-                       mode,
-                       model_dir,
-                       use_tpu=False,
-                       scaffold_fn=None,
-                       variables_to_optimize=None,
-                       host_call=None):
-  """Get TPUEstimatorSpec depending on mode, for Model.get_model_fn()."""
-  train_op = get_train_op(
-      loss, use_tpu=use_tpu, variables=variables_to_optimize)
-  gin_config_saver_hook = gin.tf.GinConfigSaverHook(
-      model_dir, summarize_config=True)
-
-  # Train
-  if mode == tf.estimator.ModeKeys.TRAIN:
-    return tf.estimator.tpu.TPUEstimatorSpec(
-        mode=mode,
-        loss=loss,
-        train_op=train_op,
-        training_hooks=[
-            gin_config_saver_hook,
-        ],
-        scaffold_fn=scaffold_fn,
-        host_call=host_call)
-
-  # Eval
-  elif mode == tf.estimator.ModeKeys.EVAL:
-    raise ValueError('Estimator evaluation is not supported. Use ddsp_run.py '
-                     '--mode=eval instead.')
-
-  # Predict
-  elif mode == tf.estimator.ModeKeys.PREDICT:
-    raise ValueError('Do not use estimator.predict(), which requires a flat '
-                     'dictionary of predictions. Use model.get_outputs() and '
-                     'model.restore() instead.')
+  # Get a distribution strategy.
+  if tpu:
+    logging.info('Use TPU at %s', tpu)
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=tpu)
+    tf.config.experimental_connect_to_cluster(resolver)
+    tf.tpu.experimental.initialize_tpu_system(resolver)
+    strategy = tf.distribute.experimental.TPUStrategy(resolver)
+  elif gpus:
+    for gpu_address in gpus:
+      logging.info('Use GPU at %s', gpu_address)
+    cluster_spec = tf.train.ClusterSpec({'worker': gpus})
+    resolver = tf.distribute.cluster_resolver.SimpleClusterResolver(
+        cluster_spec=cluster_spec,
+        master=gpus[0],
+        environment='google',
+        rpc_layer='grpc')
+    tf.config.experimental_connect_to_cluster(resolver)
+    devices = tf.config.list_logical_devices('GPU')
+    strategy = tf.distribute.MirroredStrategy(devices=devices)
   else:
-    raise ValueError('Unsupported mode: %s' % mode)
+    logging.info('Defaulting to MirroredStrategy')
+    strategy = tf.distribute.MirroredStrategy()
+  return strategy
 
 
-def get_host_call_fn(model_dir):
-  """`host_call` function for creating training summaries when using TPU."""
+def get_latest_chekpoint(checkpoint_path):
+  """Helper function to get path to latest checkpoint.
 
-  def host_call_fn(**kwargs):
-    """Host_call_fn.
+  Args:
+    checkpoint_path: Path to the directory containing model checkpoints, or
+      to a specific checkpoint (e.g. `path/to/model.ckpt-iteration`).
+
+  Returns:
+    Path to latest checkpoint, or None if none exist.
+  """
+  checkpoint_path = os.path.expanduser(os.path.expandvars(checkpoint_path))
+  is_checkpoint = tf.io.gfile.exists(checkpoint_path + '.index')
+  if is_checkpoint:
+    return checkpoint_path
+  else:
+    # None if no checkpoints, or directory doesn't exist.
+    return tf.train.latest_checkpoint(checkpoint_path)
+
+
+def write_gin_config(summary_writer, model_dir, step):
+  """"Writes gin operative_config to model_dir and tensorboard."""
+  config_str = gin.operative_config_str()
+
+  # Save the original config string to a file.
+  base_name = 'operative_config-{}'.format(step)
+  fname = os.path.join(model_dir, base_name + '.gin')
+  with tf.io.gfile.GFile(fname, 'w') as f:
+    f.write(config_str)
+
+  # Formatting hack copied from gin.tf.GinConfigSaverHook.
+  def format_for_tensorboard(line):
+    """Convert a single line to markdown format."""
+    if not line.startswith('#'):
+      return '    ' + line
+    line = line[2:]
+    if line.startswith('===='):
+      return ''
+    if line.startswith('None'):
+      return '    # None.'
+    if line.endswith(':'):
+      return '#### ' + line
+    return line
+
+  # Convert config string to markdown.
+  md_lines = []
+  for line in config_str.splitlines():
+    md_line = format_for_tensorboard(line)
+    if md_line is not None:
+      md_lines.append(md_line)
+  md_config_str = '\n'.join(md_lines)
+
+  # Add to tensorboard.
+  with summary_writer.as_default():
+    text_tensor = tf.convert_to_tensor(md_config_str)
+    tf.summary.text(name='gin/' + base_name, data=text_tensor, step=step)
+    summary_writer.flush()
+
+
+@gin.configurable
+class Trainer(object):
+  """Class to bind an optimizer, model, strategy, and training step function."""
+
+  def __init__(self,
+               model,
+               strategy,
+               checkpoints_to_keep=100,
+               learning_rate=0.001,
+               lr_decay_steps=10000,
+               lr_decay_rate=0.98,
+               grad_clip_norm=3.0):
+    """Constructor.
 
     Args:
-      **kwargs: dict of summary name to tf.Tensor mapping. The value we see here
-        is the tensor across all cores, concatenated along axis 0. This function
-        will take make a scalar summary that is the mean of the whole tensor (as
-        all the values are the same - the mean, trait of
-        tpu.CrossShardOptimizer).
-
-    Returns:
-      A merged summary op.
+      model: Model to train.
+      strategy: A distribution strategy.
+      checkpoints_to_keep: Max number of checkpoints before deleting oldest.
+      learning_rate: Scalar initial learning rate.
+      lr_decay_steps: Exponential decay timescale.
+      lr_decay_rate: Exponential decay magnitude.
+      grad_clip_norm: Norm level by which to clip gradients.
     """
-    gs = kwargs.pop('global_step')[0]
-    with tf_summary.create_file_writer(model_dir).as_default():
-      with tf_summary.record_if(tf.equal(gs % 10, 0)):
-        for name, tensor in kwargs.items():
-          # Take the mean across cores.
-          tensor = tf.reduce_mean(tensor)
-          tf_summary.scalar(name, tensor, step=gs)
-        return tf.summary.all_v2_summary_ops()
+    self.model = model
+    self.strategy = strategy
+    self.checkpoints_to_keep = checkpoints_to_keep
+    self.grad_clip_norm = grad_clip_norm
 
-  return host_call_fn
+    # Create an optimizer.
+    lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+        initial_learning_rate=learning_rate,
+        decay_steps=lr_decay_steps,
+        decay_rate=lr_decay_rate)
+
+    with self.strategy.scope():
+      optimizer = tf.keras.optimizers.Adam(lr_schedule)
+      self.optimizer = optimizer
+
+  def save(self, model_dir):
+    """Saves model and optimizer to a checkpoint."""
+    # Saving weights in checkpoint format because saved_model requires
+    # handling variable batch size, which some synths and effects can't.
+    start_time = time.time()
+    checkpoint = tf.train.Checkpoint(model=self.model, optimizer=self.optimizer)
+    manager = tf.train.CheckpointManager(
+        checkpoint, directory=model_dir, max_to_keep=self.checkpoints_to_keep)
+    step = self.step.numpy()
+    manager.save(checkpoint_number=step)
+    logging.info('Saved checkpoint to %s at step %s', model_dir, step)
+    logging.info('Saving model took %.1f seconds', time.time() - start_time)
+
+  def restore(self, checkpoint_path):
+    """Restore model and optimizer from a checkpoint if it exists."""
+    start_time = time.time()
+    checkpoint = tf.train.Checkpoint(model=self.model, optimizer=self.optimizer)
+    latest_checkpoint = get_latest_chekpoint(checkpoint_path)
+    if latest_checkpoint is not None:
+      # checkpoint.restore must be within a strategy.scope() so that optimizer
+      # slot variables are mirrored.
+      with self.strategy.scope():
+        checkpoint.restore(latest_checkpoint)
+        logging.info('Loaded checkpoint %s', latest_checkpoint)
+      logging.info('Loading model took %.1f seconds', time.time() - start_time)
+
+  @property
+  def step(self):
+    """The number of training steps completed."""
+    return self.optimizer.iterations
+
+  def psum(self, x, axis=None):
+    """Sum across processors."""
+    return self.strategy.reduce(tf.distribute.ReduceOp.SUM, x, axis=axis)
+
+  def run(self, fn, *args, **kwargs):
+    """Distribute and run function on processors."""
+    return self.strategy.experimental_run_v2(fn, args=args, kwargs=kwargs)
+
+  def build(self, batch):
+    """Build the model by running a batch through it."""
+    _ = self.run(tf.function(self.model.__call__), batch)
+    self.model.summary()
+
+  def distribute_dataset(self, dataset):
+    """Create a distributed dataset."""
+    if isinstance(dataset, tf.data.Dataset):
+      return self.strategy.experimental_distribute_dataset(dataset)
+    else:
+      return dataset
+
+  @tf.function
+  def train_step(self, dataset_iter):
+    """Distributed training step."""
+    # Wrap in distribution strategy, slight speedup passing in iter vs batch.
+    batch = next(dataset_iter)
+    losses = self.run(self.step_fn, batch)
+    # Add up the scalar losses across replicas.
+    n_replicas = self.strategy.num_replicas_in_sync
+    return {k: self.psum(v, axis=None) / n_replicas for k, v in losses.items()}
+
+  @tf.function
+  def step_fn(self, batch):
+    """Per-Replica training step."""
+    with tf.GradientTape() as tape:
+      _ = self.model(batch, training=True)
+      total_loss = tf.reduce_sum(self.model.losses)
+    # Clip and apply gradients.
+    grads = tape.gradient(total_loss, self.model.trainable_variables)
+    grads, _ = tf.clip_by_global_norm(grads, self.grad_clip_norm)
+    self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
+    return self.model.losses_dict
 
 
-@gin.configurable
-def create_estimator(model_fn,
-                     model_dir,
-                     master='',
-                     batch_size=128,
-                     save_checkpoint_steps=300,
-                     save_summary_steps=300,
-                     keep_checkpoint_max=100,
-                     warm_start_from=None,
-                     use_tpu=True):
-  """Creates an estimator."""
-  config = tf.estimator.tpu.RunConfig(
-      master=master,
-      tpu_config=tf.estimator.tpu.TPUConfig(
-          iterations_per_loop=save_checkpoint_steps),
-      save_summary_steps=save_summary_steps,
-      save_checkpoints_steps=save_checkpoint_steps,
-      keep_checkpoint_max=keep_checkpoint_max,
-      keep_checkpoint_every_n_hours=1)
-
-  params = {'model_dir': model_dir}
-  return tf.estimator.tpu.TPUEstimator(
-      model_fn=model_fn,
-      model_dir=model_dir,
-      params=params,
-      train_batch_size=batch_size,
-      eval_batch_size=batch_size,
-      predict_batch_size=batch_size,
-      config=config,
-      warm_start_from=warm_start_from,
-      use_tpu=use_tpu,
-      eval_on_tpu=False)
-
-
-# ---------------------- Training ----------------------------------------------
 @gin.configurable
 def train(data_provider,
-          model,
-          model_dir='~/tmp/ddsp',
+          trainer,
+          batch_size=32,
           num_steps=1000000,
-          master='',
-          use_tpu=False):
+          steps_per_summary=300,
+          steps_per_save=300,
+          model_dir='~/tmp/ddsp'):
   """Main training loop."""
-  input_fn = data_provider.get_input_fn(shuffle=True, repeats=-1)
-  model_fn = model.get_model_fn(use_tpu=use_tpu)
+  # Get a distributed dataset.
+  dataset = data_provider.get_batch(batch_size, shuffle=True, repeats=-1)
+  dataset = trainer.distribute_dataset(dataset)
+  dataset_iter = iter(dataset)
 
-  estimator = create_estimator(
-      model_fn=model_fn,
-      model_dir=os.path.expanduser(model_dir),
-      master=master,
-      use_tpu=use_tpu)
+  # Build model, easiest to just run forward pass.
+  trainer.build(next(dataset_iter))
 
-  estimator.train(input_fn=input_fn, max_steps=num_steps)
+  # Load latest checkpoint if one exists in model_dir.
+  trainer.restore(model_dir)
+
+  # Create training loss metrics.
+  avg_losses = {name: tf.keras.metrics.Mean(name=name, dtype=tf.float32)
+                for name in trainer.model.loss_names}
+
+  # Set up the summary writer and metrics.
+  summary_dir = os.path.join(model_dir, 'summaries', 'train')
+  summary_writer = tf.summary.create_file_writer(summary_dir)
+
+  # Save the gin config.
+  write_gin_config(summary_writer, model_dir, trainer.step.numpy())
+
+  # Train.
+  with summary_writer.as_default():
+    for _ in range(num_steps):
+      step = trainer.step
+
+      # Take a step.
+      losses = trainer.train_step(dataset_iter)
+
+      # Update metrics.
+      for k, v in losses.items():
+        avg_losses[k].update_state(v)
+
+      # Log the step.
+      logging.info('Step:%d Loss:%.2f', step, losses['total_loss'])
+
+      # Write Summaries.
+      if step % steps_per_summary == 0:
+        for k, metric in avg_losses.items():
+          tf.summary.scalar('losses/{}'.format(k), metric.result(), step=step)
+          metric.reset_states()
+
+      # Save Model.
+      if step % steps_per_save == 0:
+        trainer.save(model_dir)
+        summary_writer.flush()
+
+  logging.info('Training Finished!')

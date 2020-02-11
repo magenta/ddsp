@@ -15,14 +15,8 @@
 # Lint as: python3
 """Tests for ddsp.synths."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ddsp import synths
-import tensorflow.compat.v1 as tf
-
-tf.disable_v2_behavior()
+import tensorflow.compat.v2 as tf
 
 
 class AdditiveTest(tf.test.TestCase):
