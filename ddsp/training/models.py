@@ -119,47 +119,6 @@ class Autoencoder(Model):
     # If wrapped in tf.function, only calculates keys of interest.
     return controls if keys is None else {k: controls[k] for k in keys}
 
-  @property
-  def pretrained_models(self):
-    pretrained_models = []
-    for loss_obj in self.loss_objs:
-      m = loss_obj.pretrained_model
-      if m is not None:
-        pretrained_models.append(m)
-    return pretrained_models
-
-  def get_scaffold_fn(self):
-    """Returns scaffold_fn."""
-
-    def scaffold_fn():
-      """scaffold_fn."""
-      # load pretrained model weights
-      for pretrained_model in self.pretrained_models:
-        pretrained_model.init_from_checkpoint()
-
-      return tf.train.Scaffold()
-
-    return scaffold_fn
-
-  def get_variables_to_optimize(self):
-    """Returns variables to optimize."""
-    all_trainables = tf.trainable_variables()
-    vars_to_freeze = []
-    for m in self.pretrained_models:
-      vars_to_freeze += m.trainable_variables()
-    var_names_to_freeze = [x.name for x in vars_to_freeze]
-
-    trainables = []
-    for x in all_trainables:
-      if x.name not in var_names_to_freeze:
-        trainables.append(x)
-        logging.info('adding trainable variable %s (shape=%s, dtype=%s).',
-                     x.name, x.shape, x.dtype)
-      else:
-        logging.info('!skipping frozen variable %s (shape=%s, dtype=%s).',
-                     x.name, x.shape, x.dtype)
-    return trainables
-
 
 @gin.configurable
 class AutoencoderDdspice(Autoencoder):
@@ -222,47 +181,6 @@ class AutoencoderDdspice(Autoencoder):
     controls = self.processor_group.get_controls(processor_inputs)
     # If wrapped in tf.function, only calculates keys of interest.
     return controls if keys is None else {k: controls[k] for k in keys}
-
-  @property
-  def pretrained_models(self):
-    pretrained_models = []
-    for loss_obj in self.loss_objs:
-      m = loss_obj.pretrained_model
-      if m is not None:
-        pretrained_models.append(m)
-    return pretrained_models
-
-  def get_scaffold_fn(self):
-    """Returns scaffold_fn."""
-
-    def scaffold_fn():
-      """scaffold_fn."""
-      # load pretrained model weights
-      for pretrained_model in self.pretrained_models:
-        pretrained_model.init_from_checkpoint()
-
-      return tf.train.Scaffold()
-
-    return scaffold_fn
-
-  def get_variables_to_optimize(self):
-    """Returns variables to optimize."""
-    all_trainables = tf.trainable_variables()
-    vars_to_freeze = []
-    for m in self.pretrained_models:
-      vars_to_freeze += m.trainable_variables()
-    var_names_to_freeze = [x.name for x in vars_to_freeze]
-
-    trainables = []
-    for x in all_trainables:
-      if x.name not in var_names_to_freeze:
-        trainables.append(x)
-        logging.info('adding trainable variable %s (shape=%s, dtype=%s).',
-                     x.name, x.shape, x.dtype)
-      else:
-        logging.info('!skipping frozen variable %s (shape=%s, dtype=%s).',
-                     x.name, x.shape, x.dtype)
-    return trainables
 
   def _add_pitch_loss(self, pitch_shift_steps, f0_hz_shift, f0_hz):
     """add pitch loss"""
