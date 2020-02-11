@@ -40,12 +40,12 @@ class UntrainedModel(object):
   def variable_scope(self):
     return self._name
 
-  def __call__(self, audio):
+  def __call__(self, audio, training):
     with tf.variable_scope(self.variable_scope, reuse=tf.AUTO_REUSE):
-      outputs = self.get_outputs(audio)
+      outputs = self.get_outputs(audio, training)
       return outputs
 
-  def get_outputs(self, audio):
+  def get_outputs(self, audio, training):
     """Returns the output of the model, usually an embedding."""
     raise NotImplementedError
 
@@ -151,10 +151,10 @@ class TrainableCREPE(UntrainedModel):
     self._model = Crepe(
         self._model_capacity, self._activation_layer, name=self._name)
 
-  def __call__(self, audio):
-    return self.get_outputs(audio)
+  def __call__(self, audio, training):
+    return self.get_outputs(audio, training)
 
-  def get_outputs(self, audio):
+  def get_outputs(self, audio, training):
     """Returns the embeddings.
 
     Args:
@@ -169,7 +169,7 @@ class TrainableCREPE(UntrainedModel):
 
     # TODO(gcj): relax this constraint by modifying the model to generate
     # outputs at every time point.
-    activation_dict = self._model(audio)
+    activation_dict = self._model(audio, training)
     if self._activation_layer not in activation_dict:
       raise ValueError(
           'activation layer {} not found, valid keys are {}'.format(

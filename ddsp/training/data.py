@@ -243,10 +243,10 @@ class NSynthTfdsDdspice(TfdsProvider):
               ex['instrument']['family'],
           'instrument':
               ex['instrument']['label'],
-          'f0_hz':
-              ex['f0']['hz'],
-          'f0_confidence':
-              ex['f0']['confidence'],
+          # 'f0_hz':
+          #     ex['f0']['hz'],
+          # 'f0_confidence':
+          #     ex['f0']['confidence'],
           'loudness_db':
               ex['loudness']['db'],
       }

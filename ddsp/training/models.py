@@ -23,6 +23,7 @@ from ddsp.training import train_util
 from ddsp import untrained_models
 import gin
 import tensorflow.compat.v2 as tf
+import tensorflow
 
 tfkl = tf.keras.layers
 
@@ -142,14 +143,15 @@ class AutoencoderDdspice(Autoencoder):
     self.trainable_crepe = untrained_models.TrainableCREPE(
       model_capacity='tiny',
       activation_layer='classifier')
-    self.pitch_loss_obj = tf.keras.losses.Huber()
+    self.pitch_loss_obj = tensorflow.compat.v1.losses.huber_loss
+    self.loss_names.append('pitch_loss')
 
 
   def encode(self, features, training=True):
     """Get conditioning by preprocessing then encoding.
     DDSPICE modification - add the (trainable) crepe predicted pitch
     """
-    f0_hz, f0_confidence = self._crepe_predict_pitch(features['audio'])
+    f0_hz, f0_confidence = self._crepe_predict_pitch(features['audio'], training)
     features['f0_hz'] = f0_hz
     features['f0_confidence'] = f0_confidence
 
@@ -165,13 +167,17 @@ class AutoencoderDdspice(Autoencoder):
     """Run the core of the network, get predictions and loss."""
     conditioning = self.encode(features, training=training)
     audio_gen = self.decode(conditioning, training=training)
+
     if training:
       self.add_losses(features['audio'], audio_gen)
 
-    f0_hz_shift, f0_confidence_shift = self._crepe_predict_pitch(features['shifted_audio'])
+    f0_hz_shift, f0_confidence_shift = self._crepe_predict_pitch(features['shifted_audio'],
+                                                                 training)
+    # f0_hz, f0_confidence = self._crepe_predict_pitch(features['audio'])
+    f0_hz = features['f0_hz']
     self._add_pitch_loss(features['pitch_shift_steps'],
                          f0_hz_shift,
-                         features['f0_hz'])
+                         f0_hz)
     return audio_gen
 
   def get_controls(self, features, keys=None, training=False):
@@ -184,13 +190,13 @@ class AutoencoderDdspice(Autoencoder):
 
   def _add_pitch_loss(self, pitch_shift_steps, f0_hz_shift, f0_hz):
     """add pitch loss"""
-    pitch_shift_steps = tf.expand_dims(pitch_shift_steps, axis=1)  # (16, 1)
-    pitch_shift_steps = pitch_shift_steps * tf.ones_like(f0_hz_shift - f0_hz)  # (16, 1000)
+    pitch_shift_steps = tf.reshape(pitch_shift_steps, (-1, 1, 1))  # (16, 1, 1)
+    pitch_shift_steps = pitch_shift_steps * tf.ones_like(f0_hz_shift - f0_hz)  # (16, 1000, 1)
 
     self.add_loss(self.pitch_loss_obj(pitch_shift_steps,
                                       f0_hz_shift - f0_hz))
 
-  def _crepe_predict_pitch(self, audio):
+  def _crepe_predict_pitch(self, audio, training):
     """
     Args:
       audio: tensor shape of (batch, 64000)
@@ -198,7 +204,7 @@ class AutoencoderDdspice(Autoencoder):
     Returns:
       f0_hz, f0_confidence
     """
-    def softargmax(x, beta=1e6, name='softargmax'):
+    def softargmax(x, beta=1e6, name='softargmax', keepdims=True):
       """
       Approximating argmax. beta=1e5 turns out to be large enough.
 
@@ -211,22 +217,19 @@ class AutoencoderDdspice(Autoencoder):
       x_range = tf.range(x.shape.as_list()[-1], dtype=x.dtype)  # shape: (N, )
       for _ in range(2):
         x_range = tf.expand_dims(x_range, 0)   # shape: (1, 1, N)
-      return tf.reduce_sum(tf.nn.softmax(x * beta) * x_range, axis=-1, name=name)
+      return tf.reduce_sum(tf.nn.softmax(x * beta) * x_range, axis=-1, name=name, keepdims=keepdims)
 
-    salience = self.trainable_crepe(audio)  # (batch, 1000, 360)
-    pitch_idxs = softargmax(salience, name='pitch_idxs')
+    salience = self.trainable_crepe(audio, training)  # (batch, 1000, 360)
+    pitch_idxs = softargmax(salience, name='pitch_idxs', keepdims=True)  # (batch, 1000, 1)
     # todo: crepe.core.to_local_average_cents should be applied here.. right?
     # but for now; just a simple argmax for temporary.
     # see crepe.core.py L95.
     cent_pred = 20.0 * pitch_idxs + tf.constant(1997.3794084, dtype=tf.float32)
     f0_hz = 10.0 * tf.math.pow(2.0, (cent_pred / 1200.0))
-    f0_confidence = tf.math.reduce_max(salience, axis=-1)
+    f0_confidence = tf.math.reduce_max(salience, axis=-1, keepdims=True)  # (batch, 1000, 1)
 
     # todo; to think - how do we make sure this salience would mean certain..
     # todo; ..frequency[hz]?? why would it learn that??
 
     # features['audio'] --> shape=(16, 64000)
-    # todo; f0 = untrained_crepe(audio)
-    # then pass it to self.preprocessor
-    # f0 should be (16, 1000, 1)
     return f0_hz, f0_confidence
