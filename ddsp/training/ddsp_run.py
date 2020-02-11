@@ -59,10 +59,6 @@ ddsp_run \
 
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import time
 
@@ -74,18 +70,20 @@ from ddsp.training import models
 from ddsp.training import train_util
 import gin
 import pkg_resources
-import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf
 
 FLAGS = flags.FLAGS
 
+# Program flags.
 flags.DEFINE_enum('mode', 'train', ['train', 'eval', 'sample'],
                   'Whether to train, evaluate, or sample from the model.')
-flags.DEFINE_string(
-    'model_dir', '~/tmp/ddsp',
-    'Path where checkpoints and summary events will be located '
-    'during training and evaluation.')
-flags.DEFINE_string('master', '', 'Name of the TensorFlow runtime to use.')
-flags.DEFINE_boolean('use_tpu', False, 'Whether training will happen on a TPU.')
+flags.DEFINE_string('model_dir', '~/tmp/ddsp',
+                    'Path where checkpoints and summary events will be located '
+                    'during training and evaluation.')
+flags.DEFINE_string('tpu', '', 'Address of the TPU. No TPU if left blank.')
+flags.DEFINE_multi_string('gpu', [],
+                          'Addresses of GPUs for sync data-parallel training.'
+                          'Only needs to be specified for using multiple GPUs.')
 
 # Gin config flags.
 flags.DEFINE_multi_string('gin_search_path', [],
@@ -93,10 +91,6 @@ flags.DEFINE_multi_string('gin_search_path', [],
 flags.DEFINE_multi_string('gin_file', [], 'List of paths to the config files.')
 flags.DEFINE_multi_string('gin_param', [],
                           'Newline separated list of Gin parameter bindings.')
-
-# Training specific flags.
-flags.DEFINE_integer('num_train_steps', 1000000,
-                     'Number of training steps or `None` for infinite.')
 
 # Evaluation/sampling specific flags.
 flags.DEFINE_boolean('eval_once', False, 'Whether evaluation will run once.')
@@ -123,67 +117,58 @@ def parse_gin(model_dir):
   # Parse gin configs, later calls override earlier ones.
   with gin.unlock_config():
     # Optimization defaults.
-    opt_default = 'base_tpu.gin' if FLAGS.use_tpu else 'base.gin'
+    use_tpu = bool(FLAGS.tpu)
+    opt_default = 'base.gin' if not use_tpu else 'base_tpu.gin'
     gin.parse_config_file(os.path.join('optimization', opt_default))
 
     # Load operative_config if it exists (model has already trained).
     operative_config = os.path.join(model_dir, 'operative_config-0.gin')
-    if tf.gfile.Exists(operative_config):
+    if tf.io.gfile.exists(operative_config):
       gin.parse_config_file(operative_config, skip_unknown=True)
 
     # Only use the custom cumsum for TPUs.
-    gin.parse_config('ddsp.core.cumsum.use_tpu={}'.format(FLAGS.use_tpu))
+    gin.parse_config('ddsp.core.cumsum.use_tpu={}'.format(use_tpu))
 
     # User gin config and user hyperparameters from flags.
     gin.parse_config_files_and_bindings(
         FLAGS.gin_file, FLAGS.gin_param, skip_unknown=True)
 
 
-def run():
+def main(unused_argv):
   """Parse gin config and run ddsp training, evaluation, or sampling."""
   model_dir = os.path.expanduser(FLAGS.model_dir)
   parse_gin(model_dir)
-  model = models.get_model()
 
   # Training.
   if FLAGS.mode == 'train':
-    train_util.train(
-        data_provider=gin.REQUIRED,
-        model=model,
-        model_dir=model_dir,
-        num_steps=FLAGS.num_train_steps,
-        master=FLAGS.master,
-        use_tpu=FLAGS.use_tpu)
+    strategy = train_util.get_strategy(tpu=FLAGS.tpu, gpus=FLAGS.gpu)
+    with strategy.scope():
+      model = models.get_model()
+      trainer = train_util.Trainer(model, strategy)
+
+    train_util.train(data_provider=gin.REQUIRED,
+                     trainer=trainer,
+                     model_dir=model_dir)
 
   # Evaluation.
   elif FLAGS.mode == 'eval':
+    model = models.get_model()
     delay_start()
-    eval_util.evaluate(
-        data_provider=gin.REQUIRED,
-        model=model,
-        model_dir=model_dir,
-        master=FLAGS.master,
-        run_once=FLAGS.eval_once)
+    eval_util.evaluate(data_provider=gin.REQUIRED,
+                       model=model,
+                       model_dir=model_dir)
 
   # Sampling.
   elif FLAGS.mode == 'sample':
+    model = models.get_model()
     delay_start()
-    eval_util.sample(
-        data_provider=gin.REQUIRED,
-        model=model,
-        model_dir=model_dir,
-        master=FLAGS.master,
-        run_once=FLAGS.eval_once)
-
-
-def main(unused_argv):
-  """From command line."""
-  run()
+    eval_util.sample(data_provider=gin.REQUIRED,
+                     model=model,
+                     model_dir=model_dir)
 
 
 def console_entry_point():
   """From pip installed script."""
-  tf.disable_v2_behavior()
   app.run(main)
 
 

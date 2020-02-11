@@ -30,7 +30,7 @@ from typing import Dict, Sequence, Tuple, Text
 from absl import logging
 from ddsp import core
 import gin
-import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf
 
 tfkl = tf.keras.layers
 
@@ -53,13 +53,7 @@ class Processor(tfkl.Layer):
   """
 
   def __init__(self, name: Text, trainable: bool = False):
-    super(Processor, self).__init__(name=name,
-                                    trainable=trainable,
-                                    autocast=False)
-
-  def build(self, *args_shape: tf.Tensor, **kwargs_shape: tf.Tensor):
-    """Build variables from the shape of an arbitrary number of inputs."""
-    pass
+    super().__init__(name=name, trainable=trainable, autocast=False)
 
   def call(self, *args: tf.Tensor, **kwargs: tf.Tensor) -> tf.Tensor:
     """Convert input tensors arguments into a signal tensor."""
@@ -106,17 +100,13 @@ class ProcessorGroup(tfkl.Layer):
     # Collect a list of processors.
     self.processors = [node[0] for node in self.dag]
 
-  def call(self, *args: tf.Tensor, **kwargs: tf.Tensor) -> tf.Tensor:
-    """Alias for get_signal()."""
-    return self.get_signal(*args, **kwargs)
-
-  def get_signal(self, *args: tf.Tensor, **kwargs: tf.Tensor) -> tf.Tensor:
-    """Convert input tensors arguments into a signal tensor."""
-    outputs = self.get_outputs(*args, **kwargs)
-    signal = outputs[self.name]['signal']
+  def call(self, dag_inputs: TensorDict) -> tf.Tensor:
+    """Like Processor, but specific to having an input dictionary."""
+    dag_outputs = self.get_controls(dag_inputs)
+    signal = self.get_signal(dag_outputs)
     return signal
 
-  def get_outputs(self, dag_inputs: TensorDict) -> TensorDict:
+  def get_controls(self, dag_inputs: TensorDict) -> TensorDict:
     """Run the DAG and get complete outputs dictionary for the processor_group.
 
     Args:
@@ -124,7 +114,7 @@ class ProcessorGroup(tfkl.Layer):
         processor_group.
 
     Returns:
-      outputs: A nested dictionary of all the output tensors.
+      A nested dictionary of all the output tensors.
     """
     # Initialize the outputs with inputs to the processor_group.
     outputs = dag_inputs
@@ -134,16 +124,21 @@ class ProcessorGroup(tfkl.Layer):
       # Get the node processor and keys to the node input.
       processor, keys = node
 
-      # Logging.
-      logging.info('Connecting node (%s):', processor.name)
-      for i, key in enumerate(keys):
-        logging.info('Input %d: %s', i, key)
+      # Logging, only on the first call.
+      if not self.built:
+        logging.info('Connecting node (%s):', processor.name)
+        for i, key in enumerate(keys):
+          logging.info('Input %d: %s', i, key)
 
       # Get the inputs to the node.
       inputs = [core.nested_lookup(key, outputs) for key in keys]
 
-      # Build the processor (does nothing if not the first time).
-      processor.build([tensor.shape for tensor in inputs])
+      # Build the processor only if called the first time in a @tf.function.
+      # Need to explicitly build because we use get_controls() and get_signal()
+      # seperately, (to get intermediates) rather than directly using call().
+      if not processor.built:
+        processor.build([tensor.shape for tensor in inputs])
+
       # Run processor.
       controls = processor.get_controls(*inputs)
       signal = processor.get_signal(**controls)
@@ -154,9 +149,24 @@ class ProcessorGroup(tfkl.Layer):
     # Get output signal from last processor.
     output_name = self.processors[-1].name
     outputs[self.name] = {'signal': outputs[output_name]['signal']}
-    logging.info('ProcessorGroup output node (%s)', output_name)
+
+    # Logging, only on the first call.
+    if not self.built:
+      logging.info('ProcessorGroup output node (%s)', output_name)
 
     return outputs
+
+  def get_signal(self, dag_outputs: TensorDict) -> tf.Tensor:
+    """Extract the output signal from the dag outputs.
+
+    Args:
+      dag_outputs: A dictionary of tensors output from self.get_controls().
+
+    Returns:
+      Signal tensor.
+    """
+    # Initialize the outputs with inputs to the processor_group.
+    return dag_outputs[self.name]['signal']
 
 
 # Routing processors for manipulating signals in a processor_group -------------

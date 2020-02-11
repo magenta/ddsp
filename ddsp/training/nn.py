@@ -15,13 +15,8 @@
 # Lint as: python3
 """Library of neural network functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import ddsp.core
 import gin
-import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf
 
 tfkl = tf.keras.layers
 
@@ -43,7 +38,7 @@ class Normalize(tfkl.Layer):
   """Normalization layer with learnable parameters."""
 
   def __init__(self, norm_type='layer'):
-    super(Normalize, self).__init__()
+    super().__init__()
     self.norm_type = norm_type
 
   def build(self, x_shape):
@@ -79,7 +74,7 @@ class ResidualLayer(tfkl.Layer):
 
   def __init__(self, ch, stride, shortcut, norm_type, name='residual_layer'):
     """Downsample frequency by stride, upsample channels by 4."""
-    super(ResidualLayer, self).__init__(name=name)
+    super().__init__(name=name)
     ch_out = 4 * ch
     self.shortcut = shortcut
 
@@ -172,39 +167,5 @@ def split_to_dict(tensor, tensor_splits):
   sizes = [v[1] for v in tensor_splits]
   tensors = tf.split(tensor, sizes, axis=-1)
   return dict(zip(labels, tensors))
-
-
-# ------------------ Fade-in/out during training -------------------------------
-@gin.register
-def linear_fade(iter_start, iter_end, min_value=0.0, max_value=1.0):
-  """Clipped linear fade for scaling in quantities during training.
-
-  Args:
-    iter_start: Iteration to start the fade (value=min_value before).
-    iter_end: Iteration to end the fade (value=max_value after).
-    min_value: Value to start the fade at.
-    max_value: Value to end the fade at.
-
-  Returns:
-    A float32 linearly scaled between 0 and 1 based upon training iteration.
-  """
-  iter_start = tf.cast(iter_start, tf.float32)
-  iter_end = tf.cast(iter_end, tf.float32)
-  min_value = tf.cast(min_value, tf.float32)
-  max_value = tf.cast(max_value, tf.float32)
-  global_step = tf.cast(tf.train.get_or_create_global_step(), tf.float32)
-  slope = 1.0 / (iter_end - iter_start)
-  intercept = -1.0 * slope * iter_start
-  fade = tf.clip_by_value(global_step * slope + intercept, 0.0, 1.0)
-  value = min_value + (max_value - min_value) * fade
-  return value
-
-
-@gin.register
-def exp_fade(iter_start, iter_end, start_value=1e-3):
-  """Exponential fade between min_value and 1.0. during training."""
-  fade = linear_fade(iter_start, iter_end, -5.0, 5.0)
-  return ddsp.core.exp_sigmoid(
-      fade, exponent=10.0, max_value=1.0, threshold=start_value)
 
 

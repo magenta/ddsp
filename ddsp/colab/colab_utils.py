@@ -15,10 +15,6 @@
 # Lint as: python3
 """Helper functions for running DDSP colab notebooks."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import base64
 import io
 import tempfile
@@ -30,7 +26,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pydub import AudioSegment
 from scipy.io import wavfile
-import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf
 
 from google.colab import files
 from google.colab import output
@@ -191,7 +187,6 @@ def specplot(audio,
              vmax=1,
              rotate=True,
              size=512 + 256,
-             sess=None,
              **matshow_kwargs):
   """Plot the log magnitude spectrogram of audio."""
   # If batched, take first element.
@@ -200,9 +195,6 @@ def specplot(audio,
 
   logmag = ddsp.spectral_ops.compute_logmag(ddsp.core.tf_float32(audio),
                                             size=size)
-  if sess is not None:
-    logmag = sess.run(logmag)
-
   if rotate:
     logmag = np.rot90(logmag)
   # Plotting.
@@ -228,16 +220,11 @@ def transfer_function(ir, sample_rate=DEFAULT_SAMPLE_RATE):
 
 def plot_impulse_responses(impulse_response,
                            desired_magnitudes,
-                           sample_rate=DEFAULT_SAMPLE_RATE,
-                           sess=None):
+                           sample_rate=DEFAULT_SAMPLE_RATE):
   """Plot a target frequency response, and that of an impulse response."""
   n_fft = desired_magnitudes.shape[-1] * 2
   frequencies = np.fft.fftfreq(n_fft, 1/sample_rate)[:n_fft//2]
   true_frequencies, true_magnitudes = transfer_function(impulse_response)
-
-  if sess is not None:
-    true_magnitudes = sess.run(true_magnitudes)
-    impulse_response = sess.run(impulse_response)
 
   # Plot it.
   plt.figure(figsize=(12, 6))

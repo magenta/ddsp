@@ -15,16 +15,12 @@
 # Lint as: python3
 """Library of encoder objects."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ddsp
 from ddsp import spectral_ops
 from ddsp.training import nn
 import gin
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf
 
 tfkl = tf.keras.layers
 
@@ -39,7 +35,7 @@ class Encoder(tfkl.Layer):
   """
 
   def __init__(self, f0_encoder=None, name='encoder'):
-    super(Encoder, self).__init__(name=name)
+    super().__init__(name=name)
     self.f0_encoder = f0_encoder
 
   def call(self, conditioning):
@@ -85,35 +81,34 @@ class MfccTimeDistributedRnnEncoder(Encoder):
                z_time_steps=250,
                f0_encoder=None,
                name='mfcc_time_distrbuted_rnn_encoder'):
-    super(MfccTimeDistributedRnnEncoder, self).__init__(
-        f0_encoder=f0_encoder, name=name)
+    super().__init__(f0_encoder=f0_encoder, name=name)
     if z_time_steps not in [63, 125, 250, 500, 1000]:
       raise ValueError(
           '`z_time_steps` currently limited to 63,125,250,500 and 1000')
     self.z_audio_spec = {
-        63: {
+        '63': {
             'fft_size': 2048,
             'overlap': 0.5
         },
-        125: {
+        '125': {
             'fft_size': 1024,
             'overlap': 0.5
         },
-        250: {
+        '250': {
             'fft_size': 1024,
             'overlap': 0.75
         },
-        500: {
+        '500': {
             'fft_size': 512,
             'overlap': 0.75
         },
-        1000: {
+        '1000': {
             'fft_size': 256,
             'overlap': 0.75
         }
     }
-    self.fft_size = self.z_audio_spec[z_time_steps]['fft_size']
-    self.overlap = self.z_audio_spec[z_time_steps]['overlap']
+    self.fft_size = self.z_audio_spec[str(z_time_steps)]['fft_size']
+    self.overlap = self.z_audio_spec[str(z_time_steps)]['overlap']
 
     # Layers.
     self.z_norm = nn.Normalize('instance')
@@ -173,7 +168,7 @@ class ResnetF0Encoder(F0Encoder):
                f0_bins=128,
                spectral_fn=lambda x: spectral_ops.compute_mag(x, size=1024),
                name='resnet_f0_encoder'):
-    super(ResnetF0Encoder, self).__init__(name=name)
+    super().__init__(name=name)
     self.f0_bins = f0_bins
     self.spectral_fn = spectral_fn
 

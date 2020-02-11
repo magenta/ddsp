@@ -15,15 +15,9 @@
 # Lint as: python3
 """Tests for ddsp.training.nn."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ddsp.training import nn
 import numpy as np
-import tensorflow.compat.v1 as tf
-
-tf.disable_v2_behavior()
+import tensorflow.compat.v2 as tf
 
 
 class SplitToDictTest(tf.test.TestCase):
@@ -36,13 +30,11 @@ class SplitToDictTest(tf.test.TestCase):
     x = tf.constant(np.concatenate([x1, x2, x3], axis=2))
 
     output = nn.split_to_dict(x, tensor_splits)
-    with self.cached_session() as sess:
-      signal_dict = sess.run(output)
 
-    self.assertSetEqual(set(['x1', 'x2', 'x3']), set(signal_dict.keys()))
-    self.assertAllEqual(x1, signal_dict.get('x1'))
-    self.assertAllEqual(x2, signal_dict.get('x2'))
-    self.assertAllEqual(x3, signal_dict.get('x3'))
+    self.assertSetEqual(set(['x1', 'x2', 'x3']), set(output.keys()))
+    self.assertAllEqual(x1, output.get('x1'))
+    self.assertAllEqual(x2, output.get('x2'))
+    self.assertAllEqual(x3, output.get('x3'))
 
 
 if __name__ == '__main__':

@@ -15,17 +15,13 @@
 # Lint as: python3
 """Apache Beam pipeline for computing TFRecord dataset from audio files."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl import logging
 import apache_beam as beam
 from ddsp.spectral_ops import compute_f0
 from ddsp.spectral_ops import compute_loudness
 import numpy as np
 import pydub
-import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf
 
 
 
@@ -127,7 +123,7 @@ def prepare_tfrecord(
     frame_rate: The frame rate to use for f0 and loudness features.
       If set to None, these features will not be computed.
     window_secs: The size of the sliding window (in seconds) to use to
-      split the audio and features. If None, they will not be split.
+      split the audio and features. If 0, they will not be split.
     hop_secs: The number of seconds to hop when computing the sliding
       windows.
     pipeline_options: An iterable of command line arguments to be used as

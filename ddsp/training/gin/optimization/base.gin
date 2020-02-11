@@ -6,13 +6,13 @@ import ddsp.training
 learning_rate = 3e-4
 batch_size = 32
 
-train_util.create_estimator.batch_size = %batch_size
-train_util.create_estimator.save_checkpoint_steps = 300
-train_util.create_estimator.save_summary_steps = 300
-train_util.create_estimator.keep_checkpoint_max = 100
+train.batch_size = %batch_size
+train.num_steps = 1000000
+train.steps_per_summary = 300
+train.steps_per_save = 300
 
-train_util.get_train_op.learning_rate = %learning_rate
-train_util.get_train_op.lr_decay_steps = 10000
-train_util.get_train_op.lr_decay_rate = 0.98
-train_util.get_train_op.gradient_clip_norm = 3.0
-
+Trainer.learning_rate = %learning_rate
+Trainer.lr_decay_steps = 10000
+Trainer.lr_decay_rate = 0.98
+Trainer.grad_clip_norm = 3.0
+Trainer.checkpoints_to_keep = 100

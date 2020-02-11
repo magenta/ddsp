@@ -25,14 +25,10 @@ ddsp_prepare_tfrecord \
 
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl import app
 from absl import flags
 from ddsp.training.data_preparation.prepare_tfrecord_lib import prepare_tfrecord
-import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf
 
 FLAGS = flags.FLAGS
 
@@ -57,7 +53,7 @@ flags.DEFINE_integer(
 flags.DEFINE_float(
     'example_secs', 4,
     'The length of each example in seconds. Input audio will be split to this '
-    'length using a sliding window. If None, each full piece of audio will be '
+    'length using a sliding window. If 0, each full piece of audio will be '
     'used as an example.')
 flags.DEFINE_float(
     'sliding_window_hop_secs', 1,

@@ -15,10 +15,6 @@
 # Lint as: python3
 """Base module for the differentiable digital signal processing library."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # Module imports.
 from ddsp import core
 from ddsp import effects
