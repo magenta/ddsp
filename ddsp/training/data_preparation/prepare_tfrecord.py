@@ -88,7 +88,6 @@ def main(unused_argv):
 
 def console_entry_point():
   """From pip installed script."""
-  tf.disable_v2_behavior()
   app.run(main)
 
 
