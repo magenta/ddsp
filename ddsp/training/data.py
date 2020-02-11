@@ -19,6 +19,7 @@ from absl import logging
 import librosa
 import numpy as np
 import gin
+import tensorflow
 import tensorflow.compat.v2 as tf
 import tensorflow_datasets as tfds
 
@@ -225,7 +226,7 @@ class NSynthTfdsDdspice(TfdsProvider):
     """Returns dataset with slight restructuring of feature dictionary."""
     def preprocess_ex(ex):
       pitch_shift_steps = tf.random.uniform([], minval=-12, maxval=13)
-      shifted_audio = _pitch_shift(ex['audio'], pitch_shift_steps.numpy())
+      shifted_audio = _pitch_shift(ex['audio'], pitch_shift_steps)
       shifted_audio.set_shape(ex['audio'].shape)
       return {
           'pitch':
@@ -260,4 +261,4 @@ def _pitch_shift(waveform: tf.Tensor, n_steps):
           waveform, 16000, n_steps, 12, 'kaiser_fast'
     )
 
-  return tf.py_func(pitch_shift_py, [waveform, n_steps], tf.float32, stateful=False)
+  return tensorflow.compat.v1.py_func(pitch_shift_py, [waveform, n_steps], tf.float32, stateful=False)
