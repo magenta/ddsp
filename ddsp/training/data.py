@@ -219,18 +219,15 @@ class NSynthTfdsDdspice(TfdsProvider):
           'Using public TFDS GCS bucket to load NSynth. If not running on '
           'GCP, this will be very slow, and it is recommended you prepare '
           'the dataset locally with TFDS and set the data_dir appropriately.')
-    super(NSynthTfdsDdspice, self).__init__(name, split, data_dir)
-
-    print('NsynthTfdsDdspiceDdspice initiated')
-
+    super().__init__(name, split, data_dir)
 
   def get_dataset(self, shuffle=True):
     """Returns dataset with slight restructuring of feature dictionary."""
     def preprocess_ex(ex):
       pitch_shift_steps = tf.random.uniform([], minval=-12, maxval=13)
-      shifted_audio = _pitch_shift(ex['audio'], pitch_shift_steps)
+      shifted_audio = _pitch_shift(ex['audio'], pitch_shift_steps.numpy())
       shifted_audio.set_shape(ex['audio'].shape)
-      example_dict = {
+      return {
           'pitch':
               ex['pitch'],
           'audio':
@@ -251,10 +248,8 @@ class NSynthTfdsDdspice(TfdsProvider):
               ex['f0']['confidence'],
           'loudness_db':
               ex['loudness']['db'],
-            }
-      return example_dict
-
-    dataset = super(NSynthTfdsDdspice, self).get_dataset(shuffle)
+      }
+    dataset = super().get_dataset(shuffle)
     dataset = dataset.map(preprocess_ex, num_parallel_calls=_AUTOTUNE)
     return dataset
 
