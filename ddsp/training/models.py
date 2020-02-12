@@ -138,12 +138,13 @@ _________________________________________________________________
 z_rnn_fc_decoder (ZRnnFcDeco multiple                  6145190
 _________________________________________________________________
 processor_group (ProcessorGr multiple                  0
-=================================================================
-Total params: 6,989,042
-Trainable params: 6,989,042
-Non-trainable params: 0
 _________________________________________________________________
-
+sequential (Sequential)      (None, 1000, 360)         487096
+=================================================================
+Total params: 7,476,138
+Trainable params: 7,475,594
+Non-trainable params: 544
+_________________________________________________________________
 
 
 Model: "autoencoder"
@@ -179,9 +180,11 @@ _________________________________________________________________
                                              losses=losses,
                                              name=name)
 
-    self.trainable_crepe = untrained_models.TrainableCREPE(
-      model_capacity='tiny',
-      activation_layer='classifier')
+    # self.trainable_crepe = untrained_models.TrainableCREPE(
+    #   model_capacity='tiny',
+    #   activation_layer='classifier')
+    self.trainable_crepe = untrained_models.crepe_keras_model('tiny')
+    self.trainable_crepe.summary()
     # self.pitch_loss_obj = tensorflow.compat.v1.losses.huber_loss
     self.loss_names.append('pitch_loss')
 
