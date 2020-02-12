@@ -35,6 +35,7 @@ ZRnnFcDecoder.output_splits = (('amps', 1),
 # Losses
 AutoencoderDdspice.losses = [
     @losses.SpectralLoss(),
+    @losses.PitchLoss()
 ]
 SpectralLoss.loss_type = 'L1'
 SpectralLoss.mag_weight = 1.0

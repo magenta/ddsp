@@ -272,7 +272,11 @@ def train(data_provider,
         avg_losses[k].update_state(v)
 
       # Log the step.
-      logging.info('Step:%d Loss:%.2f', step, losses['total_loss'])
+      loss_msg = 'Step:%d Loss:%.2f' % (step, losses['total_loss'].numpy())
+      for loss_name, loss_val in losses.items():
+        loss_msg = loss_msg + ' %s: %.2f' % (loss_name, loss_val.numpy())
+
+      logging.info(loss_msg)
 
       # Write Summaries.
       if step % steps_per_summary == 0:

@@ -123,7 +123,46 @@ class Autoencoder(Model):
 
 @gin.configurable
 class AutoencoderDdspice(Autoencoder):
-  """Wrap the model function for dependency injection with gin."""
+  """Wrap the model function for dependency injection with gin.
+
+Model: "autoencoder_ddspice"
+_________________________________________________________________
+Layer (type)                 Output Shape              Param #
+=================================================================
+spectral_loss (SpectralLoss) multiple                  0
+_________________________________________________________________
+pitch_loss (PitchLoss)       multiple                  0
+_________________________________________________________________
+mfcc_time_distrbuted_rnn_enc multiple                  843852
+_________________________________________________________________
+z_rnn_fc_decoder (ZRnnFcDeco multiple                  6145190
+_________________________________________________________________
+processor_group (ProcessorGr multiple                  0
+=================================================================
+Total params: 6,989,042
+Trainable params: 6,989,042
+Non-trainable params: 0
+_________________________________________________________________
+
+
+
+Model: "autoencoder"
+_________________________________________________________________
+Layer (type)                 Output Shape              Param #
+=================================================================
+spectral_loss (SpectralLoss) multiple                  0
+_________________________________________________________________
+mfcc_time_distrbuted_rnn_enc multiple                  843852
+_________________________________________________________________
+z_rnn_fc_decoder (ZRnnFcDeco multiple                  6145190
+_________________________________________________________________
+processor_group (ProcessorGr multiple                  0
+=================================================================
+Total params: 6,989,042
+Trainable params: 6,989,042
+Non-trainable params: 0
+_________________________________________________________________
+  """
 
   def __init__(self,
                preprocessor=None,
@@ -143,9 +182,17 @@ class AutoencoderDdspice(Autoencoder):
     self.trainable_crepe = untrained_models.TrainableCREPE(
       model_capacity='tiny',
       activation_layer='classifier')
-    self.pitch_loss_obj = tensorflow.compat.v1.losses.huber_loss
+    # self.pitch_loss_obj = tensorflow.compat.v1.losses.huber_loss
     self.loss_names.append('pitch_loss')
 
+  def add_losses(self, audio, audio_gen, pitch_shift_steps, f0_hz_shift, f0_hz):
+    """Add losses for generated audio."""
+    assert 'pitch_loss' in [l.name for l in self.loss_objs]
+    for loss_obj in self.loss_objs:
+      if loss_obj.name != 'pitch_loss':
+        self.add_loss(loss_obj(audio, audio_gen))
+      else:
+        self.add_loss(loss_obj(pitch_shift_steps, f0_hz_shift, f0_hz))
 
   def encode(self, features, training=True):
     """Get conditioning by preprocessing then encoding.
@@ -168,16 +215,17 @@ class AutoencoderDdspice(Autoencoder):
     conditioning = self.encode(features, training=training)
     audio_gen = self.decode(conditioning, training=training)
 
-    if training:
-      self.add_losses(features['audio'], audio_gen)
-
     f0_hz_shift, f0_confidence_shift = self._crepe_predict_pitch(features['shifted_audio'],
                                                                  training)
-    # f0_hz, f0_confidence = self._crepe_predict_pitch(features['audio'])
     f0_hz = features['f0_hz']
-    self._add_pitch_loss(features['pitch_shift_steps'],
-                         f0_hz_shift,
-                         f0_hz)
+    pitch_shift_steps = features['pitch_shift_steps']
+
+    if training:
+      self.add_losses(features['audio'], audio_gen, pitch_shift_steps, f0_hz_shift, f0_hz)
+
+    # self._add_pitch_loss(features['pitch_shift_steps'],
+    #                      f0_hz_shift,
+    #                      f0_hz)
     return audio_gen
 
   def get_controls(self, features, keys=None, training=False):
@@ -188,13 +236,13 @@ class AutoencoderDdspice(Autoencoder):
     # If wrapped in tf.function, only calculates keys of interest.
     return controls if keys is None else {k: controls[k] for k in keys}
 
-  def _add_pitch_loss(self, pitch_shift_steps, f0_hz_shift, f0_hz):
-    """add pitch loss"""
-    pitch_shift_steps = tf.reshape(pitch_shift_steps, (-1, 1, 1))  # (16, 1, 1)
-    pitch_shift_steps = pitch_shift_steps * tf.ones_like(f0_hz_shift - f0_hz)  # (16, 1000, 1)
-
-    self.add_loss(self.pitch_loss_obj(pitch_shift_steps,
-                                      f0_hz_shift - f0_hz))
+  # def _add_pitch_loss(self, pitch_shift_steps, f0_hz_shift, f0_hz):
+  #   """add pitch loss"""
+  #   pitch_shift_steps = tf.reshape(pitch_shift_steps, (-1, 1, 1))  # (16, 1, 1)
+  #   pitch_shift_steps = pitch_shift_steps * tf.ones_like(f0_hz_shift - f0_hz)  # (16, 1000, 1)
+  #
+  #   self.add_loss(self.pitch_loss_obj(pitch_shift_steps,
+  #                                     f0_hz_shift - f0_hz))
 
   def _crepe_predict_pitch(self, audio, training):
     """

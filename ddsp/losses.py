@@ -23,6 +23,7 @@ from ddsp.core import tf_float32
 
 import gin
 import tensorflow.compat.v2 as tf
+import tensorflow.compat.v1 as tf1
 
 tfkl = tf.keras.layers
 
@@ -36,6 +37,17 @@ def mean_difference(target, value, loss_type='L1'):
     return tf.reduce_mean(difference**2)
   elif loss_type == 'cosine':
     return tf.losses.cosine_distance(target, value, axis=-1)
+
+
+@gin.register
+class PitchLoss(tfkl.Layer):
+  def __init__(self, name='pitch_loss'):
+    super().__init__(name=name)
+
+  def call(self, pitch_shift_steps, f0_hz_shift, f0_hz):
+    pitch_shift_steps = tf.reshape(pitch_shift_steps, (-1, 1, 1))  # (16, 1, 1)
+    pitch_shift_steps = pitch_shift_steps * tf.ones_like(f0_hz_shift - f0_hz)  # (16, 1000, 1)
+    return tf1.losses.huber_loss(pitch_shift_steps, f0_hz_shift - f0_hz)
 
 
 @gin.register
