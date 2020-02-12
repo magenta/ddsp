@@ -54,7 +54,11 @@ setuptools.setup(
     extras_require={
         'gcp': ['gevent', 'google-api-python-client', 'google-compute-engine',
                 'google-cloud-storage', 'oauth2client'],
-        'data_preparation': ['apache_beam'],
+        'data_preparation': [
+            # TODO(adarob): Remove next line once avro-python3 is fixed.
+            'avro-python3!=1.9.2',
+            'apache_beam',
+        ],
         'test': ['pytest', 'pylint'],
     },
     entry_points={
