@@ -56,11 +56,6 @@ class Model(tf.keras.Model):
     losses_dict['total_loss'] = tf.reduce_sum(self.losses)
     return losses_dict
 
-  def add_losses(self, audio, audio_gen):
-    """Add losses for generated audio."""
-    for loss_obj in self.loss_objs:
-      self.add_loss(loss_obj(audio, audio_gen))
-
   def restore(self, checkpoint_path):
     """Restore model and optimizer from a checkpoint."""
     start_time = time.time()
@@ -92,6 +87,9 @@ class Autoencoder(Model):
     self.decoder = decoder
     self.processor_group = processor_group
 
+  def controls_to_audio(self, controls):
+    return controls[self.processor_group.name]['signal']
+
   def encode(self, features, training=True):
     """Get conditioning by preprocessing then encoding."""
     conditioning = self.preprocessor(features, training=training)
@@ -107,7 +105,8 @@ class Autoencoder(Model):
     conditioning = self.encode(features, training=training)
     audio_gen = self.decode(conditioning, training=training)
     if training:
-      self.add_losses(features['audio'], audio_gen)
+      for loss_obj in self.loss_objs:
+        self.add_loss(loss_obj(features['audio'], audio_gen))
     return audio_gen
 
   def get_controls(self, features, keys=None, training=False):
@@ -115,6 +114,9 @@ class Autoencoder(Model):
     conditioning = self.encode(features, training=training)
     processor_inputs = self.decoder(conditioning)
     controls = self.processor_group.get_controls(processor_inputs)
+    # Also build on get_controls(), instead of just __call__().
+    self.built = True
     # If wrapped in tf.function, only calculates keys of interest.
     return controls if keys is None else {k: controls[k] for k in keys}
+
 

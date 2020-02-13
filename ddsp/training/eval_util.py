@@ -382,8 +382,9 @@ def evaluate_or_sample(data_provider,
           # Predict a batch of audio.
           batch = next(dataset_iter)
           audio = batch['audio']
-          audio_gen = model(batch, training=True)
-          outputs = model.get_controls(batch, training=False)
+          # TODO(jesseengel): Find a way to add losses with training=False.
+          audio_gen = model(batch, training=True)  # Adds losses.
+          outputs = model.get_controls(batch, training=True)
 
           logging.info('Prediction took %.1f seconds', time.time() - start_time)
 

@@ -29,13 +29,30 @@ tfkl = tf.keras.layers
 
 # ---------------------- Losses ------------------------------------------------
 def mean_difference(target, value, loss_type='L1'):
+  """Common loss functions.
+
+  Args:
+    target: Target tensor.
+    value: Value tensor.
+    loss_type: One of 'L1', 'L2', or 'COSINE'.
+
+  Returns:
+    The average loss.
+
+  Raises:
+    ValueError: If loss_type is not an allowed value.
+  """
   difference = target - value
+  loss_type = loss_type.upper()
   if loss_type == 'L1':
     return tf.reduce_mean(tf.abs(difference))
   elif loss_type == 'L2':
     return tf.reduce_mean(difference**2)
-  elif loss_type == 'cosine':
+  elif loss_type == 'COSINE':
     return tf.losses.cosine_distance(target, value, axis=-1)
+  else:
+    raise ValueError('Loss type ({}), must be '
+                     '"L1", "L2", or "COSINE"'.format(loss_type))
 
 
 @gin.register
@@ -250,3 +267,5 @@ class PretrainedCREPE(tfkl.Layer):
     outputs = self._activation_model(frames)
     outputs = tf.reshape(outputs, [batch_size, n_frames, -1])
     return outputs
+
+
