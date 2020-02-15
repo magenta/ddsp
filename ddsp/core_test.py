@@ -48,6 +48,53 @@ class ResampleTest(parameterized.TestCase, tf.test.TestCase):
     self.n_smaller = 5
     self.n_larger = 16000
 
+  @parameterized.named_parameters(
+      ('1-D', 1), ('2-D', 2), ('3-D', 3), ('4-D', 4),
+  )
+  def test_multi_dimensional_inputs(self, dimensions):
+    """Test the shapes are correct for different dimensional inputs.
+
+    Args:
+      dimensions: The number of dimensions of the input test signal.
+    """
+    # Create test signal.
+    inputs_shape = [self.n_smaller] * dimensions
+    inputs = np.ones(inputs_shape)
+
+    # Run through the resampling op.
+    outputs = core.resample(inputs, self.n_larger)
+
+    # Compute output shape.
+    outputs_shape = inputs_shape
+    if dimensions == 1:
+      outputs_shape[0] = self.n_larger
+    else:
+      outputs_shape[1] = self.n_larger
+
+    self.assertListEqual(list(outputs.shape), outputs_shape)
+
+  @parameterized.named_parameters(
+      ('1-D', 1), ('2-D', 2), ('3-D', 3), ('4-D', 4),
+  )
+  def test_window_only_allows_3d_inputs(self, dimensions):
+    """Test that upsample_with_windows() disallows inputs that are not 3-D.
+
+    Args:
+      dimensions: The number of dimensions of the input test signal.
+    """
+    # Create test signal.
+    inputs_shape = [self.n_smaller] * dimensions
+    inputs = np.ones(inputs_shape)
+
+    # Run through the resampling op.
+    if dimensions != 3:
+      with self.assertRaises(ValueError):
+        outputs = core.upsample_with_windows(inputs, self.n_larger)
+    else:
+      outputs = core.upsample_with_windows(inputs, self.n_larger)
+      outputs_shape = [self.n_smaller, self.n_larger, self.n_smaller]
+      self.assertListEqual(list(outputs.shape), outputs_shape)
+
   def create_resampled_signals(self, n_before, n_after, add_endpoint, method):
     """Helper function to resample a test signal using core.resample().
 
