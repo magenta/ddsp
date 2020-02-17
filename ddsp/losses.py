@@ -44,10 +44,50 @@ class PitchLoss(tfkl.Layer):
   def __init__(self, name='pitch_loss'):
     super().__init__(name=name)
 
-  def call(self, pitch_shift_steps, f0_hz_shift, f0_hz):
+  def call(self, pitch_shift_steps, f0_hz_shift, f0_hz, coeff=20.):
     pitch_shift_steps = tf.reshape(pitch_shift_steps, (-1, 1, 1))  # (16, 1, 1)
     pitch_shift_steps = pitch_shift_steps * tf.ones_like(f0_hz_shift - f0_hz)  # (16, 1000, 1)
-    return tf1.losses.huber_loss(pitch_shift_steps, f0_hz_shift - f0_hz)
+    return coeff * tf1.losses.huber_loss(pitch_shift_steps, f0_hz_shift - f0_hz,
+                                         reduction=tf1.losses.Reduction.MEAN)
+
+
+@gin.register
+class SalienceLoss(tfkl.Layer):
+  def __init__(selfself, name='salience_loss'):
+    super().__init__(name=name)
+
+  def call(self, pitch_shift_steps, salience_shift, salience, coeff=0.1):
+    """
+    pitch_shift_steps: (batch, 1) [semitone]
+    salience_shift: (batch, 1000, 360)
+    salience: (batch, 1000, 360), where 1 pitch-index diff means 20 cent
+    """
+    pitch_shift_20cents = tf.math.round(5.0 * pitch_shift_steps)  # how many in [20cent]
+    pitch_shift_20cents = tf.cast(pitch_shift_20cents, tf.int32)
+
+    batch_size = pitch_shift_steps.shape[0]
+    # print(pitch_shift_steps.numpy())
+    # print(pitch_shift_20cents.numpy())
+    losses = []
+    for idx in range(batch_size):
+
+    # for sl_shift, sl, pitch_shift_20cent in zip(salience_shift, salience, pitch_shift_20cents):
+      if pitch_shift_20cents[idx] > 0:  # salience_shift is higher in pitch
+        huber_loss = tf1.losses.huber_loss(salience_shift[idx, :, pitch_shift_20cents[idx]:],
+                                           salience[idx, :, :-pitch_shift_20cents[idx]],
+                                           reduction=tf1.losses.Reduction.MEAN)
+      elif pitch_shift_20cents[idx] < 0:  # salience_shift is lower in pitch
+        huber_loss = tf1.losses.huber_loss(salience_shift[idx, :, :pitch_shift_20cents[idx]],
+                                           salience[idx, :, -pitch_shift_20cents[idx]:],
+                                           reduction=tf1.losses.Reduction.MEAN)
+      else:
+        huber_loss = tf1.losses.huber_loss(salience_shift[idx, :, :],
+                                           salience[idx, :, :],
+                                           reduction=tf1.losses.Reduction.MEAN)
+
+      losses.append(coeff * huber_loss)
+
+    return tf.reduce_mean(tf.convert_to_tensor(losses, dtype=tf.float32))
 
 
 @gin.register

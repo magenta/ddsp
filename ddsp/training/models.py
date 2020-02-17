@@ -171,7 +171,10 @@ _________________________________________________________________
                decoder=None,
                processor_group=None,
                losses=None,
-               name='autoencoder_ddspice'):
+               crepe_mode=None,
+               crepe_activation='relu',
+               name='autoencoder_ddspice',
+               show_crepe_summary=False):
 
     super().__init__(preprocessor=preprocessor,
                                              encoder=encoder,
@@ -180,30 +183,34 @@ _________________________________________________________________
                                              losses=losses,
                                              name=name)
 
-    # self.trainable_crepe = untrained_models.TrainableCREPE(
-    #   model_capacity='tiny',
-    #   activation_layer='classifier')
-    self.trainable_crepe = untrained_models.crepe_keras_model('tiny')
-    self.trainable_crepe.summary()
-    # self.pitch_loss_obj = tensorflow.compat.v1.losses.huber_loss
+    self.trainable_crepe = untrained_models.crepe_keras_model('tiny', crepe_mode, crepe_activation)
+    self.crepe_mode = crepe_mode
+    if show_crepe_summary:
+      self.trainable_crepe.summary()
     self.loss_names.append('pitch_loss')
+    self.step_counter = 0.0
 
-  def add_losses(self, audio, audio_gen, pitch_shift_steps, f0_hz_shift, f0_hz):
+  def add_losses(self, audio, audio_gen, pitch_shift_steps, f0_hz_shift, f0_hz,
+                 salience_shift,
+                 salience):
     """Add losses for generated audio."""
-    assert 'pitch_loss' in [l.name for l in self.loss_objs]
+
     for loss_obj in self.loss_objs:
-      if loss_obj.name != 'pitch_loss':
-        self.add_loss(loss_obj(audio, audio_gen))
-      else:
+      if loss_obj.name == 'pitch_loss':
         self.add_loss(loss_obj(pitch_shift_steps, f0_hz_shift, f0_hz))
+      elif loss_obj.name == 'salience_loss':
+        self.add_loss(loss_obj(pitch_shift_steps, salience_shift, salience))
+      else:
+        self.add_loss(loss_obj(audio, audio_gen))
 
   def encode(self, features, training=True):
     """Get conditioning by preprocessing then encoding.
     DDSPICE modification - add the (trainable) crepe predicted pitch
     """
-    f0_hz, f0_confidence = self._crepe_predict_pitch(features['audio'], training)
-    features['f0_hz'] = f0_hz
-    features['f0_confidence'] = f0_confidence
+    crepe_ret = self._crepe_predict_pitch(features['audio'], training)
+    features['f0_hz'] = crepe_ret['f0_hz']
+    features['f0_confidence'] = crepe_ret['f0_confidence']
+    features['salience'] = crepe_ret['salience']
 
     conditioning = self.preprocessor(features, training=training)
     return conditioning if self.encoder is None else self.encoder(conditioning)
@@ -218,17 +225,33 @@ _________________________________________________________________
     conditioning = self.encode(features, training=training)
     audio_gen = self.decode(conditioning, training=training)
 
-    f0_hz_shift, f0_confidence_shift = self._crepe_predict_pitch(features['shifted_audio'],
+    crepe_ret = self._crepe_predict_pitch(features['shifted_audio'],
                                                                  training)
+    f0_hz_shift = crepe_ret['f0_hz']
+    f0_confidence_shift = crepe_ret['f0_confidence']
+    salience_shift = crepe_ret['salience']
+
     f0_hz = features['f0_hz']
+    salience = features['salience']
+
     pitch_shift_steps = features['pitch_shift_steps']
 
     if training:
-      self.add_losses(features['audio'], audio_gen, pitch_shift_steps, f0_hz_shift, f0_hz)
+      self.add_losses(features['audio'],
+                      audio_gen,
+                      pitch_shift_steps,
+                      f0_hz_shift,
+                      f0_hz,
+                      salience_shift,
+                      salience)
 
-    # self._add_pitch_loss(features['pitch_shift_steps'],
-    #                      f0_hz_shift,
-    #                      f0_hz)
+    # todo
+    # todo here
+    # use self.crepe() to get two salience maps
+    # then write a loss that compares two salience maps
+    # interestingly, this salience map is log(freq)!
+    # so maybe do just the same as SPICE
+
     return audio_gen
 
   def get_controls(self, features, keys=None, training=False):
@@ -246,6 +269,7 @@ _________________________________________________________________
   #
   #   self.add_loss(self.pitch_loss_obj(pitch_shift_steps,
   #                                     f0_hz_shift - f0_hz))
+  # or just a regression? like.. how?
 
   def _crepe_predict_pitch(self, audio, training):
     """
@@ -270,17 +294,26 @@ _________________________________________________________________
         x_range = tf.expand_dims(x_range, 0)   # shape: (1, 1, N)
       return tf.reduce_sum(tf.nn.softmax(x * beta) * x_range, axis=-1, name=name, keepdims=keepdims)
 
-    salience = self.trainable_crepe(audio, training)  # (batch, 1000, 360)
-    pitch_idxs = softargmax(salience, name='pitch_idxs', keepdims=True)  # (batch, 1000, 1)
+    self.step_counter += 1.0
+    if self.crepe_mode == 'pitch_idx_classifier':
+      salience = self.trainable_crepe(audio, training)  # (batch, 1000, 360)
+      pitch_idxs = softargmax(salience, beta=self.step_counter, name='pitch_idxs', keepdims=True)  # (batch, 1000, 1)
+      f0_confidence = tf.math.reduce_max(salience, axis=-1, keepdims=True)  # (batch, 1000, 1)
+    elif self.crepe_mode == 'pitch_idx_regressor':
+      pitch_idxs = self.trainable_crepe(audio, training)  # (batch, 1000, 1)
+      f0_confidence = tf.ones_like(pitch_idxs)  # let's say it's always 1
+      salience = None
+
     # todo: crepe.core.to_local_average_cents should be applied here.. right?
     # but for now; just a simple argmax for temporary.
     # see crepe.core.py L95.
     cent_pred = 20.0 * pitch_idxs + tf.constant(1997.3794084, dtype=tf.float32)
     f0_hz = 10.0 * tf.math.pow(2.0, (cent_pred / 1200.0))
-    f0_confidence = tf.math.reduce_max(salience, axis=-1, keepdims=True)  # (batch, 1000, 1)
 
-    # todo; to think - how do we make sure this salience would mean certain..
-    # todo; ..frequency[hz]?? why would it learn that??
-
+    ret = {}
+    ret['f0_hz'] = f0_hz
+    ret['f0_confidence'] = f0_confidence
+    ret['salience'] = salience
+    # TODO: change it to return a dict and add salience
     # features['audio'] --> shape=(16, 64000)
-    return f0_hz, f0_confidence
+    return ret

@@ -53,7 +53,7 @@ class UntrainedModel(object):
     return tf.trainable_variables(scope=self.variable_scope)
 
 
-def crepe_keras_model(model_capacity):
+def crepe_keras_model(model_capacity: str, mode: str, activation='relu'):
   _capacity_multiplier = {
         'tiny': 4,
         'small': 8,
@@ -61,6 +61,11 @@ def crepe_keras_model(model_capacity):
         'large': 24,
         'full': 32
   }[model_capacity]
+
+  mode_cls = 'pitch_idx_classifier'
+  mode_reg = 'pitch_idx_regressor'
+  assert mode in [mode_cls, mode_reg]
+
   model = tf.keras.Sequential()
   k = tf.keras.layers  # short-cut for readability
 
@@ -79,10 +84,10 @@ def crepe_keras_model(model_capacity):
               f, (w, 1),
               strides=s,
               padding='same',
-              activation='relu',
               name='conv%d' % l))
 
     model.add(k.BatchNormalization(name='conv%d-BN' % l))
+    model.add(k.Activation(activation, name='%s-%d' % (activation, l)))
     model.add(
           k.MaxPool2D(
               pool_size=(2, 1),
@@ -90,12 +95,19 @@ def crepe_keras_model(model_capacity):
               padding='valid',
               name='conv%d-maxpool' % l))
     model.add(k.Dropout(0.25, name='conv%d-dropout' % l))
-
-  model.add(k.Conv2D(360, (4, 1),
-                         padding='same',
-                         activation='sigmoid',
-                         name='dense_alternative'))
-  model.add(k.Reshape((1000, 360), name='classifier'))
+  if mode == mode_cls:
+    model.add(k.Conv2D(360, (4, 1),
+                           padding='same',
+                           activation='sigmoid',
+                           name='dense_alternative'))  # (batch, 1000, 1, 360)
+    model.add(k.Reshape((1000, 360), name='classifier'))  # (batch, 1000, 360)
+  elif mode == mode_reg:
+    model.add(k.Conv2D(1, (4, 1),
+                       padding='same',
+                       activation='sigmoid',
+                       name='dense_alternative'))  # (batch, 1000, 1, 1)
+    model.add(k.Lambda(lambda x: 400.0 * x - 20.0))  # now [-20, 380]
+    model.add(k.Reshape((1000, 1), name='regressor'))  # (batch, 1000, 1)
 
   return model
 
