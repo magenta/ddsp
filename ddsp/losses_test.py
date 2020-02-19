@@ -16,6 +16,7 @@
 """Tests for ddsp.losses."""
 
 from ddsp import losses
+import numpy as np
 import tensorflow.compat.v2 as tf
 
 
@@ -30,6 +31,7 @@ class SpectralLossTest(tf.test.TestCase):
     loss = loss_obj(input_audio, target_audio)
 
     self.assertListEqual([], loss.shape.as_list())
+    self.assertTrue(np.isfinite(loss))
 
 
 class PretrainedCREPEEmbeddingLossTest(tf.test.TestCase):
@@ -43,6 +45,7 @@ class PretrainedCREPEEmbeddingLossTest(tf.test.TestCase):
     loss = loss_obj(input_audio, target_audio)
 
     self.assertListEqual([], loss.shape.as_list())
+    self.assertTrue(np.isfinite(loss))
 
 
 if __name__ == '__main__':

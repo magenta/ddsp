@@ -21,13 +21,8 @@ programmatically specified via external dependency injection, such as with the
 `gin` library.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from typing import Dict, Sequence, Tuple, Text
 
-from absl import logging
 from ddsp import core
 import gin
 import tensorflow.compat.v2 as tf
@@ -116,6 +111,9 @@ class ProcessorGroup(tfkl.Layer):
     Returns:
       A nested dictionary of all the output tensors.
     """
+    # Also build layer on get_controls(), instead of just __call__().
+    self.built = True
+
     # Initialize the outputs with inputs to the processor_group.
     outputs = dag_inputs
 
@@ -123,12 +121,6 @@ class ProcessorGroup(tfkl.Layer):
     for node in self.dag:
       # Get the node processor and keys to the node input.
       processor, keys = node
-
-      # Logging, only on the first call.
-      if not self.built:
-        logging.info('Connecting node (%s):', processor.name)
-        for i, key in enumerate(keys):
-          logging.info('Input %d: %s', i, key)
 
       # Get the inputs to the node.
       inputs = [core.nested_lookup(key, outputs) for key in keys]
@@ -149,10 +141,6 @@ class ProcessorGroup(tfkl.Layer):
     # Get output signal from last processor.
     output_name = self.processors[-1].name
     outputs[self.name] = {'signal': outputs[output_name]['signal']}
-
-    # Logging, only on the first call.
-    if not self.built:
-      logging.info('ProcessorGroup output node (%s)', output_name)
 
     return outputs
 
@@ -194,7 +182,8 @@ class Mix(Processor):
   def __init__(self, name: Text = 'mix'):
     super(Mix, self).__init__(name=name)
 
-  def get_controls(self, signal_one: tf.Tensor, signal_two: tf.Tensor,
+  def get_controls(self, signal_one: tf.Tensor,
+                   signal_two: tf.Tensor,
                    nn_out_mix_level: tf.Tensor) -> TensorDict:
     """Standardize inputs to same length, mix_level to range [0, 1].
 
