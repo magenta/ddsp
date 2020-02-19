@@ -157,7 +157,7 @@ def audio_bytes_to_np(wav_data,
     fname = temp_wav_file.name
     audio.export(fname, format='wav')
     audio_np, unused_sr = librosa.load(fname, sr=sample_rate)
-  return audio_np
+  return audio_np.astype(np.float32)
 
 
 def upload(sample_rate=DEFAULT_SAMPLE_RATE, normalize_db=None):

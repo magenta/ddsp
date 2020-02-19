@@ -169,6 +169,7 @@ class Trainer(object):
 
   def restore(self, checkpoint_path):
     """Restore model and optimizer from a checkpoint if it exists."""
+    logging.info('Restoring from checkpoint...')
     start_time = time.time()
     checkpoint = tf.train.Checkpoint(model=self.model, optimizer=self.optimizer)
     latest_checkpoint = get_latest_chekpoint(checkpoint_path)
@@ -179,6 +180,8 @@ class Trainer(object):
         checkpoint.restore(latest_checkpoint)
         logging.info('Loaded checkpoint %s', latest_checkpoint)
       logging.info('Loading model took %.1f seconds', time.time() - start_time)
+    else:
+      logging.info('No checkpoint, skipping.')
 
   @property
   def step(self):
@@ -195,6 +198,7 @@ class Trainer(object):
 
   def build(self, batch):
     """Build the model by running a batch through it."""
+    logging.info('Building the model...')
     _ = self.run(tf.function(self.model.__call__), batch)
     self.model.summary()
 
@@ -249,6 +253,7 @@ def train(data_provider,
   trainer.restore(model_dir)
 
   # Create training loss metrics.
+  logging.info('Creating metrics for %s', trainer.model.loss_names)
   avg_losses = {name: tf.keras.metrics.Mean(name=name, dtype=tf.float32)
                 for name in trainer.model.loss_names}
 
@@ -272,11 +277,10 @@ def train(data_provider,
         avg_losses[k].update_state(v)
 
       # Log the step.
-      loss_msg = 'Step:%d Loss:%.2f' % (step, losses['total_loss'].numpy())
-      for loss_name, loss_val in losses.items():
-        loss_msg = loss_msg + ' %s: %.2f' % (loss_name, loss_val.numpy())
-
-      logging.info(loss_msg)
+      log_str = 'step: {}\t'.format(int(step))
+      for k, v in losses.items():
+        log_str += '{}: {:.2f}\t'.format(k, v)
+      logging.info(log_str)
 
       # Write Summaries.
       if step % steps_per_summary == 0:
