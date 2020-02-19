@@ -225,7 +225,7 @@ class NSynthTfdsDdspice(TfdsProvider):
   def get_dataset(self, shuffle=True):
     """Returns dataset with slight restructuring of feature dictionary."""
     def preprocess_ex(ex):
-      pitch_shift_steps = tf.random.uniform([], minval=-12, maxval=13)
+      pitch_shift_steps = tf.random.uniform([], minval=0, maxval=13)
       shifted_audio = _pitch_shift(ex['audio'], pitch_shift_steps)
       shifted_audio.set_shape(ex['audio'].shape)
       return {

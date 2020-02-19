@@ -52,6 +52,19 @@ class PitchLoss(tfkl.Layer):
 
 
 @gin.register
+class PitchLossCho(tfkl.Layer):
+  def __init__(self, name='pitch_loss_cho'):
+    super().__init__(name=name)
+
+  def call(self, pitch_shift_steps, f0_hz_shift, f0_hz, coeff=20., reg_coeff=1.):
+    pitch_shift_steps = tf.reshape(pitch_shift_steps, (-1, 1, 1))  # (16, 1, 1)
+    pitch_shift_steps = pitch_shift_steps * tf.ones_like(f0_hz_shift - f0_hz)  # (16, 1000, 1)
+    return coeff * (tf1.losses.huber_loss(pitch_shift_steps, f0_hz_shift - f0_hz,
+                                         reduction=tf1.losses.Reduction.MEAN)
+                    + reg_coeff * tf.reduce_mean(tf.math.pow(f0_hz, 2)))
+
+
+@gin.register
 class SalienceLoss(tfkl.Layer):
   def __init__(selfself, name='salience_loss'):
     super().__init__(name=name)

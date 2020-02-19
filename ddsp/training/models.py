@@ -196,7 +196,7 @@ _________________________________________________________________
     """Add losses for generated audio."""
 
     for loss_obj in self.loss_objs:
-      if loss_obj.name == 'pitch_loss':
+      if loss_obj.name in ['pitch_loss', 'pitch_loss_cho']:
         self.add_loss(loss_obj(pitch_shift_steps, f0_hz_shift, f0_hz))
       elif loss_obj.name == 'salience_loss':
         self.add_loss(loss_obj(pitch_shift_steps, salience_shift, salience))
