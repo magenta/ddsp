@@ -1,0 +1,28 @@
+# -*-Python-*-
+# Same as `solo_instrument.gin` with more oscillators to cover higher sample rate
+# and slightly larger neural network
+
+include 'models/solo_instrument.gin'
+
+# Decoder
+Autoencoder.decoder = @decoders.RnnFcDecoder()
+RnnFcDecoder.rnn_channels = 512
+RnnFcDecoder.rnn_type = 'gru'
+RnnFcDecoder.ch = 512
+RnnFcDecoder.layers_per_stack = 5
+RnnFcDecoder.output_splits = (('amps', 1),
+                              ('harmonic_distribution', 100),
+                              ('noise_magnitudes', 65))
+
+# Reverb
+Reverb.name = 'reverb'
+# 1s reverb sufficient based on conversation with Julius Smith
+Reverb.reverb_length = 48000
+Reverb.trainable = True
+
+# Additive Synthesizer
+Additive.n_samples = 192000
+Additive.sample_rate = 48000
+
+# Filtered Noise Synthesizer
+FilteredNoise.n_samples = 192000
