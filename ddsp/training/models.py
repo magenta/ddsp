@@ -15,6 +15,7 @@
 # Lint as: python3
 """Model that outputs coefficeints of an additive synthesizer."""
 
+import os
 import time
 
 from absl import logging
@@ -58,12 +59,18 @@ class Model(tf.keras.Model):
 
   def restore(self, checkpoint_path):
     """Restore model and optimizer from a checkpoint."""
-    start_time = time.time()
-    latest_checkpoint = train_util.get_latest_chekpoint(checkpoint_path)
-    if latest_checkpoint is not None:
+    if tf.gfile.IsDirectory(checkpoint_path):
+      target_checkpoint = train_util.get_latest_checkpoint(checkpoint_path)
+    else:
+      # checkpoint path targets a specific number 'ckpt-{}'
+      target_checkpoint = os.path.expanduser(
+          os.path.expandvars(checkpoint_path))
+
+    if target_checkpoint is not None:
+      start_time = time.time()
       checkpoint = tf.train.Checkpoint(model=self)
-      checkpoint.restore(latest_checkpoint).expect_partial()
-      logging.info('Loaded checkpoint %s', latest_checkpoint)
+      checkpoint.restore(target_checkpoint).expect_partial()
+      logging.info('Loaded checkpoint %s', target_checkpoint)
       logging.info('Loading model took %.1f seconds', time.time() - start_time)
     else:
       logging.info('Could not find checkpoint to load at %s, skipping.',
