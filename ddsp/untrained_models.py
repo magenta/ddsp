@@ -22,8 +22,9 @@ from __future__ import print_function
 
 from absl import logging
 import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf2
 
-tfkl = tf.keras.layers
+tfkl = tf2.keras.layers
 
 
 class UntrainedModel(object):

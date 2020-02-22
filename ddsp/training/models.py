@@ -23,7 +23,7 @@ from ddsp.training import train_util
 from ddsp import untrained_models
 import gin
 import tensorflow.compat.v2 as tf
-import tensorflow
+import tensorflow.compat.v1 as tf1
 
 tfkl = tf.keras.layers
 
@@ -188,19 +188,18 @@ _________________________________________________________________
     self.crepe_mode = crepe_mode
     if show_crepe_summary:
       self.trainable_crepe.summary()
-    self.loss_names.append('pitch_loss')
     self.step_counter = 0.0
 
-  def add_losses(self, audio, audio_gen, pitch_shift_steps, f0_hz_shift, f0_hz,
+  def add_losses(self, audio, audio_gen, pitch_shift_step, f0_hz_shift, f0_hz,
                  salience_shift,
                  salience):
     """Add losses for generated audio."""
 
     for loss_obj in self.loss_objs:
       if loss_obj.name in ['pitch_loss', 'pitch_loss_cho']:
-        self.add_loss(loss_obj(pitch_shift_steps, f0_hz_shift, f0_hz))
+        self.add_loss(loss_obj(pitch_shift_step, f0_hz_shift, f0_hz))
       elif loss_obj.name == 'salience_loss':
-        self.add_loss(loss_obj(pitch_shift_steps, salience_shift, salience))
+        self.add_loss(loss_obj(pitch_shift_step, salience_shift, salience))
       else:
         self.add_loss(loss_obj(audio, audio_gen))
 
@@ -211,10 +210,20 @@ _________________________________________________________________
     crepe_ret = self._crepe_predict_pitch(features['audio'], training)
     features['f0_hz'] = crepe_ret['f0_hz']
     features['f0_confidence'] = crepe_ret['f0_confidence']
-    features['salience'] = crepe_ret['salience']
+    # features['salience'] = crepe_ret['salience']
+
+    if training:
+      ddspice_return = (tf.identity(features['shifted_audio']),
+                        tf.identity(features['pitch_shift_step']),
+                        tf.identity(crepe_ret['f0_hz']),
+                        tf.identity(crepe_ret['salience']))
+    else:
+      ddspice_return = None
 
     conditioning = self.preprocessor(features, training=training)
-    return conditioning if self.encoder is None else self.encoder(conditioning)
+    original_return = conditioning if self.encoder is None else self.encoder(conditioning)
+
+    return original_return, ddspice_return
 
   def decode(self, conditioning, training=True):
     """Get generated audio by decoding than processing."""
@@ -223,35 +232,23 @@ _________________________________________________________________
 
   def call(self, features, training=True):
     """Run the core of the network, get predictions and loss."""
-    conditioning = self.encode(features, training=training)
+    conditioning, ddspice_return = self.encode(features, training=training)
     audio_gen = self.decode(conditioning, training=training)
 
-    crepe_ret = self._crepe_predict_pitch(features['shifted_audio'],
-                                                                 training)
-    f0_hz_shift = crepe_ret['f0_hz']
-    f0_confidence_shift = crepe_ret['f0_confidence']
-    salience_shift = crepe_ret['salience']
-
-    f0_hz = features['f0_hz']
-    salience = features['salience']
-
-    pitch_shift_steps = features['pitch_shift_steps']
-
     if training:
+      shifted_audio, pitch_shift_step, f0_hz, salience = ddspice_return
+
+      crepe_ret = self._crepe_predict_pitch(shifted_audio, training)
+      f0_hz_shift = crepe_ret['f0_hz']
+      salience_shift = crepe_ret['salience']
+
       self.add_losses(features['audio'],
                       audio_gen,
-                      pitch_shift_steps,
+                      pitch_shift_step,
                       f0_hz_shift,
                       f0_hz,
                       salience_shift,
                       salience)
-
-    # todo
-    # todo here
-    # use self.crepe() to get two salience maps
-    # then write a loss that compares two salience maps
-    # interestingly, this salience map is log(freq)!
-    # so maybe do just the same as SPICE
 
     return audio_gen
 
@@ -262,15 +259,6 @@ _________________________________________________________________
     controls = self.processor_group.get_controls(processor_inputs)
     # If wrapped in tf.function, only calculates keys of interest.
     return controls if keys is None else {k: controls[k] for k in keys}
-
-  # def _add_pitch_loss(self, pitch_shift_steps, f0_hz_shift, f0_hz):
-  #   """add pitch loss"""
-  #   pitch_shift_steps = tf.reshape(pitch_shift_steps, (-1, 1, 1))  # (16, 1, 1)
-  #   pitch_shift_steps = pitch_shift_steps * tf.ones_like(f0_hz_shift - f0_hz)  # (16, 1000, 1)
-  #
-  #   self.add_loss(self.pitch_loss_obj(pitch_shift_steps,
-  #                                     f0_hz_shift - f0_hz))
-  # or just a regression? like.. how?
 
   def _crepe_predict_pitch(self, audio, training):
     """

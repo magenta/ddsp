@@ -225,8 +225,12 @@ class NSynthTfdsDdspice(TfdsProvider):
   def get_dataset(self, shuffle=True):
     """Returns dataset with slight restructuring of feature dictionary."""
     def preprocess_ex(ex):
-      pitch_shift_steps = tf.random.uniform([], minval=0, maxval=13)
-      shifted_audio = _pitch_shift(ex['audio'], pitch_shift_steps)
+      pitch_shift_step = tf.random.uniform([], minval=1, maxval=12 * 5, dtype=tf.int32)
+      logging.info('data preprocessing')
+      logging.info(pitch_shift_step)
+      pitch_shift_semitones = tf.math.divide(tf.cast(pitch_shift_step, tf.float32),
+                                              tf.constant(5.0))
+      shifted_audio = _pitch_shift(ex['audio'], pitch_shift_semitones)
       shifted_audio.set_shape(ex['audio'].shape)
       return {
           'pitch':
@@ -235,8 +239,8 @@ class NSynthTfdsDdspice(TfdsProvider):
               ex['audio'],
           'shifted_audio':
               shifted_audio,
-          'pitch_shift_steps':
-              tf.cast(pitch_shift_steps, dtype=tf.float32),
+          'pitch_shift_step':
+              pitch_shift_step,
           'instrument_source':
               ex['instrument']['source'],
           'instrument_family':
@@ -255,10 +259,10 @@ class NSynthTfdsDdspice(TfdsProvider):
     return dataset
 
 
-def _pitch_shift(waveform: tf.Tensor, n_steps):
-  def pitch_shift_py(waveform, n_steps):
+def _pitch_shift(waveform: tf.Tensor, n_semitones):
+  def pitch_shift_py(waveform, n_semitones):
     return librosa.effects.pitch_shift(
-          waveform, 16000, n_steps, 12, 'kaiser_fast'
+          waveform, 16000, n_semitones, 12, 'kaiser_fast'
     )
 
-  return tensorflow.compat.v1.py_func(pitch_shift_py, [waveform, n_steps], tf.float32, stateful=False)
+  return tensorflow.compat.v1.py_func(pitch_shift_py, [waveform, n_semitones], tf.float32, stateful=False)

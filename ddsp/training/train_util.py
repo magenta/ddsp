@@ -209,7 +209,7 @@ class Trainer(object):
     else:
       return dataset
 
-  @tf.function
+  # @tf.function
   def train_step(self, dataset_iter):
     """Distributed training step."""
     # Wrap in distribution strategy, slight speedup passing in iter vs batch.
@@ -219,7 +219,7 @@ class Trainer(object):
     n_replicas = self.strategy.num_replicas_in_sync
     return {k: self.psum(v, axis=None) / n_replicas for k, v in losses.items()}
 
-  @tf.function
+  # @tf.function
   def step_fn(self, batch):
     """Per-Replica training step."""
     with tf.GradientTape() as tape:

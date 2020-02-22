@@ -16,6 +16,7 @@
 """Library of loss functions."""
 
 import functools
+from absl import logging
 
 import crepe
 from ddsp import spectral_ops
@@ -83,41 +84,41 @@ class PitchLossCho(tfkl.Layer):
 
 @gin.register
 class SalienceLoss(tfkl.Layer):
-  def __init__(selfself, name='salience_loss'):
+  def __init__(self, name='salience_loss'):
     super().__init__(name=name)
 
-  def call(self, pitch_shift_steps, salience_shift, salience, coeff=0.1):
+  def call(self, pitch_shift_step, salience_shift, salience, coeff=100000000):
     """
-    pitch_shift_steps: (batch, 1) [semitone]
+    pitch_shift_step: (batch, 1) [20 cent]
     salience_shift: (batch, 1000, 360)
     salience: (batch, 1000, 360), where 1 pitch-index diff means 20 cent
     """
-    pitch_shift_20cents = tf.math.round(5.0 * pitch_shift_steps)  # how many in [20cent]
-    pitch_shift_20cents = tf.cast(pitch_shift_20cents, tf.int32)
+    # pitch_shift_20cents = tf.cast(pitch_shift_20cents, tf.int32)
 
-    batch_size = pitch_shift_steps.shape[0]
-    # print(pitch_shift_steps.numpy())
-    # print(pitch_shift_20cents.numpy())
-    losses = []
+    batch_size = pitch_shift_step.shape[0]
+    losses = 0.0
+    # normalize salience
+    salience = tf.nn.softmax(salience, axis=-1)
+    salience_shift = tf.nn.softmax(salience_shift, axis=-1)
+
     for idx in range(batch_size):
-
-    # for sl_shift, sl, pitch_shift_20cent in zip(salience_shift, salience, pitch_shift_20cents):
-      if pitch_shift_20cents[idx] > 0:  # salience_shift is higher in pitch
-        huber_loss = tf1.losses.huber_loss(salience_shift[idx, :, pitch_shift_20cents[idx]:],
-                                           salience[idx, :, :-pitch_shift_20cents[idx]],
+      if tf.greater(pitch_shift_step[idx], tf.constant(0)):  # salience_shift is higher in pitch
+        huber_loss = tf1.losses.huber_loss(salience_shift[idx, :, pitch_shift_step[idx]:],
+                                         salience[idx, :, :-pitch_shift_step[idx]],
+                                         reduction=tf1.losses.Reduction.MEAN)
+        # logging.error('shift----positive')
+      elif tf.less(pitch_shift_step[idx], tf.constant(0)):  # salience_shift is lower in pitch
+        huber_loss = tf1.losses.huber_loss(salience_shift[idx, :, :pitch_shift_step[idx]],
+                                           salience[idx, :, -pitch_shift_step[idx]:],
                                            reduction=tf1.losses.Reduction.MEAN)
-      elif pitch_shift_20cents[idx] < 0:  # salience_shift is lower in pitch
-        huber_loss = tf1.losses.huber_loss(salience_shift[idx, :, :pitch_shift_20cents[idx]],
-                                           salience[idx, :, -pitch_shift_20cents[idx]:],
-                                           reduction=tf1.losses.Reduction.MEAN)
+        # logging.error('shift--------------negative')
       else:
-        huber_loss = tf1.losses.huber_loss(salience_shift[idx, :, :],
-                                           salience[idx, :, :],
-                                           reduction=tf1.losses.Reduction.MEAN)
+        # logging.error('Hey zero shift step really? no way')
+        huber_loss = 0.0
 
-      losses.append(coeff * huber_loss)
+      losses += coeff * huber_loss
 
-    return tf.reduce_mean(tf.convert_to_tensor(losses, dtype=tf.float32))
+    return tf1.reduce_mean(losses)
 
 
 @gin.register
