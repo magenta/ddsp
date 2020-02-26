@@ -20,8 +20,7 @@ import os
 import time
 
 from absl import logging
-from ddsp import spectral_ops
-from ddsp.core import hz_to_midi
+import ddsp
 from ddsp.core import tf_float32
 import gin
 import librosa
@@ -65,11 +64,11 @@ def compute_audio_features(audio,
   audio_feats = {'audio': audio}
   audio = squeeze(audio)
 
-  audio_feats['loudness_db'] = spectral_ops.compute_loudness(
+  audio_feats['loudness_db'] = ddsp.spectral_ops.compute_loudness(
       audio, sample_rate, frame_rate, n_fft)
 
-  audio_feats['f0_hz'], audio_feats['f0_confidence'] = spectral_ops.compute_f0(
-      audio, sample_rate, frame_rate)
+  audio_feats['f0_hz'], audio_feats['f0_confidence'] = (
+      ddsp.spectral_ops.compute_f0(audio, sample_rate, frame_rate))
 
   return audio_feats
 
@@ -170,8 +169,13 @@ class F0LoudnessMetrics(object):
                                             feats['f0_confidence'])
 
         # Compute distance original f0_hz labels and f0 encoder values.
-        f0_encoder_dist = f0_dist_conf_thresh(feats['f0_hz'],
-                                              f0_hz_predict[i],
+        # Resample if f0 encoder has different number of time steps.
+        f0_encoder = f0_hz_predict[i]
+        f0_original = feats['f0_hz']
+        if f0_encoder.shape[0] != f0_original.shape[0]:
+          f0_encoder = ddsp.core.resample(f0_encoder, f0_original.shape[0])
+        f0_encoder_dist = f0_dist_conf_thresh(f0_original,
+                                              f0_encoder,
                                               feats['f0_confidence'])
         self.metrics['f0_encoder'].update_state(f0_encoder_dist)
 
@@ -200,7 +204,7 @@ class F0LoudnessMetrics(object):
       tf.summary.scalar('metrics/{}'.format(name), metric.result(), step)
       metric.reset_states()
 
-    spectral_ops.reset_crepe()  # Reset CREPE global state
+    ddsp.spectral_ops.reset_crepe()  # Reset CREPE global state
 
 
 # ---------------------- Custom summaries --------------------------------------
@@ -255,7 +259,7 @@ def waveform_summary(audio, audio_gen, step, name=''):
 
 def get_spectrogram(audio, rotate=False, size=1024):
   """Compute logmag spectrogram."""
-  mag = spectral_ops.compute_logmag(tf_float32(audio), size=size)
+  mag = ddsp.spectral_ops.compute_logmag(tf_float32(audio), size=size)
   if rotate:
     mag = np.rot90(mag)
   return mag
@@ -263,7 +267,7 @@ def get_spectrogram(audio, rotate=False, size=1024):
 
 def spectrogram_summary(audio, audio_gen, step, name=''):
   """Writes a summary of spectrograms for a batch of images."""
-  specgram = lambda a: spectral_ops.compute_logmag(tf_float32(a), size=768)
+  specgram = lambda a: ddsp.spectral_ops.compute_logmag(tf_float32(a), size=768)
 
   # Batch spectrogram operations
   spectrograms = specgram(audio)
@@ -309,12 +313,21 @@ def f0_summary(f0_hz, f0_hz_predict, step, name=''):
   batch_size = int(f0_hz.shape[0])
 
   for i in range(batch_size):
-    f0_midi = hz_to_midi(squeeze(f0_hz[i]))
-    f0_midi_predict = hz_to_midi(squeeze(f0_hz_predict[i]))
+    f0_midi = ddsp.core.hz_to_midi(squeeze(f0_hz[i]))
+    f0_midi_predict = ddsp.core.hz_to_midi(squeeze(f0_hz_predict[i]))
+
+    # Resample if f0_encoder has different number of time steps
+    if f0_midi_predict.shape[0] != f0_midi.shape[0]:
+      f0_midi_predict = ddsp.core.resample(f0_midi_predict, f0_midi.shape[0])
+
     # Manually specify exact size of fig for tensorboard
-    fig, ax = plt.subplots(1, 1, figsize=(2.5, 2.5))
-    ax.plot(f0_midi)
-    ax.plot(f0_midi_predict)
+    fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(6.0, 2.0))
+    ax0.plot(f0_midi)
+    ax0.plot(f0_midi_predict)
+    ax0.set_title('original vs. predicted')
+
+    ax1.plot(f0_midi_predict)
+    ax1.set_title('predicted')
 
     # Format and save plot to image
     name = name + '_' if name else ''
