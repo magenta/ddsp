@@ -126,9 +126,6 @@ def parse_gin(model_dir):
     if tf.io.gfile.exists(operative_config):
       gin.parse_config_file(operative_config, skip_unknown=True)
 
-    # Only use the custom cumsum for TPUs.
-    gin.parse_config('ddsp.core.cumsum.use_tpu={}'.format(use_tpu))
-
     # User gin config and user hyperparameters from flags.
     gin.parse_config_files_and_bindings(
         FLAGS.gin_file, FLAGS.gin_param, skip_unknown=True)

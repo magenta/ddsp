@@ -224,42 +224,6 @@ def upsample_with_windows(inputs: tf.Tensor,
   return x[:, hop_size:-hop_size, :]
 
 
-# Adapted from lingvo.core.py_utils.CumSum because that function requires
-# some global FLAGS to be set which is not avaiable in our codebase.
-def _tpu_cumsum(x, axis=0, exclusive=False):
-  """A TPU efficient implementation of tf.cumsum()."""
-  x_shape = x.shape.as_list()
-  rank = len(x_shape)
-
-  if axis < -1:
-    if axis + rank < 0:
-      raise ValueError('Unexpected axis: %d (rank = %d)' % (axis, rank))
-    axis += rank
-
-  length = x_shape[axis]
-  my_range = tf.range(length)
-  comparator = tf.less if exclusive else tf.less_equal
-  mask = tf.cast(
-      comparator(tf.expand_dims(my_range, 1), tf.expand_dims(my_range, 0)),
-      x.dtype)
-  result = tf.tensordot(x, mask, axes=[[axis], [0]])
-  if axis not in (-1, rank - 1):
-    result = tf.transpose(
-        result,
-        list(range(axis)) + [rank - 1] + list(range(axis, rank - 1)))
-  return result
-
-
-# TODO(jesseengel): switch back to tf.cumsum once it is fast on TPUs.
-@gin.configurable
-def cumsum(x, axis=0, exclusive=False, use_tpu=False):
-  if use_tpu:
-    op = _tpu_cumsum
-  else:
-    op = tf.cumsum
-  return op(x, axis, exclusive)
-
-
 def log_scale(x, min_x, max_x):
   """Scales a -1 to 1 value logarithmically between min and max."""
   x = tf_float32(x)
@@ -349,7 +313,7 @@ def oscillator_bank(frequency_envelopes: tf.Tensor,
   omegas = omegas / float(sample_rate)  # rad / sample
 
   # Accumulate phase and synthesize.
-  phases = cumsum(omegas, axis=1)
+  phases = tf.cumsum(omegas, axis=1)
   wavs = tf.sin(phases)
   harmonic_audio = amplitude_envelopes * wavs  # [mb, n_samples, n_sinusoids]
   audio = tf.reduce_sum(harmonic_audio, axis=-1)  # [mb, n_samples]
@@ -525,7 +489,7 @@ def wavetable_synthesis(frequencies: tf.Tensor,
 
   # Note: Cumsum accumulates _very_ small errors at float32 precision.
   # On the order of milli-Hertz.
-  phase = cumsum(phase_velocity, axis=1, exclusive=True) % 1.0
+  phase = tf.cumsum(phase_velocity, axis=1, exclusive=True) % 1.0
 
   # Synthesize with linear lookup.
   audio = linear_lookup(phase, wavetables)
