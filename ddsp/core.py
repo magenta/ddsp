@@ -83,6 +83,24 @@ def hz_to_midi(frequencies: Number) -> Number:
   return notes
 
 
+def unit_to_midi(unit: Number,
+                 midi_min: Number = 20.0,
+                 midi_max: Number = 90.0,
+                 clip: bool = False) -> Number:
+  """Map the unit interval [0, 1] to MIDI notes."""
+  unit = tf.clip_by_value(unit, 0.0, 1.0) if clip else unit
+  return midi_min + (midi_max - midi_min) * unit
+
+
+def midi_to_unit(midi: Number,
+                 midi_min: Number = 20.0,
+                 midi_max: Number = 90.0,
+                 clip: bool = False) -> Number:
+  """Map MIDI notes to the unit interval [0, 1]."""
+  unit = (midi - midi_min) / (midi_max - midi_min)
+  return tf.clip_by_value(unit, 0.0, 1.0) if clip else unit
+
+
 def resample(inputs: tf.Tensor,
              n_timesteps: int,
              method: Text = 'linear',

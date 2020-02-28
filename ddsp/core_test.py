@@ -23,7 +23,7 @@ from scipy import signal
 import tensorflow.compat.v2 as tf
 
 
-class UtilitiesTest(tf.test.TestCase):
+class UtilitiesTest(parameterized.TestCase, tf.test.TestCase):
 
   def test_midi_to_hz_is_accurate(self):
     """Tests converting between MIDI values and their frequencies in hertz."""
@@ -38,6 +38,40 @@ class UtilitiesTest(tf.test.TestCase):
     librosa_midi = librosa.hz_to_midi(hz)
     tf_midi = core.hz_to_midi(hz)
     self.assertAllClose(librosa_midi, tf_midi)
+
+  @parameterized.named_parameters(
+      ('clip', True), ('no_clip', False)
+  )
+  def test_midi_to_unit_is_accurate(self, clip):
+    """Tests converting between MIDI values and the unit interval.
+
+    Args:
+      clip: Whether to clip the output to [0.0, 1.0].
+    """
+    midi_min, midi_max = 20.0, 90.0
+    midi = np.linspace(0.0, 127.0, 1000)
+    np_unit = (midi - midi_min) / (midi_max - midi_min)
+    np_unit = np.clip(np_unit, 0.0, 1.0) if clip else np_unit
+    tf_unit = core.midi_to_unit(
+        midi, midi_min=midi_min, midi_max=midi_max, clip=clip)
+    self.assertAllClose(tf_unit, np_unit)
+
+  @parameterized.named_parameters(
+      ('clip', True), ('no_clip', False)
+  )
+  def test_unit_to_midi_is_accurate(self, clip):
+    """Tests converting between the unit interval and MIDI values.
+
+    Args:
+      clip: Whether to clip the input to [0.0, 1.0].
+    """
+    midi_min, midi_max = 20.0, 90.0
+    unit = np.linspace(-1.0, 2.0, 1000)
+    np_midi = np.clip(unit, 0.0, 1.0) if clip else unit
+    np_midi = midi_min + (midi_max - midi_min) * np_midi
+    tf_midi = core.unit_to_midi(
+        unit, midi_min=midi_min, midi_max=midi_max, clip=clip)
+    self.assertAllClose(tf_midi, np_midi)
 
 
 class ResampleTest(parameterized.TestCase, tf.test.TestCase):
