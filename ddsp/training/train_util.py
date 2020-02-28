@@ -253,7 +253,7 @@ def train(data_provider,
   trainer.restore(model_dir)
 
   # Create training loss metrics.
-  logging.info('Creating metrics for %s', trainer.model.loss_names)
+  logging.info('Creating metrics for %s', list(trainer.model.loss_names))
   avg_losses = {name: tf.keras.metrics.Mean(name=name, dtype=tf.float32)
                 for name in trainer.model.loss_names}
 
@@ -266,6 +266,8 @@ def train(data_provider,
 
   # Train.
   with summary_writer.as_default():
+    tick = time.time()
+
     for _ in range(num_steps):
       step = trainer.step
 
@@ -284,6 +286,12 @@ def train(data_provider,
 
       # Write Summaries.
       if step % steps_per_summary == 0:
+        # Speed.
+        steps_per_sec = steps_per_summary / (time.time() - tick)
+        tf.summary.scalar('steps_per_sec', steps_per_sec, step=step)
+        tick = time.time()
+
+        # Metrics.
         for k, metric in avg_losses.items():
           tf.summary.scalar('losses/{}'.format(k), metric.result(), step=step)
           metric.reset_states()
