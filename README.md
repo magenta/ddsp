@@ -10,6 +10,7 @@
 | [**Blog Post**](https://magenta.tensorflow.org/ddsp)
 | [**Overview**](#Overview)
 | [**Installation**](#Installation)
+| [**GOOGLE: Accepting External PRs**](#pr)   <!-- GOOGLE-INTERNAL -->
 
 DDSP is a library of differentiable versions of common DSP functions (such as
 synthesizers, waveshapers, and filters). This allows these
@@ -270,6 +271,7 @@ pip install --upgrade ddsp
 
 We're eager to collaborate with you! See [`CONTRIBUTING.md`](CONTRIBUTING.md)
 for a guide on how to contribute.
+
 
 <a id='Citation'></a>
 # Citation
