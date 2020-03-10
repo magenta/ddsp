@@ -209,3 +209,5 @@ class Wavetable(processors.Processor):
                                       n_samples=self.n_samples,
                                       sample_rate=self.sample_rate)
     return signal
+
+
