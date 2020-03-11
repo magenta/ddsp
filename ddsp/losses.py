@@ -28,13 +28,14 @@ tfkl = tf.keras.layers
 
 
 # ---------------------- Losses ------------------------------------------------
-def mean_difference(target, value, loss_type='L1'):
+def mean_difference(target, value, loss_type='L1', weights=None):
   """Common loss functions.
 
   Args:
     target: Target tensor.
     value: Value tensor.
     loss_type: One of 'L1', 'L2', or 'COSINE'.
+    weights: A weighting mask for the per-element differences.
 
   Returns:
     The average loss.
@@ -43,13 +44,14 @@ def mean_difference(target, value, loss_type='L1'):
     ValueError: If loss_type is not an allowed value.
   """
   difference = target - value
+  weights = 1.0 if weights is None else weights
   loss_type = loss_type.upper()
   if loss_type == 'L1':
-    return tf.reduce_mean(tf.abs(difference))
+    return tf.reduce_mean(tf.abs(difference * weights))
   elif loss_type == 'L2':
-    return tf.reduce_mean(difference**2)
+    return tf.reduce_mean(difference**2 * weights)
   elif loss_type == 'COSINE':
-    return tf.losses.cosine_distance(target, value, axis=-1)
+    return tf.losses.cosine_distance(target, value, weights=weights, axis=-1)
   else:
     raise ValueError('Loss type ({}), must be '
                      '"L1", "L2", or "COSINE"'.format(loss_type))
