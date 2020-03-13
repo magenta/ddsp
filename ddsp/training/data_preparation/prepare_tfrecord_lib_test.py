@@ -20,13 +20,15 @@ import sys
 
 from absl import flags
 from absl.testing import absltest
+from absl.testing import parameterized
+from ddsp.spectral_ops import _CREPE_SAMPLE_RATE
 from ddsp.training.data_preparation import prepare_tfrecord_lib
 import numpy as np
 import scipy.io.wavfile
 import tensorflow.compat.v2 as tf
 
 
-class ProcessTaskBeamTest(absltest.TestCase):
+class ProcessTaskBeamTest(parameterized.TestCase):
 
   def get_tempdir(self):
     try:
@@ -63,6 +65,7 @@ class ProcessTaskBeamTest(absltest.TestCase):
     self.assertLen(all_examples, expected_num_examples)
     for ex in all_examples:
       self.assertCountEqual(expected_feature_lengths, ex.features.feature)
+
       for feat, expected_len in expected_feature_lengths.items():
         arr = ex.features.feature[feat].float_list.value
         try:
@@ -71,8 +74,9 @@ class ProcessTaskBeamTest(absltest.TestCase):
           raise AssertionError('%s feature: %s' % (e, feat))
         self.assertFalse(any(np.isinf(arr)))
 
-  def test_prepare_tfrecord(self):
-    sample_rate = 16000
+  @parameterized.named_parameters(('16k', 16000), ('24k', 24000),
+                                  ('44.1k', 44100), ('48k', 48000))
+  def test_prepare_tfrecord(self, sample_rate):
     frame_rate = 250
     window_secs = 1
     hop_secs = 0.5
@@ -85,18 +89,19 @@ class ProcessTaskBeamTest(absltest.TestCase):
         window_secs=window_secs,
         hop_secs=hop_secs)
 
-    expected_f0_and_loudness_length = window_secs * frame_rate
+    expected_f0_and_loudness_length = int(window_secs * frame_rate)
     self.validate_outputs(
-        4,
-        {
+        4, {
             'audio': window_secs * sample_rate,
+            'audio_crepe': window_secs * _CREPE_SAMPLE_RATE,
             'f0_hz': expected_f0_and_loudness_length,
             'f0_confidence': expected_f0_and_loudness_length,
             'loudness_db': expected_f0_and_loudness_length,
         })
 
-  def test_prepare_tfrecord_no_split(self):
-    sample_rate = 16000
+  @parameterized.named_parameters(('16k', 16000), ('24k', 24000),
+                                  ('44.1k', 44100), ('48k', 48000))
+  def test_prepare_tfrecord_no_split(self, sample_rate):
     frame_rate = 250
     prepare_tfrecord_lib.prepare_tfrecord(
         [self.wav_path],
@@ -106,18 +111,19 @@ class ProcessTaskBeamTest(absltest.TestCase):
         frame_rate=frame_rate,
         window_secs=None)
 
-    expected_f0_and_loudness_length = self.wav_secs * frame_rate
+    expected_f0_and_loudness_length = int(self.wav_secs * frame_rate)
     self.validate_outputs(
-        1,
-        {
-            'audio': self.wav_secs * sample_rate,
+        1, {
+            'audio': int(self.wav_secs * sample_rate),
+            'audio_crepe': int(self.wav_secs * _CREPE_SAMPLE_RATE),
             'f0_hz': expected_f0_and_loudness_length,
             'f0_confidence': expected_f0_and_loudness_length,
             'loudness_db': expected_f0_and_loudness_length,
         })
 
-  def test_prepare_tfrecord_no_f0_and_loudness(self):
-    sample_rate = 16000
+  @parameterized.named_parameters(('16k', 16000), ('24k', 24000),
+                                  ('44.1k', 44100), ('48k', 48000))
+  def test_prepare_tfrecord_no_f0_and_loudness(self, sample_rate):
     prepare_tfrecord_lib.prepare_tfrecord(
         [self.wav_path],
         os.path.join(self.test_dir, 'output.tfrecord'),
@@ -126,7 +132,12 @@ class ProcessTaskBeamTest(absltest.TestCase):
         frame_rate=None,
         window_secs=None)
 
-    self.validate_outputs(1, {'audio': self.wav_secs * sample_rate})
+    self.validate_outputs(
+        1, {
+            'audio': int(self.wav_secs * sample_rate),
+            'audio_crepe': int(self.wav_secs * _CREPE_SAMPLE_RATE)
+        })
+
 
 if __name__ == '__main__':
   absltest.main()
