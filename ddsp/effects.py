@@ -68,9 +68,8 @@ class Reverb(processors.Processor):
     batch_size = int(audio.shape[0])
     return tf.tile(ir, [batch_size, 1])
 
-  def build(self, input_shape):
+  def build(self, unused_input_shape):
     """Initialize impulse response."""
-    super().build(input_shape)
     if self.trainable:
       initializer = tf.random_normal_initializer(mean=0, stddev=1e-6)
       self._ir = self.add_weight(
@@ -78,6 +77,7 @@ class Reverb(processors.Processor):
           shape=[self._reverb_length],
           dtype=tf.float32,
           initializer=initializer)
+    self.built = True
 
   def get_controls(self, audio, ir=None):
     """Convert decoder outputs into ir response.
@@ -151,9 +151,8 @@ class ExpDecayReverb(Reverb):
     ir = gain * tf.exp(-decay_exponent * time) * noise
     return ir
 
-  def build(self, input_shape):
+  def build(self, unused_input_shape):
     """Initialize impulse response."""
-    super().build(input_shape)
     if self.trainable:
       self._gain = self.add_weight(
           name='gain',
@@ -165,6 +164,7 @@ class ExpDecayReverb(Reverb):
           shape=[1],
           dtype=tf.float32,
           initializer=tf.constant_initializer(4.0))
+    self.built = True
 
   def get_controls(self, audio, gain=None, decay=None):
     """Convert network outputs into ir response.
@@ -239,9 +239,8 @@ class FilteredNoiseReverb(Reverb):
                                        scale_fn=scale_fn,
                                        initial_bias=initial_bias)
 
-  def build(self, input_shape):
+  def build(self, unused_input_shape):
     """Initialize impulse response."""
-    super().build(input_shape)
     if self.trainable:
       initializer = tf.random_normal_initializer(mean=0, stddev=1e-2)
       self._magnitudes = self.add_weight(
@@ -249,6 +248,7 @@ class FilteredNoiseReverb(Reverb):
           shape=[self._n_frames, self._n_filter_banks],
           dtype=tf.float32,
           initializer=initializer)
+    self.built = True
 
   def get_controls(self, audio, magnitudes=None):
     """Convert network outputs into ir response.
