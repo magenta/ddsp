@@ -399,6 +399,15 @@ def evaluate_or_sample(data_provider,
           audio_gen = model(batch, training=True)  # Adds losses.
           outputs = model.get_controls(batch, training=True)
 
+          # Resample f0_hz outputs to match batch if they don't already.
+          has_f0 = ('f0_hz' in outputs and 'f0_hz' in batch)
+          if has_f0:
+            output_length = outputs['f0_hz'].shape[1]
+            batch_length = batch['f0_hz'].shape[1]
+            if output_length != batch_length:
+              outputs['f0_hz'] = ddsp.core.resample(
+                  outputs['f0_hz'], batch_length)
+
           logging.info('Prediction took %.1f seconds', time.time() - start_time)
 
           if mode == 'sample':
@@ -412,7 +421,8 @@ def evaluate_or_sample(data_provider,
             # Add plots.
             waveform_summary(audio, audio_gen, step)
             spectrogram_summary(audio, audio_gen, step)
-            f0_summary(batch['f0_hz'], outputs['f0_hz'], step)
+            if has_f0:
+              f0_summary(batch['f0_hz'], outputs['f0_hz'], step)
 
             logging.info('Writing batch %i with size %i took %.1f seconds',
                          batch_idx, batch_size, time.time() - start_time)
@@ -421,8 +431,11 @@ def evaluate_or_sample(data_provider,
             start_time = time.time()
             logging.info('Calculating metrics for batch %d', batch_idx)
 
-            # F0 and loudness.
-            f0_loudness_metrics.update_state(batch, audio_gen, outputs['f0_hz'])
+            if has_f0:
+              # F0 and loudness.
+              f0_loudness_metrics.update_state(batch,
+                                               audio_gen,
+                                               outputs['f0_hz'])
 
             # Loss.
             losses = model.losses_dict
@@ -440,7 +453,8 @@ def evaluate_or_sample(data_provider,
                    num_batches, time.time() - checkpoint_start_time)
 
       if mode == 'eval':
-        f0_loudness_metrics.flush(step)
+        if has_f0:
+          f0_loudness_metrics.flush(step)
         for k, metric in avg_losses.items():
           tf.summary.scalar('losses/{}'.format(k), metric.result(), step=step)
           metric.reset_states()
