@@ -15,6 +15,7 @@
 # Lint as: python3
 """Tests for ddsp.losses."""
 
+from absl.testing import parameterized
 from ddsp import spectral_ops
 import numpy as np
 import tensorflow.compat.v2 as tf
@@ -55,6 +56,64 @@ class LoudnessTest(tf.test.TestCase):
         audio, n_fft=frame_size, frame_rate=frame_rate, use_tf=False)
 
     self.assertAllClose(np.abs(ld_np), np.abs(ld_tf), rtol=1e-3, atol=1e-3)
+
+
+class ComputeF0AndLoudnessTest(parameterized.TestCase, tf.test.TestCase):
+
+  def setUp(self):
+    """Creates some common default values for the test sinusoid."""
+    super().setUp()
+    self.amp = 0.75
+    self.frequency = 440.0
+    self.frame_rate = 250
+
+  def _gen_sinusoid(self, sample_rate, audio_len_sec):
+    x = np.linspace(0, audio_len_sec, audio_len_sec * sample_rate)
+    audio_sin = self.amp * (np.sin(2 * np.pi * self.frequency * x))
+    return audio_sin
+
+  @parameterized.named_parameters(
+      ('16k_2.1secs', 16000, 2.1),
+      ('24k_2.1secs', 24000, 2.1),
+      ('44.1k_2.1secs', 44100, 2.1),
+      ('48k_2.1secs', 48000, 2.1),
+      ('16k_4secs', 16000, 4),
+      ('24k_4secs', 24000, 4),
+      ('44.1k_4secs', 44100, 4),
+      ('48k_4secs', 48000, 4),
+  )
+  def test_compute_f0_at_sample_rate(self, sample_rate, audio_len_sec):
+    audio_sin = self._gen_sinusoid(sample_rate, audio_len_sec)
+    f0_hz, f0_confidence = spectral_ops.compute_f0(audio_sin, sample_rate,
+                                                   self.frame_rate)
+    expected_f0_hz_and_f0_conf_len = int(self.frame_rate * audio_len_sec)
+    self.assertLen(f0_hz, expected_f0_hz_and_f0_conf_len)
+    self.assertLen(f0_confidence, expected_f0_hz_and_f0_conf_len)
+
+  @parameterized.named_parameters(
+      ('16k_2.1secs', 16000, 2.1),
+      ('24k_2.1secs', 24000, 2.1),
+      ('48k_2.1secs', 48000, 2.1),
+      ('16k_4secs', 16000, 4),
+      ('24k_4secs', 24000, 4),
+      ('48k_4secs', 48000, 4),
+  )
+  def test_compute_loudness_at_sample_rate(self, sample_rate, audio_len_sec):
+    audio_sin = self._gen_sinusoid(sample_rate, audio_len_sec)
+    loudness = spectral_ops.compute_loudness(audio_sin, sample_rate,
+                                             self.frame_rate)
+    expected_loudness_len = int(self.frame_rate * audio_len_sec)
+    self.assertLen(loudness, expected_loudness_len)
+
+  @parameterized.named_parameters(
+      ('441.k_2.1secs', 44100, 2.1),
+      ('441.k_4secs', 44100, 4),
+  )
+  def test_compute_loudness_at_indivisible_sample_rate(self, sample_rate,
+                                                       audio_len_sec):
+    audio_sin = self._gen_sinusoid(sample_rate, audio_len_sec)
+    with self.assertRaises(ValueError):
+      spectral_ops.compute_loudness(audio_sin, sample_rate, self.frame_rate)
 
 
 if __name__ == '__main__':
