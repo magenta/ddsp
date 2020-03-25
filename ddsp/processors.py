@@ -52,6 +52,11 @@ class Processor(tfkl.Layer):
 
   def call(self, *args: tf.Tensor, **kwargs: tf.Tensor) -> tf.Tensor:
     """Convert input tensors arguments into a signal tensor."""
+    # Don't use `training` or `mask` arguments from keras.Layer.
+    for k in ['training', 'mask']:
+      if k in kwargs:
+        _ = kwargs.pop(k)
+
     controls = self.get_controls(*args, **kwargs)
     signal = self.get_signal(**controls)
     return signal
