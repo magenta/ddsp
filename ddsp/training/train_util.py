@@ -57,17 +57,6 @@ def get_strategy(tpu='', gpus=None):
     strategy = tf.distribute.MirroredStrategy()
   return strategy
 
-def allow_memory_growth():
-  """Sets the GPUs to grow the memory usage as is needed by the process"""
-  gpus = tf.config.experimental.list_physical_devices('GPU')
-  if gpus:
-    try:
-      # Currently, memory growth needs to be the same across GPUs
-      for gpu in gpus:
-        tf.config.experimental.set_memory_growth(gpu, True)
-    except RuntimeError as e:
-      # Memory growth must be set before GPUs have been initialized
-      print(e)
 
 def get_latest_chekpoint(checkpoint_path):
   """Helper function to get path to latest checkpoint.
