@@ -85,8 +85,8 @@ flags.DEFINE_multi_string('gpu', [],
                           'Addresses of GPUs for sync data-parallel training.'
                           'Only needs to be specified for using multiple GPUs.')
 flags.DEFINE_boolean('allow_memory_growth', False,
-                     'Whether to grow the GPU memory usage as is needed by '
-                     'the process. Prevents crashes on GPUs with smaller memory.')
+                     'Whether to grow the GPU memory usage as is needed by the '
+                     'process. Prevents crashes on GPUs with smaller memory.')
 
 # Gin config flags.
 flags.DEFINE_multi_string('gin_search_path', [],
