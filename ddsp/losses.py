@@ -83,7 +83,7 @@ class SpectralLoss(tfkl.Layer):
     self.logmag_weight = logmag_weight
     self.loudness_weight = loudness_weight
 
-  def call(self, audio, target_audio):
+  def call(self, target_audio, audio):
 
     loss = 0.0
     loss_ops = []
@@ -163,7 +163,7 @@ class EmbeddingLoss(tfkl.Layer):
     self.loss_type = loss_type
     self.pretrained_model = pretrained_model
 
-  def call(self, audio, target_audio):
+  def call(self, target_audio, audio):
     audio, target_audio = tf_float32(audio), tf_float32(target_audio)
     target_emb = self.pretrained_model(target_audio)
     synth_emb = self.pretrained_model(audio)
