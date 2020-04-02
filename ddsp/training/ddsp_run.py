@@ -84,6 +84,9 @@ flags.DEFINE_string('tpu', '', 'Address of the TPU. No TPU if left blank.')
 flags.DEFINE_multi_string('gpu', [],
                           'Addresses of GPUs for sync data-parallel training.'
                           'Only needs to be specified for using multiple GPUs.')
+flags.DEFINE_boolean('allow_memory_growth', False,
+                     'Whether to grow the GPU memory usage as is needed by the '
+                     'process. Prevents crashes on GPUs with smaller memory.')
 
 # Gin config flags.
 flags.DEFINE_multi_string('gin_search_path', [],
@@ -131,10 +134,25 @@ def parse_gin(model_dir):
         FLAGS.gin_file, FLAGS.gin_param, skip_unknown=True)
 
 
+def allow_memory_growth():
+  """Sets the GPUs to grow the memory usage as is needed by the process."""
+  gpus = tf.config.experimental.list_physical_devices('GPU')
+  if gpus:
+    try:
+      # Currently, memory growth needs to be the same across GPUs.
+      for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError as e:
+      # Memory growth must be set before GPUs have been initialized.
+      print(e)
+
+
 def main(unused_argv):
   """Parse gin config and run ddsp training, evaluation, or sampling."""
   model_dir = os.path.expanduser(FLAGS.model_dir)
   parse_gin(model_dir)
+  if FLAGS.allow_memory_growth:
+    allow_memory_growth()
 
   # Training.
   if FLAGS.mode == 'train':
