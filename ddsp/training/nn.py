@@ -72,7 +72,7 @@ def norm_relu_conv(ch, k, s, norm_type, name='norm_relu_conv'):
 class ResidualLayer(tfkl.Layer):
   """A single layer for ResNet, with a bottleneck."""
 
-  def __init__(self, ch, stride, shortcut, norm_type, name='residual_layer'):
+  def __init__(self, ch, stride, shortcut, norm_type, name=None):
     """Downsample frequency by stride, upsample channels by 4."""
     super().__init__(name=name)
     ch_out = 4 * ch
@@ -85,8 +85,8 @@ class ResidualLayer(tfkl.Layer):
                                    name='conv_proj')
     layers = [
         tfkl.Conv2D(ch, (1, 1), (1, 1), padding='same', name='conv2d'),
-        norm_relu_conv(ch, 3, stride, norm_type),
-        norm_relu_conv(ch_out, 1, 1, norm_type),
+        norm_relu_conv(ch, 3, stride, norm_type, name='norm_conv_relu_0'),
+        norm_relu_conv(ch_out, 1, 1, norm_type, name='norm_conv_relu_1'),
     ]
     self.bottleneck = tf.keras.Sequential(layers, name='bottleneck')
 
@@ -130,8 +130,9 @@ def resnet(size='large', norm_type='layer', name='resnet'):
   layers = [
       tfkl.Conv2D(64, (7, 7), (1, 2), padding='same', name='conv2d'),
       tfkl.MaxPool2D(pool_size=(1, 3), strides=(1, 2), padding='same'),
-      residual_stack([ch, 2 * ch, 4 * ch], blocks, [1, 2, 2], norm_type),
-      residual_stack([8 * ch], [3], [2], norm_type)
+      residual_stack([ch, 2 * ch, 4 * ch], blocks, [1, 2, 2], norm_type,
+                     name='residual_stack_0'),
+      residual_stack([8 * ch], [3], [2], norm_type, name='residual_stack_1')
   ]
   return tf.keras.Sequential(layers, name=name)
 
@@ -151,7 +152,8 @@ def fc(ch=256, name='fc'):
 
 
 def fc_stack(ch=256, layers=2, name='fc_stack'):
-  return tf.keras.Sequential([fc(ch) for _ in range(layers)], name=name)
+  return tf.keras.Sequential([fc(ch, name='fc_%d' % (i,))
+                              for i in range(layers)], name=name)
 
 
 def rnn(dims, rnn_type, return_sequences=True):

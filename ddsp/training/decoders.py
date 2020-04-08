@@ -32,7 +32,7 @@ class Decoder(tfkl.Layer):
 
   def __init__(self,
                output_splits=(('amps', 1), ('harmonic_distribution', 40)),
-               name='decoder'):
+               name=None):
     super().__init__(name=name)
     self.output_splits = output_splits
     self.n_out = sum([v[1] for v in output_splits])
@@ -64,7 +64,7 @@ class ZRnnFcDecoder(Decoder):
                layers_per_stack=3,
                append_f0_loudness=True,
                output_splits=(('amps', 1), ('harmonic_distribution', 40)),
-               name='z_rnn_fc_decoder'):
+               name=None):
     super().__init__(output_splits=output_splits, name=name)
     self.append_f0_loudness = append_f0_loudness
     stack = lambda: nn.fc_stack(ch, layers_per_stack)
@@ -107,7 +107,7 @@ class RnnFcDecoder(Decoder):
                ch=512,
                layers_per_stack=3,
                output_splits=(('amps', 1), ('harmonic_distribution', 40)),
-               name='rnn_fc_decoder'):
+               name=None):
     super().__init__(output_splits=output_splits, name=name)
     stack = lambda: nn.fc_stack(ch, layers_per_stack)
 
