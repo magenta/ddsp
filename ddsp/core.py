@@ -101,6 +101,30 @@ def midi_to_unit(midi: Number,
   return tf.clip_by_value(unit, 0.0, 1.0) if clip else unit
 
 
+def unit_to_hz(unit: Number,
+               hz_min: Number,
+               hz_max: Number,
+               clip: bool = False) -> Number:
+  """Map unit interval [0, 1] to [hz_min, hz_max], scaling logarithmically."""
+  midi = unit_to_midi(unit,
+                      midi_min=hz_to_midi(hz_min),
+                      midi_max=hz_to_midi(hz_max),
+                      clip=clip)
+  return midi_to_hz(midi)
+
+
+def hz_to_unit(hz: Number,
+               hz_min: Number,
+               hz_max: Number,
+               clip: bool = False) -> Number:
+  """Map [hz_min, hz_max] to unit interval [0, 1], scaling logarithmically."""
+  midi = hz_to_midi(hz)
+  return midi_to_unit(midi,
+                      midi_min=hz_to_midi(hz_min),
+                      midi_max=hz_to_midi(hz_max),
+                      clip=clip)
+
+
 def resample(inputs: tf.Tensor,
              n_timesteps: int,
              method: Text = 'linear',
@@ -305,7 +329,8 @@ def remove_above_nyquist(frequency_envelopes: tf.Tensor,
 
 def oscillator_bank(frequency_envelopes: tf.Tensor,
                     amplitude_envelopes: tf.Tensor,
-                    sample_rate: int = 16000) -> tf.Tensor:
+                    sample_rate: int = 16000,
+                    sum_sinusoids: bool = True) -> tf.Tensor:
   """Generates audio from sample-wise frequencies for a bank of oscillators.
 
   Args:
@@ -314,9 +339,11 @@ def oscillator_bank(frequency_envelopes: tf.Tensor,
     amplitude_envelopes: Sample-wise oscillator amplitude. Shape [batch_size,
       n_samples, n_sinusoids].
     sample_rate: Sample rate in samples per a second.
+    sum_sinusoids: Add up audio from all the sinusoids.
 
   Returns:
-    wav: Sample-wise audio. Shape [batch_size, n_samples, n_sinusoids].
+    wav: Sample-wise audio. Shape [batch_size, n_samples, n_sinusoids] if
+      sum_sinusoids=False, else shape is [batch_size, n_samples].
   """
   frequency_envelopes = tf_float32(frequency_envelopes)
   amplitude_envelopes = tf_float32(amplitude_envelopes)
@@ -333,8 +360,9 @@ def oscillator_bank(frequency_envelopes: tf.Tensor,
   # Accumulate phase and synthesize.
   phases = tf.cumsum(omegas, axis=1)
   wavs = tf.sin(phases)
-  harmonic_audio = amplitude_envelopes * wavs  # [mb, n_samples, n_sinusoids]
-  audio = tf.reduce_sum(harmonic_audio, axis=-1)  # [mb, n_samples]
+  audio = amplitude_envelopes * wavs  # [mb, n_samples, n_sinusoids]
+  if sum_sinusoids:
+    audio = tf.reduce_sum(audio, axis=-1)  # [mb, n_samples]
   return audio
 
 

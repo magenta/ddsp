@@ -390,6 +390,30 @@ class AdditiveSynthTest(parameterized.TestCase, tf.test.TestCase):
     self.assertAllClose(wav_np[pad:-pad], wav_tf[pad:-pad])
 
   @parameterized.named_parameters(
+      ('sum_sinusoids', True),
+      ('no_sum_sinusoids', False),
+  )
+  def test_oscillator_bank_shape_is_correct(self, sum_sinusoids):
+    """Tests that sum_sinusoids reduces the last dimension."""
+    frequencies = np.array([1.0, 1.5, 2.0]) * 400.0
+    amplitudes = np.ones_like(frequencies)
+
+    # Create tensors of frequencies and amplitudes for tf function.
+    ones = np.ones([self.batch_size, self.n_samples, 3])
+    frequency_envelopes = ones * frequencies[np.newaxis, np.newaxis, :]
+    amplitude_envelopes = ones * amplitudes[np.newaxis, np.newaxis, :]
+
+    wav_tf = core.oscillator_bank(frequency_envelopes,
+                                  amplitude_envelopes,
+                                  sample_rate=self.sample_rate,
+                                  sum_sinusoids=sum_sinusoids)
+    if sum_sinusoids:
+      expected_shape = [self.batch_size, self.n_samples]
+    else:
+      expected_shape = [self.batch_size, self.n_samples, 3]
+    self.assertAllEqual(expected_shape, list(wav_tf.shape))
+
+  @parameterized.named_parameters(
       ('low_sample_rate', 4000),
       ('16khz', 16000),
       ('cd_quality', 44100),
