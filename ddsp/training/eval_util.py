@@ -399,6 +399,7 @@ def evaluate_or_sample(data_provider,
           audio_gen = model(batch, training=True)  # Adds losses.
           outputs = model.get_controls(batch, training=True)
 
+
           # Resample f0_hz outputs to match batch if they don't already.
           has_f0 = ('f0_hz' in outputs and 'f0_hz' in batch)
           if has_f0:
