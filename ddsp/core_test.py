@@ -73,6 +73,24 @@ class UtilitiesTest(parameterized.TestCase, tf.test.TestCase):
         unit, midi_min=midi_min, midi_max=midi_max, clip=clip)
     self.assertAllClose(tf_midi, np_midi)
 
+  def test_unit_to_hz_is_accurate(self):
+    """Tests converting between unit interval and their frequencies in hertz."""
+    hz_min = 20.0
+    hz_max = 1000.0
+    unit = np.linspace(0.0, 1.0, 128)
+    np_hz = np.logspace(np.log10(hz_min), np.log10(hz_max), 128)
+    tf_hz = core.unit_to_hz(unit, hz_min, hz_max)
+    self.assertAllClose(np_hz, tf_hz)
+
+  def test_hz_to_unit_is_accurate(self):
+    """Tests converting between frequencies in hertz and unit interval."""
+    hz_min = 20.0
+    hz_max = 1000.0
+    hz = np.logspace(np.log10(hz_min), np.log10(hz_max), 128)
+    np_unit = np.linspace(0.0, 1.0, 128)
+    tf_unit = core.hz_to_unit(hz, hz_min, hz_max)
+    self.assertAllClose(np_unit, tf_unit)
+
 
 class ResampleTest(parameterized.TestCase, tf.test.TestCase):
 
