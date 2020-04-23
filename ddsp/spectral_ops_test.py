@@ -39,6 +39,28 @@ class STFTTest(tf.test.TestCase):
     # TODO(jesseengel): The phase comes out a little different, figure out why.
     self.assertAllClose(np.abs(s_np), np.abs(s_tf), rtol=1e-3, atol=1e-3)
 
+  def test_diff(self):
+    amp = 1e-2
+    audio = amp * (np.random.rand(64000).astype(np.float32) * 2.0 - 1.0)
+    audio = np.expand_dims(audio,0)
+    #audio is now in [B,T] format to match the axis of the diff operations in losses.SpectralLoss()
+    frame_size = 2048
+    hop_size = 128
+    overlap = 1.0 - float(hop_size) / frame_size
+    pad_end = True
+
+    diff = spectral_ops.diff
+    mag = spectral_ops.compute_mag(audio,size=frame_size,overlap=overlap,pad_end=pad_end)
+
+    delta_t = diff(mag,axis=1)
+    assert(delta_t.shape[1] == mag.shape[1]-1)
+    delta_delta_t = diff(diff(mag,axis=1),axis=1)
+    assert(delta_delta_t.shape[1] == mag.shape[1]-2)
+    delta_f = diff(mag,axis=2)
+    assert(delta_f.shape[2] == mag.shape[2]-1)
+    delta_delta_f = diff(diff(mag,axis=2),axis=2)
+    assert(delta_delta_f.shape[2] == mag.shape[2]-2)
+
 
 class LoudnessTest(tf.test.TestCase):
 
