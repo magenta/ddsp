@@ -197,7 +197,7 @@ class Trainer(object):
     return self.strategy.experimental_run_v2(fn, args=args, kwargs=kwargs)
 
   def build(self, batch):
-    """Build the model by running a batch through it."""
+    """Build the model by running a distributed batch through it."""
     logging.info('Building the model...')
     _ = self.run(tf.function(self.model.__call__), batch)
     self.model.summary()
@@ -223,13 +223,12 @@ class Trainer(object):
   def step_fn(self, batch):
     """Per-Replica training step."""
     with tf.GradientTape() as tape:
-      _ = self.model(batch, training=True)
-      total_loss = tf.reduce_sum(self.model.losses)
+      _, losses = self.model(batch, return_losses=True, training=True)
     # Clip and apply gradients.
-    grads = tape.gradient(total_loss, self.model.trainable_variables)
+    grads = tape.gradient(losses['total_loss'], self.model.trainable_variables)
     grads, _ = tf.clip_by_global_norm(grads, self.grad_clip_norm)
     self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
-    return self.model.losses_dict
+    return losses
 
 
 @gin.configurable
@@ -252,11 +251,6 @@ def train(data_provider,
   # Load latest checkpoint if one exists in model_dir.
   trainer.restore(model_dir)
 
-  # Create training loss metrics.
-  logging.info('Creating metrics for %s', list(trainer.model.loss_names))
-  avg_losses = {name: tf.keras.metrics.Mean(name=name, dtype=tf.float32)
-                for name in trainer.model.loss_names}
-
   # Set up the summary writer and metrics.
   summary_dir = os.path.join(model_dir, 'summaries', 'train')
   summary_writer = tf.summary.create_file_writer(summary_dir)
@@ -268,11 +262,18 @@ def train(data_provider,
   with summary_writer.as_default():
     tick = time.time()
 
-    for _ in range(num_steps):
-      step = trainer.step
+    for iteration in range(num_steps):
+      step = trainer.step  # Step is not iteration if restarting a model.
 
       # Take a step.
       losses = trainer.train_step(dataset_iter)
+
+      # Create training loss metrics when starting/restarting training.
+      if iteration == 0:
+        loss_names = list(losses.keys())
+        logging.info('Creating metrics for %s', loss_names)
+        avg_losses = {name: tf.keras.metrics.Mean(name=name, dtype=tf.float32)
+                      for name in loss_names}
 
       # Update metrics.
       for k, v in losses.items():

@@ -379,14 +379,9 @@ def evaluate_or_sample(data_provider,
       # Load model.
       model.restore(checkpoint_path)
 
-      # Create metrics.
-      if mode == 'eval':
-        f0_loudness_metrics = F0LoudnessMetrics()
-        avg_losses = {name: tf.keras.metrics.Mean(name=name, dtype=tf.float32)
-                      for name in model.loss_names}
-
       # Iterate through dataset and make predictions
       checkpoint_start_time = time.time()
+
       for batch_idx in range(1, num_batches + 1):
         try:
           start_time = time.time()
@@ -396,8 +391,15 @@ def evaluate_or_sample(data_provider,
           batch = next(dataset_iter)
           audio = batch['audio']
           # TODO(jesseengel): Find a way to add losses with training=False.
-          audio_gen = model(batch, training=True)  # Adds losses.
+          audio_gen, losses = model(batch, return_losses=True, training=True)
           outputs = model.get_controls(batch, training=True)
+
+          # Create metrics on first batch.
+          if mode == 'eval' and batch_idx == 1:
+            f0_loudness_metrics = F0LoudnessMetrics()
+            avg_losses = {
+                name: tf.keras.metrics.Mean(name=name, dtype=tf.float32)
+                for name in list(losses.keys())}
 
 
           # Resample f0_hz outputs to match batch if they don't already.
@@ -439,7 +441,6 @@ def evaluate_or_sample(data_provider,
                                                outputs['f0_hz'])
 
             # Loss.
-            losses = model.losses_dict
             for k, v in losses.items():
               avg_losses[k].update_state(v)
 

@@ -43,18 +43,31 @@ def get_model(model=gin.REQUIRED):
 class Model(tf.keras.Model):
   """Wrap the model function for dependency injection with gin."""
 
-  def __init__(self, losses=None, name='model'):
+  def __init__(self, name='model'):
     super().__init__(name=name)
-    self.loss_objs = ddsp.core.make_iterable(losses)
-    self.loss_names = [loss_obj.name
-                       for loss_obj in self.loss_objs] + ['total_loss']
+    self._losses_dict = {}
 
-  @property
-  def losses_dict(self):
-    """For metrics, returns dict {loss_name: loss_value}."""
-    losses_dict = dict(zip(self.loss_names, self.losses))
-    losses_dict['total_loss'] = tf.reduce_sum(self.losses)
-    return losses_dict
+  def __call__(self, *args, return_losses=False, **kwargs):
+    """Reset the losses dict on each call.
+
+    Args:
+      *args: Arguments passed on to call().
+      return_losses: Return a dictionary of losses in addition to the call()
+        function returns.
+      **kwargs: Keyword arguments passed on to call().
+
+    Returns:
+      Function results if return_losses=False, else the function results
+        and a dictionary of losses, {loss_name: loss_value}.
+    """
+    self._losses_dict = {}
+    results = super().__call__(*args, **kwargs)
+    if not return_losses:
+      return results
+    else:
+      self._losses_dict['total_loss'] = tf.reduce_sum(
+          list(self._losses_dict.values()))
+      return results, self._losses_dict
 
   def restore(self, checkpoint_path):
     """Restore model and optimizer from a checkpoint."""
@@ -81,11 +94,12 @@ class Autoencoder(Model):
                processor_group=None,
                losses=None,
                name='autoencoder'):
-    super().__init__(name=name, losses=losses)
+    super().__init__(name=name)
     self.preprocessor = preprocessor
     self.encoder = encoder
     self.decoder = decoder
     self.processor_group = processor_group
+    self.loss_objs = ddsp.core.make_iterable(losses)
 
   def controls_to_audio(self, controls):
     return controls[self.processor_group.name]['signal']
@@ -106,7 +120,8 @@ class Autoencoder(Model):
     audio_gen = self.decode(conditioning, training=training)
     if training:
       for loss_obj in self.loss_objs:
-        self.add_loss(loss_obj(features['audio'], audio_gen))
+        loss = loss_obj(features['audio'], audio_gen)
+        self._losses_dict[loss_obj.name] = loss
     return audio_gen
 
   def get_controls(self, features, keys=None, training=False):
