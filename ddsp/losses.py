@@ -220,7 +220,7 @@ class PretrainedCREPE(tfkl.Layer):
     self._model = crepe.core.build_and_load_model(self._model_capacity)
     self.frame_length = 1024
 
-  def build(self, x_shape):
+  def build(self, unused_x_shape):
     self.layer_names = [l.name for l in self._model.layers]
 
     if self._activation_layer not in self.layer_names:

@@ -22,15 +22,15 @@ MfccTimeDistributedRnnEncoder.z_dims = 16
 MfccTimeDistributedRnnEncoder.z_time_steps = 125
 
 # Decoder
-Autoencoder.decoder = @decoders.ZRnnFcDecoder()
-ZRnnFcDecoder.rnn_channels = 512
-ZRnnFcDecoder.rnn_type = 'gru'
-ZRnnFcDecoder.ch = 512
-ZRnnFcDecoder.layers_per_stack = 3
-ZRnnFcDecoder.append_f0_loudness = True
-ZRnnFcDecoder.output_splits = (('amps', 1),
-                               ('harmonic_distribution', 100),
-                               ('noise_magnitudes', 65))
+Autoencoder.decoder = @decoders.RnnFcDecoder()
+RnnFcDecoder.rnn_channels = 512
+RnnFcDecoder.rnn_type = 'gru'
+RnnFcDecoder.ch = 512
+RnnFcDecoder.layers_per_stack = 3
+RnnFcDecoder.input_keys = ('ld_scaled', 'f0_scaled', 'z')
+RnnFcDecoder.output_splits = (('amps', 1),
+                              ('harmonic_distribution', 100),
+                              ('noise_magnitudes', 65))
 
 # Losses
 Autoencoder.losses = [

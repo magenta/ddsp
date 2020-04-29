@@ -54,50 +54,6 @@ class Decoder(tfkl.Layer):
 
 
 @gin.register
-class ZRnnFcDecoder(Decoder):
-  """Decompress z in time with RNN. Fully connected stacks for z as well."""
-
-  def __init__(self,
-               rnn_channels=512,
-               rnn_type='gru',
-               ch=512,
-               layers_per_stack=3,
-               append_f0_loudness=True,
-               output_splits=(('amps', 1), ('harmonic_distribution', 40)),
-               name=None):
-    super().__init__(output_splits=output_splits, name=name)
-    self.append_f0_loudness = append_f0_loudness
-    stack = lambda: nn.fc_stack(ch, layers_per_stack)
-
-    # Layers.
-    self.f_stack = stack()
-    self.l_stack = stack()
-    self.z_stack = stack()
-    self.rnn = nn.rnn(rnn_channels, rnn_type)
-    self.out_stack = stack()
-    self.dense_out = nn.dense(self.n_out)
-
-  def decode(self, conditioning):
-    f, l, z = (conditioning['f0_scaled'],
-               conditioning['ld_scaled'],
-               conditioning['z'])
-
-    # Initial processing.
-    f = self.f_stack(f)
-    l = self.l_stack(l)
-    z = self.z_stack(z)
-
-    # Run an RNN over the latents.
-    x = tf.concat([f, l, z], axis=-1) if self.append_f0_loudness else z
-    x = self.rnn(x)
-    x = tf.concat([f, l, x], axis=-1)
-
-    # Final processing.
-    x = self.out_stack(x)
-    return self.dense_out(x)
-
-
-@gin.register
 class RnnFcDecoder(Decoder):
   """RNN and FC stacks for f0 and loudness."""
 
@@ -106,29 +62,33 @@ class RnnFcDecoder(Decoder):
                rnn_type='gru',
                ch=512,
                layers_per_stack=3,
+               input_keys=('ld_scaled', 'f0_scaled', 'z'),
                output_splits=(('amps', 1), ('harmonic_distribution', 40)),
                name=None):
     super().__init__(output_splits=output_splits, name=name)
     stack = lambda: nn.fc_stack(ch, layers_per_stack)
+    self.input_keys = input_keys
 
     # Layers.
-    self.f_stack = stack()
-    self.l_stack = stack()
+    self.input_stacks = [stack() for k in self.input_keys]
     self.rnn = nn.rnn(rnn_channels, rnn_type)
     self.out_stack = stack()
     self.dense_out = nn.dense(self.n_out)
 
-  def decode(self, conditioning):
-    f, l = conditioning['f0_scaled'], conditioning['ld_scaled']
+    # Backwards compatability.
+    self.f_stack = self.input_stacks[0] if len(self.input_stacks) >= 1 else None
+    self.l_stack = self.input_stacks[1] if len(self.input_stacks) >= 2 else None
+    self.z_stack = self.input_stacks[2] if len(self.input_stacks) >= 3 else None
 
+  def decode(self, conditioning):
     # Initial processing.
-    f = self.f_stack(f)
-    l = self.l_stack(l)
+    inputs = [conditioning[k] for k in self.input_keys]
+    inputs = [stack(x) for stack, x in zip(self.input_stacks, inputs)]
 
     # Run an RNN over the latents.
-    x = tf.concat([f, l], axis=-1)
+    x = tf.concat(inputs, axis=-1)
     x = self.rnn(x)
-    x = tf.concat([f, l, x], axis=-1)
+    x = tf.concat(inputs + [x], axis=-1)
 
     # Final processing.
     x = self.out_stack(x)
