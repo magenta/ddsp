@@ -59,7 +59,7 @@ setuptools.setup(
             'avro-python3!=1.9.2',
             'apache_beam',
         ],
-        'test': ['pytest', 'pylint'],
+        'test': ['pytest', 'pylint!=2.5.0'],
     },
     entry_points={
         'console_scripts': [
