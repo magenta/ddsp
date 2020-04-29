@@ -64,7 +64,7 @@ If not running on GCP, it is much faster to first download the dataset with
 ```bash
 ddsp_run \
   --mode=train \
-  --model_dir=~/tmp/$USER-ddsp-0 \
+  --save_dir=~/tmp/$USER-ddsp-0 \
   --gin_file=papers/iclr2020/nsynth_ae.gin \
   --gin_param="batch_size=16" \
   --alsologtostderr
@@ -74,7 +74,7 @@ ddsp_run \
 ```bash
 ddsp_run \
   --mode=eval \
-  --model_dir=~/tmp/$USER-ddsp-0 \
+  --save_dir=~/tmp/$USER-ddsp-0 \
   --gin_file=dataset/nsynth.gin \
   --alsologtostderr
 ```
@@ -83,7 +83,7 @@ ddsp_run \
 ```bash
 ddsp_run \
   --mode=sample \
-  --model_dir=~/tmp/$USER-ddsp-0 \
+  --save_dir=~/tmp/$USER-ddsp-0 \
   --gin_file=dataset/nsynth.gin \
   --alsologtostderr
 ```
@@ -125,7 +125,7 @@ ddsp_prepare_tfrecord \
 ```bash
 ddsp_run \
   --mode=train \
-  --model_dir=~/tmp/$USER-ddsp-0 \
+  --save_dir=~/tmp/$USER-ddsp-0 \
   --gin_file=models/solo_instrument.gin \
   --gin_file=datasets/tfrecord.gin \
   --gin_param="TFRecordProvider.file_pattern='/path/to/dataset_name*.tfrecord'" \

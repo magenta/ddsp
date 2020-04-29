@@ -5,6 +5,19 @@ DSP can be subtle to get completely right, so we particularly appreciate the
 contributions of those with expertise in signal processing to help fix any
 mistakes we may have made 😄.
 
+# Versioning
+
+We'll do our best to keep the verison updated. This repo contains two code bases
+which makes versioning a bit tricky. The core code base `ddsp/` and a more
+experimental training code base `ddsp/training/` that is used for active
+research. We will thus adopt the following scheme for incrementing version:
+
+`vMajor.Minor.Revision`
+
+* Major: Breaking change in `ddsp/`
+* Minor: New feature in `ddsp/`, breaking change in `training/`
+* Revision: New feature in `training/`, minor bug fix anywhere
+
 ## Code Design Goals
 As much as we can, we would like the DDSP library to be approachable,
 well-tested, well-documented, and full of useful examples. Thus, PRs that add

@@ -77,13 +77,13 @@ def get_latest_chekpoint(checkpoint_path):
     return tf.train.latest_checkpoint(checkpoint_path)
 
 
-def write_gin_config(summary_writer, model_dir, step):
-  """"Writes gin operative_config to model_dir and tensorboard."""
+def write_gin_config(summary_writer, save_dir, step):
+  """"Writes gin operative_config to save_dir and tensorboard."""
   config_str = gin.operative_config_str()
 
   # Save the original config string to a file.
   base_name = 'operative_config-{}'.format(step)
-  fname = os.path.join(model_dir, base_name + '.gin')
+  fname = os.path.join(save_dir, base_name + '.gin')
   with tf.io.gfile.GFile(fname, 'w') as f:
     f.write(config_str)
 
@@ -127,7 +127,8 @@ class Trainer(object):
                learning_rate=0.001,
                lr_decay_steps=10000,
                lr_decay_rate=0.98,
-               grad_clip_norm=3.0):
+               grad_clip_norm=3.0,
+               restore_keys=None):
     """Constructor.
 
     Args:
@@ -138,11 +139,14 @@ class Trainer(object):
       lr_decay_steps: Exponential decay timescale.
       lr_decay_rate: Exponential decay magnitude.
       grad_clip_norm: Norm level by which to clip gradients.
+      restore_keys: List of names of model properties to restore. If no keys are
+        passed, restore the whole model.
     """
     self.model = model
     self.strategy = strategy
     self.checkpoints_to_keep = checkpoints_to_keep
     self.grad_clip_norm = grad_clip_norm
+    self.restore_keys = restore_keys
 
     # Create an optimizer.
     lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
@@ -154,30 +158,51 @@ class Trainer(object):
       optimizer = tf.keras.optimizers.Adam(lr_schedule)
       self.optimizer = optimizer
 
-  def save(self, model_dir):
+  def save(self, save_dir):
     """Saves model and optimizer to a checkpoint."""
     # Saving weights in checkpoint format because saved_model requires
     # handling variable batch size, which some synths and effects can't.
     start_time = time.time()
     checkpoint = tf.train.Checkpoint(model=self.model, optimizer=self.optimizer)
     manager = tf.train.CheckpointManager(
-        checkpoint, directory=model_dir, max_to_keep=self.checkpoints_to_keep)
+        checkpoint, directory=save_dir, max_to_keep=self.checkpoints_to_keep)
     step = self.step.numpy()
     manager.save(checkpoint_number=step)
-    logging.info('Saved checkpoint to %s at step %s', model_dir, step)
+    logging.info('Saved checkpoint to %s at step %s', save_dir, step)
     logging.info('Saving model took %.1f seconds', time.time() - start_time)
 
-  def restore(self, checkpoint_path):
+  def restore(self, checkpoint_path, restore_keys=None):
     """Restore model and optimizer from a checkpoint if it exists."""
     logging.info('Restoring from checkpoint...')
     start_time = time.time()
-    checkpoint = tf.train.Checkpoint(model=self.model, optimizer=self.optimizer)
+
+    # Prefer function args over object properties.
+    restore_keys = self.restore_keys if restore_keys is None else restore_keys
+    if restore_keys is None:
+      # If no keys are passed, restore the whole model.
+      model = self.model
+      logging.info('Trainer restoring the full model')
+    else:
+      # Restore only sub-modules by building a new subgraph.
+      restore_dict = {k: getattr(self.model, k) for k in restore_keys}
+      model = tf.train.Checkpoint(**restore_dict)
+
+      logging.info('Trainer restoring model subcomponents:')
+      for k, v in restore_dict.items():
+        log_str = 'Restoring {}: {}'.format(k, v)
+        logging.info(log_str)
+
+    # Restore from latest checkpoint.
+    checkpoint = tf.train.Checkpoint(model=model, optimizer=self.optimizer)
     latest_checkpoint = get_latest_chekpoint(checkpoint_path)
     if latest_checkpoint is not None:
       # checkpoint.restore must be within a strategy.scope() so that optimizer
       # slot variables are mirrored.
       with self.strategy.scope():
-        checkpoint.restore(latest_checkpoint)
+        if restore_keys is None:
+          checkpoint.restore(latest_checkpoint)
+        else:
+          checkpoint.restore(latest_checkpoint).expect_partial()
         logging.info('Loaded checkpoint %s', latest_checkpoint)
       logging.info('Loading model took %.1f seconds', time.time() - start_time)
     else:
@@ -238,25 +263,26 @@ def train(data_provider,
           num_steps=1000000,
           steps_per_summary=300,
           steps_per_save=300,
-          model_dir='~/tmp/ddsp'):
+          save_dir='~/tmp/ddsp',
+          restore_dir='~/tmp/ddsp'):
   """Main training loop."""
   # Get a distributed dataset.
   dataset = data_provider.get_batch(batch_size, shuffle=True, repeats=-1)
   dataset = trainer.distribute_dataset(dataset)
   dataset_iter = iter(dataset)
 
+  # Load latest checkpoint if one exists in load directory.
+  trainer.restore(restore_dir)
+
   # Build model, easiest to just run forward pass.
   trainer.build(next(dataset_iter))
 
-  # Load latest checkpoint if one exists in model_dir.
-  trainer.restore(model_dir)
-
   # Set up the summary writer and metrics.
-  summary_dir = os.path.join(model_dir, 'summaries', 'train')
+  summary_dir = os.path.join(save_dir, 'summaries', 'train')
   summary_writer = tf.summary.create_file_writer(summary_dir)
 
   # Save the gin config.
-  write_gin_config(summary_writer, model_dir, trainer.step.numpy())
+  write_gin_config(summary_writer, save_dir, trainer.step.numpy())
 
   # Train.
   with summary_writer.as_default():
@@ -280,7 +306,7 @@ def train(data_provider,
         avg_losses[k].update_state(v)
 
       # Log the step.
-      log_str = 'step: {}\t'.format(int(step))
+      log_str = 'step: {}\t'.format(int(step.numpy()))
       for k, v in losses.items():
         log_str += '{}: {:.2f}\t'.format(k, v)
       logging.info(log_str)
@@ -299,7 +325,7 @@ def train(data_provider,
 
       # Save Model.
       if step % steps_per_save == 0:
-        trainer.save(model_dir)
+        trainer.save(save_dir)
         summary_writer.flush()
 
   logging.info('Training Finished!')

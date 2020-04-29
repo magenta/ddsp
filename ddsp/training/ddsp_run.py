@@ -24,7 +24,7 @@ The pip install installs a `ddsp_run` script that can be called directly.
 ddsp_run \
 --mode=train \
 --alsologtostderr \
---model_dir=~/tmp/$USER-ddsp-0 \
+--save_dir=~/tmp/$USER-ddsp-0 \
 --gin_file=models/ae.gin \
 --gin_file=datasets/nsynth.gin \
 --gin_param=batch_size=16
@@ -36,13 +36,13 @@ For evaluation and sampling, only the dataset file is required.
 ddsp_run \
 --mode=eval \
 --alsologtostderr \
---model_dir=~/tmp/$USER-ddsp-0 \
+--save_dir=~/tmp/$USER-ddsp-0 \
 --gin_file=datasets/nsynth.gin
 
 ddsp_run \
 --mode=sample \
 --alsologtostderr \
---model_dir=~/tmp/$USER-ddsp-0 \
+--save_dir=~/tmp/$USER-ddsp-0 \
 --gin_file=datasets/nsynth.gin
 
 
@@ -53,7 +53,7 @@ datasets used for a paper's experiments, so only require one gin file to train.
 ddsp_run \
 --mode=train \
 --alsologtostderr \
---model_dir=~/tmp/$USER-ddsp-0 \
+--save_dir=~/tmp/$USER-ddsp-0 \
 --gin_file=papers/iclr2020/nsynth_ae.gin
 
 
@@ -77,9 +77,12 @@ FLAGS = flags.FLAGS
 # Program flags.
 flags.DEFINE_enum('mode', 'train', ['train', 'eval', 'sample'],
                   'Whether to train, evaluate, or sample from the model.')
-flags.DEFINE_string('model_dir', '~/tmp/ddsp',
-                    'Path where checkpoints and summary events will be located '
+flags.DEFINE_string('save_dir', '~/tmp/ddsp',
+                    'Path where checkpoints and summary events will be saved '
                     'during training and evaluation.')
+flags.DEFINE_string('restore_dir', '',
+                    'Path from which checkpoints will be restored before '
+                    'training. Can be different than the save_dir.')
 flags.DEFINE_string('tpu', '', 'Address of the TPU. No TPU if left blank.')
 flags.DEFINE_multi_string('gpu', [],
                           'Addresses of GPUs for sync data-parallel training.'
@@ -111,7 +114,14 @@ def delay_start():
     time.sleep(delay_time)
 
 
-def parse_gin(model_dir):
+def get_latest_operative_config(restore_dir):
+  """Finds the most recently saved operative_config in a directory."""
+  file_paths = tf.io.gfile.glob(os.path.join(restore_dir, 'operative_config*'))
+  get_iter = lambda file_path: int(file_path.split('-')[-1].split('.gin')[0])
+  return max(file_paths, key=get_iter)
+
+
+def parse_gin(restore_dir):
   """Parse gin config from --gin_file, --gin_param, and the model directory."""
   # Add user folders to the gin search path.
   for gin_search_path in [GIN_PATH] + FLAGS.gin_search_path:
@@ -125,8 +135,9 @@ def parse_gin(model_dir):
     gin.parse_config_file(os.path.join('optimization', opt_default))
 
     # Load operative_config if it exists (model has already trained).
-    operative_config = os.path.join(model_dir, 'operative_config-0.gin')
+    operative_config = get_latest_operative_config(restore_dir)
     if tf.io.gfile.exists(operative_config):
+      logging.info('Using operative config: %s', operative_config)
       gin.parse_config_file(operative_config, skip_unknown=True)
 
     # User gin config and user hyperparameters from flags.
@@ -149,8 +160,14 @@ def allow_memory_growth():
 
 def main(unused_argv):
   """Parse gin config and run ddsp training, evaluation, or sampling."""
-  model_dir = os.path.expanduser(FLAGS.model_dir)
-  parse_gin(model_dir)
+  restore_dir = os.path.expanduser(FLAGS.restore_dir)
+  save_dir = os.path.expanduser(FLAGS.save_dir)
+  # If no separate restore directory is given, use the save directory.
+  restore_dir = save_dir if not restore_dir else restore_dir
+  logging.info('Restore Dir: %s', restore_dir)
+  logging.info('Save Dir: %s', save_dir)
+
+  parse_gin(restore_dir)
   if FLAGS.allow_memory_growth:
     allow_memory_growth()
 
@@ -163,7 +180,8 @@ def main(unused_argv):
 
     train_util.train(data_provider=gin.REQUIRED,
                      trainer=trainer,
-                     model_dir=model_dir)
+                     save_dir=save_dir,
+                     restore_dir=restore_dir)
 
   # Evaluation.
   elif FLAGS.mode == 'eval':
@@ -171,7 +189,7 @@ def main(unused_argv):
     delay_start()
     eval_util.evaluate(data_provider=gin.REQUIRED,
                        model=model,
-                       model_dir=model_dir)
+                       model_dir=save_dir)
 
   # Sampling.
   elif FLAGS.mode == 'sample':
@@ -179,7 +197,7 @@ def main(unused_argv):
     delay_start()
     eval_util.sample(data_provider=gin.REQUIRED,
                      model=model,
-                     model_dir=model_dir)
+                     model_dir=save_dir)
 
 
 def console_entry_point():
