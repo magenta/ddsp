@@ -155,10 +155,9 @@ def diff(x, axis=-1):
   begin_front = [0 for _ in range(len(shape))]
   begin_front[axis] = 1
 
-  size = shape.as_list()
-  size[axis] -= 1
-  slice_front = tf.slice(x, begin_front, size)
-  slice_back = tf.slice(x, begin_back, size)
+  shape[axis] -= 1
+  slice_front = tf.slice(x, begin_front, shape)
+  slice_back = tf.slice(x, begin_back, shape)
   d = slice_front - slice_back
   return d
 

@@ -40,6 +40,25 @@ class STFTTest(tf.test.TestCase):
     self.assertAllClose(np.abs(s_np), np.abs(s_tf), rtol=1e-3, atol=1e-3)
 
 
+class DiffTest(tf.test.TestCase):
+
+  def test_shape_is_correct(self):
+    n_batch = 2
+    n_time = 125
+    n_freq = 100
+    mag = tf.ones([n_batch, n_time, n_freq])
+
+    diff = spectral_ops.diff
+    delta_t = diff(mag, axis=1)
+    self.assertEqual(delta_t.shape[1], mag.shape[1]-1)
+    delta_delta_t = diff(delta_t, axis=1)
+    self.assertEqual(delta_delta_t.shape[1], mag.shape[1]-2)
+    delta_f = diff(mag, axis=2)
+    self.assertEqual(delta_f.shape[2], mag.shape[2]-1)
+    delta_delta_f = diff(delta_f, axis=2)
+    self.assertEqual(delta_delta_f.shape[2], mag.shape[2]-2)
+
+
 class LoudnessTest(tf.test.TestCase):
 
   def test_tf_and_np_are_consistent(self):

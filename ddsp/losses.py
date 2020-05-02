@@ -135,8 +135,9 @@ class SpectralLoss(tfkl.Layer):
                                                      self.loss_type)
 
     if self.loudness_weight > 0:
-      target = spectral_ops.compute_loudness(target_audio, n_fft=2048)
-      value = spectral_ops.compute_loudness(audio, n_fft=2048)
+      target = spectral_ops.compute_loudness(target_audio, n_fft=2048,
+                                             use_tf=True)
+      value = spectral_ops.compute_loudness(audio, n_fft=2048, use_tf=True)
       loss += self.loudness_weight * mean_difference(target, value,
                                                      self.loss_type)
 

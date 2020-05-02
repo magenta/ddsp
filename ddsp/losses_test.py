@@ -23,10 +23,19 @@ import tensorflow.compat.v2 as tf
 class SpectralLossTest(tf.test.TestCase):
 
   def test_output_shape_is_correct(self):
-    loss_obj = losses.SpectralLoss()
+    """Test correct shape with all losses active."""
+    loss_obj = losses.SpectralLoss(
+        mag_weight=1.0,
+        delta_time_weight=1.0,
+        delta_delta_time_weight=1.0,
+        delta_freq_weight=1.0,
+        delta_delta_freq_weight=1.0,
+        logmag_weight=1.0,
+        loudness_weight=1.0,
+    )
 
-    input_audio = tf.random.uniform((3, 16000), dtype=tf.float32)
-    target_audio = tf.random.uniform((3, 16000), dtype=tf.float32)
+    input_audio = tf.random.uniform((3, 8000), dtype=tf.float32)
+    target_audio = tf.random.uniform((3, 8000), dtype=tf.float32)
 
     loss = loss_obj(input_audio, target_audio)
 
