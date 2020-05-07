@@ -80,10 +80,6 @@ def get_latest_chekpoint(checkpoint_path):
 def get_latest_operative_config(restore_dir):
   """Finds the most recently saved operative_config in a directory."""
   file_paths = tf.io.gfile.glob(os.path.join(restore_dir, 'operative_config*'))
-  if not file_paths:
-    raise ValueError('Operative config not found. Directory {} must contain '
-                     'an operative_config_[iteration].gin '
-                     'file.'.format(restore_dir))
   get_iter = lambda file_path: int(file_path.split('-')[-1].split('.gin')[0])
   return max(file_paths, key=get_iter) if file_paths else ''
 
