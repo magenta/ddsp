@@ -28,6 +28,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow.compat.v2 as tf
 
+
 # Global values for evaluation.
 MIN_F0_CONFIDENCE = 0.85
 OUTLIER_MIDI_THRESH = 12
