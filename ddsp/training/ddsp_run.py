@@ -114,13 +114,6 @@ def delay_start():
     time.sleep(delay_time)
 
 
-def get_latest_operative_config(restore_dir):
-  """Finds the most recently saved operative_config in a directory."""
-  file_paths = tf.io.gfile.glob(os.path.join(restore_dir, 'operative_config*'))
-  get_iter = lambda file_path: int(file_path.split('-')[-1].split('.gin')[0])
-  return max(file_paths, key=get_iter)
-
-
 def parse_gin(restore_dir):
   """Parse gin config from --gin_file, --gin_param, and the model directory."""
   # Add user folders to the gin search path.
@@ -135,7 +128,7 @@ def parse_gin(restore_dir):
     gin.parse_config_file(os.path.join('optimization', opt_default))
 
     # Load operative_config if it exists (model has already trained).
-    operative_config = get_latest_operative_config(restore_dir)
+    operative_config = train_util.get_latest_operative_config(restore_dir)
     if tf.io.gfile.exists(operative_config):
       logging.info('Using operative config: %s', operative_config)
       gin.parse_config_file(operative_config, skip_unknown=True)
