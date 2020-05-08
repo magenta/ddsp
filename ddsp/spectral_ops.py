@@ -258,7 +258,13 @@ def compute_f0(audio, sample_rate, frame_rate, viterbi=True):
   n_frames = np.ceil(n_secs * frame_rate)
   n_samples_padded = (n_frames - 1) * hop_size + frame_size
   n_padding = (n_samples_padded - n_samples) * sample_rate / _CREPE_SAMPLE_RATE
-  assert n_padding % 1 == 0
+  if n_padding % 1:
+    raise ValueError(
+        f'For F0 estimation, frame rate ({frame_rate}) must evenly divide '
+        f'sample rate ({sample_rate}), to give an integer hop size '
+        f'({hop_size}). Sample rate ({sample_rate}) must also be evenly '
+        f'divided by the CREPE sample rate ({_CREPE_SAMPLE_RATE}), to give an '
+        f'integer number of samples to pad ({n_padding}).')
   audio = np.pad(audio, (0, int(n_padding)), mode='constant')
   crepe_step_size = 1000 / frame_rate  # milliseconds
 
