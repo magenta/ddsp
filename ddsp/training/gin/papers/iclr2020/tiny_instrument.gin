@@ -1,0 +1,7 @@
+# -*-Python-*-
+# The 'Tiny Model' config shown in
+# https://storage.googleapis.com/ddsp/index.html#tiny
+include 'papers/iclr2020/solo_instrument.gin'
+
+RnnFcDecoder.layers_per_stack = 0
+RnnFcDecoder.rnn_channels = 256
