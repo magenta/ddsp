@@ -186,11 +186,17 @@ def compute_loudness(audio,
       corresponds to white noise with amplitude=1.0 and n_fft=2048. There is a
       slight dependence on fft_size due to different granularity of perceptual
       weighting.
-    use_tf: Make function differentiable by using librosa.
+    use_tf: Make function differentiable by using tensorflow.
 
   Returns:
     Loudness in decibels. Shape [batch_size, n_frames] or [n_frames,].
   """
+  if sample_rate % frame_rate != 0:
+    raise ValueError(
+        'frame_rate: {} must evenly divide sample_rate: {}.'
+        'For default frame_rate: 250Hz, suggested sample_rate: 16kHz or 48kHz'
+        .format(frame_rate, sample_rate))
+
   # Pick tensorflow or numpy.
   lib = tf if use_tf else np
 
@@ -229,6 +235,15 @@ def compute_loudness(audio,
 
   # Remove temporary batch dimension.
   loudness = loudness[0] if is_1d else loudness
+
+  # Compute expected length of loudness vector
+  n_secs = audio.shape[-1] / float(
+      sample_rate)  # `n_secs` can have milliseconds
+  expected_len = int(n_secs * frame_rate)
+
+  # Pad with `-range_db` noise floor or trim vector
+  loudness = pad_or_trim_to_expected_length(
+      loudness, expected_len, -range_db, use_tf=use_tf)
   return loudness
 
 
@@ -248,25 +263,9 @@ def compute_f0(audio, sample_rate, frame_rate, viterbi=True):
     f0_confidence: Confidence in Hz estimate (scaled [0, 1]). Shape [n_frames,].
   """
 
-  # Pad end so that `n_frames = n_sec * frame_rate`.
-  # We compute this using the CREPE model's sample rate and then convert back to
-  # our sample rate.
-  n_secs = len(audio) / sample_rate
-  n_samples = n_secs * _CREPE_SAMPLE_RATE
-  hop_size = sample_rate / frame_rate
-  frame_size = _CREPE_FRAME_SIZE
-  n_frames = np.ceil(n_secs * frame_rate)
-  n_samples_padded = (n_frames - 1) * hop_size + frame_size
-  n_padding = (n_samples_padded - n_samples) * sample_rate / _CREPE_SAMPLE_RATE
-  if n_padding % 1:
-    raise ValueError(
-        f'For F0 estimation, frame rate ({frame_rate}) must evenly divide '
-        f'sample rate ({sample_rate}), to give an integer hop size '
-        f'({hop_size}). Sample rate ({sample_rate}) must also be evenly '
-        f'divided by the CREPE sample rate ({_CREPE_SAMPLE_RATE}), to give an '
-        f'integer number of samples to pad ({n_padding}).')
-  audio = np.pad(audio, (0, int(n_padding)), mode='constant')
+  n_secs = len(audio) / float(sample_rate)  # `n_secs` can have milliseconds
   crepe_step_size = 1000 / frame_rate  # milliseconds
+  expected_len = int(n_secs * frame_rate)
 
   # Compute f0 with crepe.
   _, f0_hz, f0_confidence, _ = crepe.predict(
@@ -277,11 +276,74 @@ def compute_f0(audio, sample_rate, frame_rate, viterbi=True):
       center=False,
       verbose=0)
 
-  # Postprocessing.
-  f0_confidence = np.nan_to_num(f0_confidence)   # Set nans to 0 in confidence.
+  # Postprocessing on f0_hz
+  f0_hz = pad_or_trim_to_expected_length(f0_hz, expected_len, 0)  # pad with 0
   f0_hz = f0_hz.astype(np.float32)
+
+  # Postprocessing on f0_confidence
+  f0_confidence = pad_or_trim_to_expected_length(f0_confidence, expected_len, 1)
+  f0_confidence = np.nan_to_num(f0_confidence)   # Set nans to 0 in confidence
   f0_confidence = f0_confidence.astype(np.float32)
   return f0_hz, f0_confidence
+
+
+def pad_or_trim_to_expected_length(vector,
+                                   expected_len,
+                                   pad_value=0,
+                                   len_tolerance=20,
+                                   use_tf=False):
+  """Make vector equal to the expected length.
+
+  Feature extraction functions like `compute_loudness()` or `compute_f0` produce
+  feature vectors that vary in length depending on factors such as `sample_rate`
+  or `hop_size`. This function corrects vectors to the expected length, warning
+  the user if the difference between the vector and expected length was
+  unusually high to begin with.
+
+  Args:
+    vector: Numpy 1D ndarray. Shape [vector_length,]
+    expected_len: Expected length of vector.
+    pad_value: Value to pad at end of vector.
+    len_tolerance: Tolerance of difference between original and desired vector
+      length.
+    use_tf: Make function differentiable by using tensorflow.
+
+  Returns:
+    vector: Vector with corrected length.
+
+  Raises:
+    ValueError: if `len(vector)` is different from `expected_len` beyond
+    `len_tolerance` to begin with.
+  """
+  expected_len = int(expected_len)
+  vector_len = vector.shape[-1]
+
+  if abs(vector_len - expected_len) > len_tolerance:
+    # Ensure vector was close to expected length to begin with
+    raise ValueError('Vector length: {} differs from expected length: {} '
+                     'beyond tolerance of : {}'.format(vector.shape[-1],
+                                                       expected_len,
+                                                       len_tolerance))
+  # Pick tensorflow or numpy.
+  lib = tf if use_tf else np
+
+  is_1d = (len(vector.shape) == 1)
+  vector = vector[lib.newaxis, :] if is_1d else vector
+
+  # Pad missing samples
+  if vector_len < expected_len:
+    n_padding = expected_len - vector_len
+    vector = lib.pad(
+        vector, ((0, 0), (0, n_padding)),
+        mode='constant',
+        constant_values=pad_value)
+  # Trim samples
+  elif vector_len > expected_len:
+    vector = vector[..., :expected_len]
+
+  # Remove temporary batch dimension.
+  vector = vector[0] if is_1d else vector
+  return vector
 
 
 def reset_crepe():

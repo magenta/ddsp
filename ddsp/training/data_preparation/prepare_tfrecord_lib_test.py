@@ -75,7 +75,7 @@ class ProcessTaskBeamTest(parameterized.TestCase):
         self.assertFalse(any(np.isinf(arr)))
 
   @parameterized.named_parameters(('16k', 16000), ('24k', 24000),
-                                  ('44.1k', 44100), ('48k', 48000))
+                                  ('48k', 48000))
   def test_prepare_tfrecord(self, sample_rate):
     frame_rate = 250
     window_secs = 1
@@ -100,7 +100,7 @@ class ProcessTaskBeamTest(parameterized.TestCase):
         })
 
   @parameterized.named_parameters(('16k', 16000), ('24k', 24000),
-                                  ('44.1k', 44100), ('48k', 48000))
+                                  ('48k', 48000))
   def test_prepare_tfrecord_no_split(self, sample_rate):
     frame_rate = 250
     prepare_tfrecord_lib.prepare_tfrecord(
@@ -122,7 +122,7 @@ class ProcessTaskBeamTest(parameterized.TestCase):
         })
 
   @parameterized.named_parameters(('16k', 16000), ('24k', 24000),
-                                  ('44.1k', 44100), ('48k', 48000))
+                                  ('48k', 48000))
   def test_prepare_tfrecord_no_f0_and_loudness(self, sample_rate):
     prepare_tfrecord_lib.prepare_tfrecord(
         [self.wav_path],
