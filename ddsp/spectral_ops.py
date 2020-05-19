@@ -266,6 +266,7 @@ def compute_f0(audio, sample_rate, frame_rate, viterbi=True):
   n_secs = len(audio) / float(sample_rate)  # `n_secs` can have milliseconds
   crepe_step_size = 1000 / frame_rate  # milliseconds
   expected_len = int(n_secs * frame_rate)
+  audio = np.asarray(audio)
 
   # Compute f0 with crepe.
   _, f0_hz, f0_confidence, _ = crepe.predict(
