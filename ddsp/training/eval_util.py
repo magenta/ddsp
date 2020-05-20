@@ -128,7 +128,7 @@ def f0_dist_conf_thresh(f0_hz,
 class F0LoudnessMetrics(object):
   """Helper object for computing f0 and loudness metrics."""
 
-  def __init__(self):
+  def __init__(self, sample_rate):
     self.metrics = {
         'loudness_db': tf.keras.metrics.Mean('loudness_db'),
         'f0_encoder': tf.keras.metrics.Mean('f0_encoder'),
@@ -136,6 +136,7 @@ class F0LoudnessMetrics(object):
         'f0_crepe_outlier_ratio':
             tf.keras.metrics.Accuracy('f0_crepe_outlier_ratio'),
     }
+    self._sample_rate = sample_rate
 
   def update_state(self, batch, audio_gen, f0_hz_predict):
     """Update metrics based on a batch of audio.
@@ -151,7 +152,8 @@ class F0LoudnessMetrics(object):
       # Extract features from generated audio example.
       keys = ['loudness_db', 'f0_hz', 'f0_confidence']
       feats = {k: v[i] for k, v in batch.items() if k in keys}
-      feats_gen = compute_audio_features(audio_gen[i])
+      feats_gen = compute_audio_features(
+          audio_gen[i], sample_rate=self._sample_rate)
 
       # Loudness metric.
       ld_dist = np.mean(l1_distance(feats['loudness_db'],
@@ -369,6 +371,9 @@ def evaluate_or_sample(data_provider,
                                     shuffle=False,
                                     repeats=-1)
 
+  # Get audio sample rate
+  sample_rate = data_provider.sample_rate
+
   with summary_writer.as_default():
     for checkpoint_path in checkpoints_iterator:
       step = int(checkpoint_path.split('-')[-1])
@@ -392,11 +397,12 @@ def evaluate_or_sample(data_provider,
           audio = batch['audio']
           # TODO(jesseengel): Find a way to add losses with training=False.
           audio_gen, losses = model(batch, return_losses=True, training=True)
+          audio_gen = np.array(audio_gen)
           outputs = model.get_controls(batch, training=True)
 
           # Create metrics on first batch.
           if mode == 'eval' and batch_idx == 1:
-            f0_loudness_metrics = F0LoudnessMetrics()
+            f0_loudness_metrics = F0LoudnessMetrics(sample_rate=sample_rate)
             avg_losses = {
                 name: tf.keras.metrics.Mean(name=name, dtype=tf.float32)
                 for name in list(losses.keys())}
@@ -418,8 +424,8 @@ def evaluate_or_sample(data_provider,
             logging.info('Writing summmaries for batch %d', batch_idx)
 
             # Add audio.
-            audio_summary(audio_gen, step, name='audio_generated')
-            audio_summary(audio, step, name='audio_original')
+            audio_summary(audio_gen, step, sample_rate, name='audio_generated')
+            audio_summary(audio, step, sample_rate, name='audio_original')
 
             # Add plots.
             waveform_summary(audio, audio_gen, step)
