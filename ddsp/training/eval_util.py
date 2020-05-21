@@ -106,6 +106,12 @@ def f0_dist_conf_thresh(f0_hz,
     delta_f0_mean: Float or None if entire generated sample had
       f0_confidence below threshold. In units of MIDI (logarithmic frequency).
   """
+  if len(f0_hz.shape) > 2:
+    f0_hz = f0_hz[:, :, 0]
+  if len(f0_hz_gen.shape) > 2:
+    f0_hz_gen = f0_hz_gen[:, :, 0]
+  if len(f0_confidence.shape) > 2:
+    f0_confidence = f0_confidence[:, :, 0]
 
   if np.max(f0_confidence) < f0_confidence_thresh:
     # Generated audio is not good enough for reliable pitch tracking.
@@ -394,8 +400,9 @@ def evaluate_or_sample(data_provider,
 
           # Predict a batch of audio.
           batch = next(dataset_iter)
-          audio = batch['audio']
+
           # TODO(jesseengel): Find a way to add losses with training=False.
+          audio = batch['audio']
           audio_gen, losses = model(batch, return_losses=True, training=True)
           audio_gen = np.array(audio_gen)
           outputs = model.get_controls(batch, training=True)
@@ -407,10 +414,10 @@ def evaluate_or_sample(data_provider,
                 name: tf.keras.metrics.Mean(name=name, dtype=tf.float32)
                 for name in list(losses.keys())}
 
-
-          # Resample f0_hz outputs to match batch if they don't already.
           has_f0 = ('f0_hz' in outputs and 'f0_hz' in batch)
+
           if has_f0:
+            # Resample f0_hz outputs to match batch if they don't already.
             output_length = outputs['f0_hz'].shape[1]
             batch_length = batch['f0_hz'].shape[1]
             if output_length != batch_length:

@@ -242,10 +242,10 @@ class Trainer(object):
       return dataset
 
   @tf.function
-  def train_step(self, dataset_iter):
+  def train_step(self, inputs):
     """Distributed training step."""
-    # Wrap in distribution strategy, slight speedup passing in iter vs batch.
-    batch = next(dataset_iter)
+    # Wrap iterator in tf.function, slight speedup passing in iter vs batch.
+    batch = next(inputs) if hasattr(inputs, '__next__') else inputs
     losses = self.run(self.step_fn, batch)
     # Add up the scalar losses across replicas.
     n_replicas = self.strategy.num_replicas_in_sync
@@ -273,7 +273,7 @@ def train(data_provider,
           save_dir='~/tmp/ddsp',
           restore_dir='~/tmp/ddsp'):
   """Main training loop."""
-  # Get a distributed dataset.
+  # Get a distributed dataset iterator.
   dataset = data_provider.get_batch(batch_size, shuffle=True, repeats=-1)
   dataset = trainer.distribute_dataset(dataset)
   dataset_iter = iter(dataset)

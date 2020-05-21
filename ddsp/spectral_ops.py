@@ -317,12 +317,12 @@ def pad_or_trim_to_expected_length(vector,
     `len_tolerance` to begin with.
   """
   expected_len = int(expected_len)
-  vector_len = vector.shape[-1]
+  vector_len = int(vector.shape[-1])
 
   if abs(vector_len - expected_len) > len_tolerance:
     # Ensure vector was close to expected length to begin with
     raise ValueError('Vector length: {} differs from expected length: {} '
-                     'beyond tolerance of : {}'.format(vector.shape[-1],
+                     'beyond tolerance of : {}'.format(vector_len,
                                                        expected_len,
                                                        len_tolerance))
   # Pick tensorflow or numpy.

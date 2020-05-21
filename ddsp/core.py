@@ -40,8 +40,11 @@ def tf_float32(x):
 
 
 def make_iterable(x):
-  """Ensure that x is an iterable."""
-  return x if isinstance(x, collections.Iterable) else [x]
+  """Wrap in a list if not iterable, return empty list if None."""
+  if x is None:
+    return []
+  else:
+    return x if isinstance(x, collections.Iterable) else [x]
 
 
 def nested_lookup(nested_key: Text,
@@ -136,10 +139,10 @@ def resample(inputs: tf.Tensor,
       [batch_size, n_frames], [batch_size, n_frames, channels], or
       [batch_size, n_frames, n_freq, channels].
     n_timesteps: Time resolution of the output signal.
-    method: Type of resampling, must be in ['linear', 'cubic', 'window']. Linear
-      and cubic ar typical bilinear, bicubic interpolation. Window uses
-      overlapping windows (only for upsampling) which is smoother for amplitude
-      envelopes.
+    method: Type of resampling, must be in ['nearest', 'linear', 'cubic',
+      'window']. Linear and cubic ar typical bilinear, bicubic interpolation.
+      'window' uses overlapping windows (only for upsampling) which is smoother
+      for amplitude envelopes with large frame sizes.
     add_endpoint: Hold the last timestep for an additional step as the endpoint.
       Then, n_timesteps is divided evenly into n_frames segments. If false, use
       the last timestep as the endpoint, producing (n_frames - 1) segments with
@@ -151,7 +154,8 @@ def resample(inputs: tf.Tensor,
 
   Raises:
     ValueError: If method is 'window' and input is 4-D.
-    ValueError: If method is not one of 'linear', 'cubic', or 'window'.
+    ValueError: If method is not one of 'nearest', 'linear', 'cubic', or
+      'window'.
   """
   inputs = tf_float32(inputs)
   is_1d = len(inputs.shape) == 1
@@ -175,7 +179,9 @@ def resample(inputs: tf.Tensor,
     return outputs[:, :, 0, :] if not is_4d else outputs
 
   # Perform resampling.
-  if method == 'linear':
+  if method == 'nearest':
+    outputs = _image_resize(tf.compat.v1.image.ResizeMethod.NEAREST_NEIGHBOR)
+  elif method == 'linear':
     outputs = _image_resize(tf.compat.v1.image.ResizeMethod.BILINEAR)
   elif method == 'cubic':
     outputs = _image_resize(tf.compat.v1.image.ResizeMethod.BICUBIC)
@@ -183,7 +189,7 @@ def resample(inputs: tf.Tensor,
     outputs = upsample_with_windows(inputs, n_timesteps, add_endpoint)
   else:
     raise ValueError('Method ({}) is invalid. Must be one of {}.'.format(
-        method, "['linear', 'cubic', 'window']"))
+        method, "['nearest', 'linear', 'cubic', 'window']"))
 
   # Return outputs to the same dimensionality of the inputs.
   if is_1d:
