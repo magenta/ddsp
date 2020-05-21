@@ -273,6 +273,10 @@ def train(data_provider,
           save_dir='~/tmp/ddsp',
           restore_dir='~/tmp/ddsp'):
   """Main training loop."""
+  dataset = data_provider.get_batch(batch_size, shuffle=True, repeats=-1)
+  dataset = trainer.distribute_dataset(dataset)
+  dataset_iter = iter(dataset)
+
   # Get a distributed dataset.
   dataset = data_provider.get_batch(batch_size, shuffle=True, repeats=-1)
   dataset = trainer.distribute_dataset(dataset)
