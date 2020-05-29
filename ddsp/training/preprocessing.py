@@ -15,7 +15,6 @@
 # Lint as: python3
 """Library of preprocess functions."""
 
-import copy
 import ddsp
 import gin
 import tensorflow.compat.v2 as tf
@@ -44,6 +43,7 @@ class Preprocessor(object):
   def __call__(self, features, training=True):
     """Get outputs after preprocessing functions.
 
+    Copy inputs if in graph mode to preserve pure function (no side-effects).
     Args:
       features: dict of feature key and tensors
       training: boolean for controlling training-specfic preprocessing behavior
@@ -51,7 +51,7 @@ class Preprocessor(object):
     Returns:
       Dictionary of transformed features
     """
-    return copy.copy(features)
+    return ddsp.core.copy_if_tf_function(features)
 
 
 @gin.register
@@ -63,7 +63,7 @@ class DefaultPreprocessor(Preprocessor):
     self.time_steps = time_steps
 
   def __call__(self, features, training=True):
-    super().__call__(features, training)
+    features = super().__call__(features, training)
     return self._default_processing(features)
 
   def _default_processing(self, features):

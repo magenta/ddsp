@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 from typing import Any, Dict, Text, TypeVar
 
 import gin
@@ -45,6 +46,20 @@ def make_iterable(x):
     return []
   else:
     return x if isinstance(x, collections.Iterable) else [x]
+
+
+def copy_if_tf_function(x):
+  """Copy if wrapped by tf.function.
+
+  Prevents side-effects if x is the input to the tf.function and it is later
+  altered. If eager, avoids unnecessary copies.
+  Args:
+    x: Any inputs.
+
+  Returns:
+    A shallow copy of x if inside a tf.function.
+  """
+  return copy.copy(x) if not tf.executing_eagerly() else x
 
 
 def nested_lookup(nested_key: Text,
