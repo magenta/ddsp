@@ -819,7 +819,7 @@ def frequency_impulse_response(magnitudes: tf.Tensor,
   Args:
     magnitudes: Frequency transfer curve. Float32 Tensor of shape [batch,
       n_frames, n_frequencies] or [batch, n_frequencies]. The frequencies of the
-      last dimension are ordered as [0, f_nyqist / (n_frames -1), ...,
+      last dimension are ordered as [0, f_nyqist / (n_frequencies -1), ...,
       f_nyquist], where f_nyquist is (sample_rate / 2). Automatically splits the
       audio into equally sized frames to match frames in magnitudes.
     window_size: Size of the window to apply in the time domain. If window_size
@@ -899,7 +899,7 @@ def frequency_filter(audio: tf.Tensor,
     audio: Input audio. Tensor of shape [batch, audio_timesteps].
     magnitudes: Frequency transfer curve. Float32 Tensor of shape [batch,
       n_frames, n_frequencies] or [batch, n_frequencies]. The frequencies of the
-      last dimension are ordered as [0, f_nyqist / (n_frames -1), ...,
+      last dimension are ordered as [0, f_nyqist / (n_frequencies -1), ...,
       f_nyquist], where f_nyquist is (sample_rate / 2). Automatically splits the
       audio into equally sized frames to match frames in magnitudes.
     window_size: Size of the window to apply in the time domain. If window_size
