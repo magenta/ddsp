@@ -278,11 +278,11 @@ def train(data_provider,
   dataset = trainer.distribute_dataset(dataset)
   dataset_iter = iter(dataset)
 
-  # Load latest checkpoint if one exists in load directory.
-  trainer.restore(restore_dir)
-
   # Build model, easiest to just run forward pass.
   trainer.build(next(dataset_iter))
+
+  # Load latest checkpoint if one exists in load directory.
+  trainer.restore(restore_dir)
 
   # Set up the summary writer and metrics.
   summary_dir = os.path.join(save_dir, 'summaries', 'train')
