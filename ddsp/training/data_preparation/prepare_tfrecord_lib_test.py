@@ -21,7 +21,6 @@ import sys
 from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
-from ddsp.spectral_ops import _CREPE_SAMPLE_RATE
 from ddsp.training.data_preparation import prepare_tfrecord_lib
 import numpy as np
 import scipy.io.wavfile
@@ -93,7 +92,6 @@ class ProcessTaskBeamTest(parameterized.TestCase):
     self.validate_outputs(
         4, {
             'audio': window_secs * sample_rate,
-            'audio_crepe': window_secs * _CREPE_SAMPLE_RATE,
             'f0_hz': expected_f0_and_loudness_length,
             'f0_confidence': expected_f0_and_loudness_length,
             'loudness_db': expected_f0_and_loudness_length,
@@ -115,7 +113,6 @@ class ProcessTaskBeamTest(parameterized.TestCase):
     self.validate_outputs(
         1, {
             'audio': int(self.wav_secs * sample_rate),
-            'audio_crepe': int(self.wav_secs * _CREPE_SAMPLE_RATE),
             'f0_hz': expected_f0_and_loudness_length,
             'f0_confidence': expected_f0_and_loudness_length,
             'loudness_db': expected_f0_and_loudness_length,
@@ -135,8 +132,22 @@ class ProcessTaskBeamTest(parameterized.TestCase):
     self.validate_outputs(
         1, {
             'audio': int(self.wav_secs * sample_rate),
-            'audio_crepe': int(self.wav_secs * _CREPE_SAMPLE_RATE)
         })
+
+  @parameterized.named_parameters(
+      ('44.1k', 44100),)
+  def test_prepare_tfrecord_at_indivisible_sample_rate_throws_error(
+      self, sample_rate):
+    frame_rate = 250
+    with self.assertRaises(ValueError):
+      prepare_tfrecord_lib.prepare_tfrecord([self.wav_path],
+                                            os.path.join(
+                                                self.test_dir,
+                                                'output.tfrecord'),
+                                            num_shards=2,
+                                            sample_rate=sample_rate,
+                                            frame_rate=frame_rate,
+                                            window_secs=None)
 
 
 if __name__ == '__main__':
