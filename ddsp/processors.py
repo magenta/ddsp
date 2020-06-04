@@ -102,6 +102,7 @@ class ProcessorGroup(tfkl.Layer):
 
   def call(self, dag_inputs: TensorDict) -> tf.Tensor:
     """Like Processor, but specific to having an input dictionary."""
+    dag_inputs = core.copy_if_tf_function(dag_inputs)
     dag_outputs = self.get_controls(dag_inputs)
     signal = self.get_signal(dag_outputs)
     return signal

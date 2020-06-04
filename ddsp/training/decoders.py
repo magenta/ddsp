@@ -15,6 +15,7 @@
 # Lint as: python3
 """Library of encoder objects."""
 
+from ddsp import core
 from ddsp.training import nn
 import gin
 import tensorflow.compat.v2 as tf
@@ -39,6 +40,7 @@ class Decoder(tfkl.Layer):
 
   def call(self, conditioning):
     """Updates conditioning with dictionary of decoder outputs."""
+    conditioning = core.copy_if_tf_function(conditioning)
     x = self.decode(conditioning)
     outputs = nn.split_to_dict(x, self.output_splits)
 

@@ -13,14 +13,20 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Training code for DDSP models."""
+"""Constructs inference version of the models.
 
-from ddsp.training import data
-from ddsp.training import decoders
-from ddsp.training import encoders
-from ddsp.training import eval_util
-from ddsp.training import inference
+These models can be stored as SavedModels by calling model.save() and used
+just like other SavedModels.
+"""
+
 from ddsp.training import models
-from ddsp.training import nn
-from ddsp.training import preprocessing
-from ddsp.training import train_util
+import tensorflow.compat.v2 as tf
+
+
+class AutoencoderInference(models.Autoencoder):
+  """Create an inference-only version of the model."""
+
+  @tf.function
+  def call(self, features):
+    """Run the core of the network, get predictions and loss."""
+    return super().call(features, training=False)

@@ -29,6 +29,9 @@ The DDSP training libraries are separated into several modules:
     Layers to turn latents into ddsp processor inputs.
 *   [nn](./nn.py):
     Helper library of network functions and layers.
+*   [inference](./inference.py):
+    Model wrappers for efficient inference and the ability to store as
+    SavedModels.
 
 
 The main training file is `ddsp_run.py` and its helper libraries:
