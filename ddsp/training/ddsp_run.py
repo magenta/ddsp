@@ -68,6 +68,7 @@ from absl import logging
 from ddsp.training import eval_util
 from ddsp.training import models
 from ddsp.training import train_util
+from ddsp.training import trainers
 import gin
 import pkg_resources
 import tensorflow.compat.v2 as tf
@@ -169,7 +170,7 @@ def main(unused_argv):
     strategy = train_util.get_strategy(tpu=FLAGS.tpu, gpus=FLAGS.gpu)
     with strategy.scope():
       model = models.get_model()
-      trainer = train_util.Trainer(model, strategy)
+      trainer = trainers.Trainer(model, strategy)
 
     train_util.train(data_provider=gin.REQUIRED,
                      trainer=trainer,

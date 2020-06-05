@@ -19,6 +19,9 @@ The DDSP training libraries are separated into several modules:
 
 *   [data](./data.py):
     DataProvider objects that provide tf.data.Dataset.
+*   [inference](./inference.py):
+    Model wrappers for efficient inference and the ability to store as
+    SavedModels.
 *   [models](./models.py):
     Model objects to encapsulate training and evalution.
 *   [preprocessing](./preprocessing.py):
@@ -29,9 +32,6 @@ The DDSP training libraries are separated into several modules:
     Layers to turn latents into ddsp processor inputs.
 *   [nn](./nn.py):
     Helper library of network functions and layers.
-*   [inference](./inference.py):
-    Model wrappers for efficient inference and the ability to store as
-    SavedModels.
 
 
 The main training file is `ddsp_run.py` and its helper libraries:
@@ -40,8 +40,14 @@ The main training file is `ddsp_run.py` and its helper libraries:
     Main file for training, evaluating, and sampling from models.
 *   [train_util](./train_util.py):
     Helper functions for training including the Trainer object.
+*   [trainers](./trainers.py):
+    Helper objects to bind strategy, optimizer, and model, and define training step.
 *   [eval_util](./eval_util.py):
     Helper functions for evaluation and sampling.
+*   [metrics](./metrics.py):
+    Metrics for evaluation.
+*   [summaries](./summaries.py):
+    Summaries for tensorboard.
 
 While the modules in the `ddsp/` base directory can be used to train models
 with `tf.compat.v1` or `tf.compat.v2` this directory only uses `tf.compat.v2`.

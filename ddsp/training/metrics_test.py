@@ -17,7 +17,7 @@
 
 from absl.testing import parameterized
 from ddsp.spectral_ops_test import gen_np_sinusoid
-from ddsp.training.eval_util import compute_audio_features
+from ddsp.training.metrics import compute_audio_features
 import numpy as np
 import tensorflow.compat.v2 as tf
 
@@ -41,12 +41,12 @@ class ComputeAudioFeaturesTest(parameterized.TestCase, tf.test.TestCase):
       self.assertTrue(np.all(np.isfinite(arr)))
 
   @parameterized.named_parameters(
-      ('16k_2.1secs', 16000, 2.1),
-      ('24k_2.1secs', 24000, 2.1),
-      ('48k_2.1secs', 48000, 2.1),
-      ('16k_4secs', 16000, 4),
-      ('24k_4secs', 24000, 4),
-      ('48k_4secs', 48000, 4),
+      ('16k_.21secs', 16000, .21),
+      ('24k_.21secs', 24000, .21),
+      ('48k_.21secs', 48000, .21),
+      ('16k_.4secs', 16000, .4),
+      ('24k_.4secs', 24000, .4),
+      ('48k_.4secs', 48000, .4),
   )
   def test_correct_shape_compute_af_at_sample_rate(self, sample_rate,
                                                    audio_len_sec):
@@ -65,8 +65,8 @@ class ComputeAudioFeaturesTest(parameterized.TestCase, tf.test.TestCase):
         })
 
   @parameterized.named_parameters(
-      ('44.1k_2.1secs', 44100, 2.1),
-      ('44.1k_4secs', 44100, 4),
+      ('44.1k_.21secs', 44100, .21),
+      ('44.1k_.4secs', 44100, .4),
   )
   def test_indivisible_rates_raises_error_compute_af(self, sample_rate,
                                                      audio_len_sec):
