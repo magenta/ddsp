@@ -16,10 +16,15 @@
 """Tests for ddsp.training.eval_util."""
 
 from absl.testing import parameterized
-from ddsp.spectral_ops_test import gen_np_sinusoid
 from ddsp.training.metrics import compute_audio_features
 import numpy as np
 import tensorflow.compat.v2 as tf
+
+
+def gen_np_sinusoid(frequency, amp, sample_rate, audio_len_sec):
+  x = np.linspace(0, audio_len_sec, int(audio_len_sec * sample_rate))
+  audio_sin = amp * (np.sin(2 * np.pi * frequency * x))
+  return audio_sin
 
 
 class ComputeAudioFeaturesTest(parameterized.TestCase, tf.test.TestCase):
