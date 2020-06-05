@@ -61,7 +61,7 @@ def _load_audio(audio_path, sample_rate):
   return {'audio': audio}
 
 
-def _add_loudness(ex, sample_rate, frame_rate, n_fft=2048):
+def add_loudness(ex, sample_rate, frame_rate, n_fft=2048):
   """Add loudness in dB."""
   beam.metrics.Metrics.counter('prepare-tfrecord', 'compute-loudness').inc()
   audio = ex['audio']
@@ -85,7 +85,7 @@ def _add_f0_estimate(ex, sample_rate, frame_rate):
   return ex
 
 
-def _split_example(
+def split_example(
     ex, sample_rate, frame_rate, window_secs, hop_secs):
   """Splits example into windows, padding final window if needed."""
 
@@ -113,7 +113,7 @@ def _split_example(
     }
 
 
-def _float_dict_to_tfexample(float_dict):
+def float_dict_to_tfexample(float_dict):
   """Convert dictionary of float arrays to tf.train.Example proto."""
   return tf.train.Example(
       features=tf.train.Features(
@@ -164,16 +164,16 @@ def prepare_tfrecord(
       examples = (
           examples
           | beam.Map(_add_f0_estimate, sample_rate, frame_rate)
-          | beam.Map(_add_loudness, sample_rate, frame_rate))
+          | beam.Map(add_loudness, sample_rate, frame_rate))
 
     if window_secs:
       examples |= beam.FlatMap(
-          _split_example, sample_rate, frame_rate, window_secs, hop_secs)
+          split_example, sample_rate, frame_rate, window_secs, hop_secs)
 
     _ = (
         examples
         | beam.Reshuffle()
-        | beam.Map(_float_dict_to_tfexample)
+        | beam.Map(float_dict_to_tfexample)
         | beam.io.tfrecordio.WriteToTFRecord(
             output_tfrecord_path,
             num_shards=num_shards,
