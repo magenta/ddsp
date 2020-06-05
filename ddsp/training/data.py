@@ -148,20 +148,21 @@ class NSynthTfds(TfdsProvider):
     return dataset
 
 
-@gin.register
-class TFRecordProvider(DataProvider):
-  """Class for reading TFRecord and returning a dataset."""
+class RecordProvider(DataProvider):
+  """Class for reading records and returning a dataset."""
 
   def __init__(self,
-               file_pattern=None,
-               example_secs=4,
-               sample_rate=16000,
-               frame_rate=250):
-    """TFRecordProvider constructor."""
+               file_pattern,
+               example_secs,
+               sample_rate,
+               frame_rate,
+               data_format_map_fn):
+    """RecordProvider constructor."""
     self._file_pattern = file_pattern or self.default_file_pattern
     self._audio_length = example_secs * sample_rate
     self._feature_length = example_secs * frame_rate
     super().__init__(sample_rate)
+    self._data_format_map_fn = data_format_map_fn
 
   @property
   def default_file_pattern(self):
@@ -184,7 +185,7 @@ class TFRecordProvider(DataProvider):
 
     filenames = tf.data.Dataset.list_files(self._file_pattern, shuffle=shuffle)
     dataset = filenames.interleave(
-        map_func=tf.data.TFRecordDataset,
+        map_func=self._data_format_map_fn,
         cycle_length=40,
         num_parallel_calls=_AUTOTUNE)
     dataset = dataset.map(parse_tfexample, num_parallel_calls=_AUTOTUNE)
@@ -203,5 +204,19 @@ class TFRecordProvider(DataProvider):
         'loudness_db':
             tf.io.FixedLenFeature([self._feature_length], dtype=tf.float32),
     }
+
+
+@gin.register
+class TFRecordProvider(RecordProvider):
+  """Class for reading TFRecords and returning a dataset."""
+
+  def __init__(self,
+               file_pattern=None,
+               example_secs=4,
+               sample_rate=16000,
+               frame_rate=250):
+    """TFRecordProvider constructor."""
+    super().__init__(file_pattern, example_secs, sample_rate,
+                     frame_rate, tf.data.TFRecordDataset)
 
 
