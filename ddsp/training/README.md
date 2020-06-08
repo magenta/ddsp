@@ -18,43 +18,43 @@ experiments and has a higher chance of making breaking changes in the future.*
 The DDSP training libraries are separated into several modules:
 
 *   [data](./data.py):
-    DataProvider objects that provide tf.data.Dataset.
-*   [inference](./inference.py):
-    Model wrappers for efficient inference and the ability to store as
-    SavedModels.
+    DataProvider objects provide tf.data.Dataset.
 *   [models](./models.py):
-    Model objects to encapsulate training and evalution.
+    Model objects define the full forward pass and losses.
 *   [preprocessing](./preprocessing.py):
-    Helper library of objects to format and scale model inputs.
+    Preprocessor objects format and scale model inputs.
 *   [encoders](./encoders.py):
     Layers to turn preprocessor outputs into latents.
 *   [decoders](./decoders.py):
     Layers to turn latents into ddsp processor inputs.
 *   [nn](./nn.py):
-    Helper library of network functions and layers.
+    Network functions and layers.
+*   [inference](./inference.py):
+    Model wrappers for efficient inference and the ability to store as
+    SavedModels.
 
 
 The main training file is `ddsp_run.py` and its helper libraries:
 
 *   [ddsp_run](./ddsp_run.py):
-    Main file for training, evaluating, and sampling from models.
+    Main file for launching training, evaluation, and sampling runs.
 *   [train_util](./train_util.py):
-    Helper functions for training including the Trainer object.
+    Training loop and helper functions.
 *   [trainers](./trainers.py):
-    Helper objects to bind strategy, optimizer, and model, and define training step.
+    Training step defined by helper objects that bind the strategy, optimizer, and model.
 *   [eval_util](./eval_util.py):
-    Helper functions for evaluation and sampling.
+    Evaluation and sampling loop.
 *   [metrics](./metrics.py):
     Metrics for evaluation.
 *   [summaries](./summaries.py):
-    Summaries for tensorboard.
+    Summaries for tensorboard images and audio of samples.
 
 While the modules in the `ddsp/` base directory can be used to train models
 with `tf.compat.v1` or `tf.compat.v2` this directory only uses `tf.compat.v2`.
 
 ## Quickstart
 
-The [pip installation](../README.md#installation) includes several scripts that can be called directly from
+The [pip installation](../../README.md#installation) includes several scripts that can be called directly from
 the command line.
 
 Hyperparameters are configured via gin, and `ddsp_run.py` must be given two
