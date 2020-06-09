@@ -63,6 +63,8 @@ def evaluate_or_sample(data_provider,
 
   # Get audio sample rate
   sample_rate = data_provider.sample_rate
+  # Get feature frame rate
+  frame_rate = data_provider.frame_rate
 
   with summary_writer.as_default():
     for checkpoint_path in checkpoints_iterator:
@@ -93,8 +95,13 @@ def evaluate_or_sample(data_provider,
 
           # Create metrics on first batch.
           if mode == 'eval' and batch_idx == 1:
-            f0_loudness_metrics = metrics.F0LoudnessMetrics(
-                sample_rate=sample_rate)
+            loudness_metrics = metrics.LoudnessMetrics(
+                sample_rate=sample_rate, frame_rate=frame_rate)
+            f0_crepe_metrics = metrics.F0CrepeMetrics(
+                sample_rate=sample_rate, frame_rate=frame_rate)
+            f0_metrics = metrics.F0Metrics(
+                sample_rate=sample_rate, frame_rate=frame_rate)
+
             avg_losses = {
                 name: tf.keras.metrics.Mean(name=name, dtype=tf.float32)
                 for name in list(losses.keys())}
@@ -135,10 +142,9 @@ def evaluate_or_sample(data_provider,
             logging.info('Calculating metrics for batch %d', batch_idx)
 
             if has_f0:
-              # F0 and loudness.
-              f0_loudness_metrics.update_state(batch,
-                                               audio_gen,
-                                               outputs['f0_hz'])
+              loudness_metrics.update_state(batch, audio_gen)
+              f0_crepe_metrics.update_state(batch, audio_gen)
+              f0_metrics.update_state(batch, outputs['f0_hz'])
 
             # Loss.
             for k, v in losses.items():
@@ -156,7 +162,9 @@ def evaluate_or_sample(data_provider,
 
       if mode == 'eval':
         if has_f0:
-          f0_loudness_metrics.flush(step)
+          loudness_metrics.flush(step)
+          f0_crepe_metrics.flush(step)
+          f0_metrics.flush(step)
         for k, metric in avg_losses.items():
           tf.summary.scalar('losses/{}'.format(k), metric.result(), step=step)
           metric.reset_states()

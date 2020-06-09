@@ -78,7 +78,7 @@ def f0_dist_conf_thresh(f0_hz,
 
   We take the following steps:
   - Define a `keep_mask` that only select f0 values above when f0_confidence in
-  the GENERATED AUDIO (not ground truth) exceeds a minimum threshold.
+  the original audio exceeds a minimum threshold.
   Experimentation by jessengel@ and hanoih@ found this to be optimal way to
   filter out bad f0 pitch tracking.
   - Compute `delta_f0` between generated audio and ground truth audio.
@@ -126,85 +126,181 @@ def f0_dist_conf_thresh(f0_hz,
 
 
 # ---------------------- Metrics -----------------------------------------------
-class F0LoudnessMetrics(object):
-  """Helper object for computing f0 and loudness metrics."""
+class BaseMetrics(object):
+  """Base object for computing metrics on generated audio samples."""
 
-  def __init__(self, sample_rate):
-    self.metrics = {
-        'loudness_db': tf.keras.metrics.Mean('loudness_db'),
-        'f0_encoder': tf.keras.metrics.Mean('f0_encoder'),
-        'f0_crepe': tf.keras.metrics.Mean('f0_crepe'),
-        'f0_crepe_outlier_ratio':
-            tf.keras.metrics.Accuracy('f0_crepe_outlier_ratio'),
-    }
+  def __init__(self, sample_rate, frame_rate, metrics_name):
+    """Constructor.
+
+    Args:
+      sample_rate: audio sample rate
+      frame_rate: feature frame rate
+      metrics_name: name to printed when logging
+    """
     self._sample_rate = sample_rate
+    self._frame_rate = frame_rate
+    self._metrics_name = metrics_name
 
-  def update_state(self, batch, audio_gen, f0_hz_predict):
+  @property
+  def metrics(self):
+    """Initialize metrics dictionary with keys and keras metric objects."""
+    raise NotImplementedError()
+
+  def update_state(self):
+    """Update running state of metric."""
+    raise NotImplementedError()
+
+  def flush(self, step):
+    """Add summaries for each metric and reset the state."""
+    # Log metrics
+    logging.info('Computing %s metrics complete. Flushing all metrics',
+                 self._metrics_name)
+    metrics_str = ' | '.join(
+        '{}: {:0.3f}'.format(k, v.result()) for k, v in self.metrics.items())
+    logging.info(metrics_str)
+
+    # Write tf summaries.
+    for name, metric in self.metrics.items():
+      tf.summary.scalar('metrics/{}'.format(name), metric.result(), step)
+      metric.reset_states()
+
+
+class LoudnessMetrics(BaseMetrics):
+  """Helper object for computing loudness metrics."""
+
+  def __init__(self, sample_rate, frame_rate):
+    super().__init__(
+        sample_rate=sample_rate, frame_rate=frame_rate, metrics_name='Loudness')
+    self._metrics = {
+        'loudness_db': tf.keras.metrics.Mean('loudness_db'),
+    }
+
+  @property
+  def metrics(self):
+    return self._metrics
+
+  def update_state(self, batch, audio_gen):
     """Update metrics based on a batch of audio.
 
     Args:
       batch: Dictionary of input features.
       audio_gen: Batch of generated audio.
-      f0_hz_predict: Batch of encoded f0, same as input f0 if no f0 encoder.
+    """
+    loudness_original = batch['loudness_db']
+    # Compute loudness across entire batch
+    loudness_gen = ddsp.spectral_ops.compute_loudness(
+        audio_gen, sample_rate=self._sample_rate, frame_rate=self._frame_rate)
+
+    batch_size = int(audio_gen.shape[0])
+    for i in range(batch_size):
+      ld_dist = np.mean(l1_distance(loudness_original[i], loudness_gen[i]))
+      self.metrics['loudness_db'].update_state(ld_dist)
+      logging.info('sample {} | ld_dist(db): {:.3f}'.format(i, ld_dist))
+
+
+class F0CrepeMetrics(BaseMetrics):
+  """Helper object for computing CREPE-based f0 metrics.
+
+  Note that batch operations are not possible when CREPE has viterbi argument
+  set to True.
+  """
+
+  def __init__(self, sample_rate, frame_rate):
+    super().__init__(
+        sample_rate=sample_rate, frame_rate=frame_rate, metrics_name='F0Crepe')
+    self._metrics = {
+        'f0_crepe':
+            tf.keras.metrics.Mean('f0_crepe'),
+        'f0_crepe_outlier_ratio':
+            tf.keras.metrics.Accuracy('f0_crepe_outlier_ratio'),
+    }
+
+  @property
+  def metrics(self):
+    return self._metrics
+
+  def update_state(self, batch, audio_gen):
+    """Update metrics based on a batch of audio.
+
+    Args:
+      batch: Dictionary of input features.
+      audio_gen: Batch of generated audio.
     """
     batch_size = int(audio_gen.shape[0])
     # Compute metrics per sample. No batch operations possible.
     for i in range(batch_size):
-      # Extract features from generated audio example.
-      keys = ['loudness_db', 'f0_hz', 'f0_confidence']
-      feats = {k: v[i] for k, v in batch.items() if k in keys}
-      feats_gen = compute_audio_features(
-          audio_gen[i], sample_rate=self._sample_rate)
+      # Extract f0 from generated audio example.
+      f0_hz_gen, _ = ddsp.spectral_ops.compute_f0(
+          audio_gen[i],
+          sample_rate=self._sample_rate,
+          frame_rate=self._frame_rate,
+          viterbi=True)
+      f0_hz_original = batch['f0_hz'][i]
+      f0_conf_original = batch['f0_confidence'][i]
 
-      # Loudness metric.
-      ld_dist = np.mean(l1_distance(feats['loudness_db'],
-                                    feats_gen['loudness_db']))
-      self.metrics['loudness_db'].update_state(ld_dist)
-
-      # F0 metric.
-      if is_outlier(feats['f0_confidence']):
+      if is_outlier(f0_conf_original):
         # Ground truth f0 was unreliable to begin with. Discard.
         f0_crepe_dist = None
       else:
         # Gound truth f0 was reliable, compute f0 distance with generated audio
-        f0_crepe_dist = f0_dist_conf_thresh(feats['f0_hz'],
-                                            feats_gen['f0_hz'],
-                                            feats['f0_confidence'])
-
-        # Compute distance original f0_hz labels and f0 encoder values.
-        # Resample if f0 encoder has different number of time steps.
-        f0_encoder = f0_hz_predict[i]
-        f0_original = feats['f0_hz']
-        if f0_encoder.shape[0] != f0_original.shape[0]:
-          f0_encoder = ddsp.core.resample(f0_encoder, f0_original.shape[0])
-        f0_encoder_dist = f0_dist_conf_thresh(f0_original,
-                                              f0_encoder,
-                                              feats['f0_confidence'])
-        self.metrics['f0_encoder'].update_state(f0_encoder_dist)
-
+        f0_crepe_dist = f0_dist_conf_thresh(f0_hz_original, f0_hz_gen,
+                                            f0_conf_original)
         if f0_crepe_dist is None or f0_crepe_dist > OUTLIER_MIDI_THRESH:
           # Generated audio had untrackable pitch content or is an outlier.
           self.metrics['f0_crepe_outlier_ratio'].update_state(True, True)
-          logging.info('Sample %d has untrackable pitch content', i)
+          logging.info('sample %d has untrackable pitch content', i)
         else:
           # Generated audio had trackable pitch content and is within tolerance
           self.metrics['f0_crepe'].update_state(f0_crepe_dist)
           self.metrics['f0_crepe_outlier_ratio'].update_state(True, False)
-          logging.info(
-              'sample {} | ld_dist(db): {:.3f} | f0_crepe_dist(midi): {:.3f} | '
-              'f0_encoder_dist(midi): {:.3f}'.format(
-                  i, ld_dist, f0_crepe_dist, f0_encoder_dist))
+          logging.info('sample {} | f0_crepe_dist(midi): {:.3f}'.format(
+              i, f0_crepe_dist))
 
   def flush(self, step):
-    """Add summaries for each metric and reset the state."""
-    # Start by logging the metrics result.
-    logging.info('COMPUTING METRICS COMPLETE. FLUSHING ALL METRICS')
-    metrics_str = ' | '.join(
-        '{}: {:0.3f}'.format(k, v.result()) for k, v in self.metrics.items())
-    logging.info(metrics_str)
-
-    for name, metric in self.metrics.items():
-      tf.summary.scalar('metrics/{}'.format(name), metric.result(), step)
-      metric.reset_states()
-
+    """Perform additional step of resetting CREPE."""
+    super().flush(step)
     ddsp.spectral_ops.reset_crepe()  # Reset CREPE global state
+
+
+class F0Metrics(BaseMetrics):
+  """Helper object for computing f0 encoder metrics."""
+
+  def __init__(self, sample_rate, frame_rate):
+    super().__init__(
+        sample_rate=sample_rate,
+        frame_rate=frame_rate,
+        metrics_name='F0Encoder')
+    self._metrics = {'f0_encoder': tf.keras.metrics.Mean('f0_encoder')}
+
+  @property
+  def metrics(self):
+    return self._metrics
+
+  def update_state(self, batch, f0_hz_predict):
+    """Update metrics based on a batch of audio.
+
+    Args:
+      batch: Dictionary of input features.
+      f0_hz_predict: Batch of encoded f0, same as input f0 if no f0 encoder.
+    """
+
+    batch_size = int(f0_hz_predict.shape[0])
+    # Compute metrics per sample. No batch operations possible.
+    for i in range(batch_size):
+      f0_hz_original = batch['f0_hz'][i]
+      f0_conf_original = batch['f0_confidence'][i]
+
+      if not is_outlier(f0_conf_original):
+        # Gound truth f0 was reliable, proceed with metrics
+        # Compute distance between original f0_hz labels and f0 encoder values.
+        # Resample if f0 encoder has different number of time steps.
+        # TODO(hanoih): compare f0_hz_encoder against frame_rate * len_sec
+        f0_hz_encoder = f0_hz_predict[i]
+        if f0_hz_encoder.shape[0] != f0_hz_original.shape[0]:
+          f0_hz_encoder = ddsp.core.resample(f0_hz_encoder,
+                                             f0_hz_original.shape[0])
+        f0_encoder_dist = f0_dist_conf_thresh(f0_hz_original, f0_hz_encoder,
+                                              f0_conf_original)
+        self._metrics['f0_encoder'].update_state(f0_encoder_dist)
+        logging.info('sample {} | f0_encoder_dist(midi): {:.3f}'.format(
+            i, f0_encoder_dist))
