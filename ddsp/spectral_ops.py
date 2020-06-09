@@ -95,8 +95,8 @@ def compute_mel(audio,
 
 
 @gin.register
-def compute_logmag(audio, size=2048):
-  return safe_log(compute_mag(audio, size))
+def compute_logmag(audio, size=2048, overlap=0.75, pad_end=True):
+  return safe_log(compute_mag(audio, size, overlap, pad_end))
 
 
 @gin.register
