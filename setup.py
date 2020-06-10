@@ -44,6 +44,7 @@ setuptools.setup(
         'gin-config>=0.3.0',
         'librosa',
         'pydub',
+        'mir_eval',
         'numpy',
         'scipy',
         'six',

@@ -181,6 +181,34 @@ class MetricsObjectsTest(parameterized.TestCase, tf.test.TestCase):
 
     f0_metrics.flush(step=1)
 
+  def test_rpa_has_expected_values_exact_match(self):
+    rpa = ddsp_metrics.F0Metrics(self.sample_rate, self.frame_rate)
+    f0 = self.batch_of_sin_feats['f0_hz']
+    rpa.update_state(self.batch_of_sin_feats, f0)
+    self.assertEqual(rpa.metrics['raw_pitch_accuracy'].result(), 1.0)
+    self.assertEqual(rpa.metrics['raw_chroma_accuracy'].result(), 1.0)
+
+  def test_rpa_has_expected_values_octave_error(self):
+    rpa = ddsp_metrics.F0Metrics(self.sample_rate, self.frame_rate)
+    f0 = self.batch_of_sin_feats['f0_hz']
+    rpa.update_state(self.batch_of_sin_feats, f0 * 2)
+    self.assertEqual(rpa.metrics['raw_pitch_accuracy'].result(), 0.0)
+    self.assertEqual(rpa.metrics['raw_chroma_accuracy'].result(), 1.0)
+
+  def test_rpa_has_expected_values_error_within_threshold(self):
+    rpa = ddsp_metrics.F0Metrics(self.sample_rate, self.frame_rate)
+    f0 = self.batch_of_sin_feats['f0_hz']
+    rpa.update_state(self.batch_of_sin_feats, f0 + 10)
+    self.assertEqual(rpa.metrics['raw_pitch_accuracy'].result(), 1.0)
+    self.assertEqual(rpa.metrics['raw_chroma_accuracy'].result(), 1.0)
+
+  def test_rpa_has_expected_values_error_outside_threshold(self):
+    rpa = ddsp_metrics.F0Metrics(self.sample_rate, self.frame_rate)
+    f0 = self.batch_of_sin_feats['f0_hz']
+    rpa.update_state(self.batch_of_sin_feats, f0 + 220)
+    self.assertEqual(rpa.metrics['raw_pitch_accuracy'].result(), 0.0)
+    self.assertEqual(rpa.metrics['raw_chroma_accuracy'].result(), 0.0)
+
 
 if __name__ == '__main__':
   tf.test.main()

@@ -18,6 +18,7 @@
 from absl import logging
 import ddsp
 import librosa
+import mir_eval
 import numpy as np
 import tensorflow.compat.v2 as tf
 
@@ -265,12 +266,17 @@ class F0CrepeMetrics(BaseMetrics):
 class F0Metrics(BaseMetrics):
   """Helper object for computing f0 encoder metrics."""
 
-  def __init__(self, sample_rate, frame_rate):
+  def __init__(self, sample_rate, frame_rate, rpa_tolerance=50):
     super().__init__(
         sample_rate=sample_rate,
         frame_rate=frame_rate,
         metrics_name='F0Encoder')
-    self._metrics = {'f0_encoder': tf.keras.metrics.Mean('f0_encoder')}
+    self._metrics = {
+        'f0_encoder': tf.keras.metrics.Mean('f0_encoder'),
+        'raw_pitch_accuracy': tf.keras.metrics.Mean('raw_chroma_accuracy'),
+        'raw_chroma_accuracy': tf.keras.metrics.Mean('raw_pitch_accuracy')
+    }
+    self._rpa_tolerance = rpa_tolerance
 
   @property
   def metrics(self):
@@ -298,9 +304,30 @@ class F0Metrics(BaseMetrics):
         f0_hz_encoder = f0_hz_predict[i]
         if f0_hz_encoder.shape[0] != f0_hz_original.shape[0]:
           f0_hz_encoder = ddsp.core.resample(f0_hz_encoder,
-                                             f0_hz_original.shape[0])
+                                             f0_hz_original.shape[0]).numpy()
         f0_encoder_dist = f0_dist_conf_thresh(f0_hz_original, f0_hz_encoder,
                                               f0_conf_original)
-        self._metrics['f0_encoder'].update_state(f0_encoder_dist)
-        logging.info('sample {} | f0_encoder_dist(midi): {:.3f}'.format(
-            i, f0_encoder_dist))
+        self.metrics['f0_encoder'].update_state(f0_encoder_dist)
+
+        voiced_gt = mir_eval.melody.freq_to_voicing(f0_hz_original)[1]
+        cents_gt = mir_eval.melody.hz2cents(f0_hz_original)
+        cents_est = mir_eval.melody.hz2cents(f0_hz_encoder)
+        rca = mir_eval.melody.raw_chroma_accuracy(
+            voiced_gt,
+            cents_gt,
+            voiced_gt,
+            cents_est,
+            cent_tolerance=self._rpa_tolerance)
+        rpa = mir_eval.melody.raw_pitch_accuracy(
+            voiced_gt,
+            cents_gt,
+            voiced_gt,
+            cents_est,
+            cent_tolerance=self._rpa_tolerance)
+        self.metrics['raw_chroma_accuracy'].update_state(rca)
+        self.metrics['raw_pitch_accuracy'].update_state(rpa)
+        log_str = (f'sample {i} | f0_encoder_dist(midi): {f0_encoder_dist:.3f} '
+                   f'raw_chroma_accuracy: {rca:.3f} '
+                   f'raw_pitch_accuracy: {rpa:.3f}')
+        logging.info(log_str)
+
