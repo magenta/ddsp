@@ -309,6 +309,8 @@ class F0Metrics(BaseMetrics):
                                               f0_conf_original)
         self.metrics['f0_encoder'].update_state(f0_encoder_dist)
 
+        f0_hz_original = np.squeeze(f0_hz_original)
+        f0_hz_encoder = np.squeeze(f0_hz_encoder)
         voiced_gt = mir_eval.melody.freq_to_voicing(f0_hz_original)[1]
         cents_gt = mir_eval.melody.hz2cents(f0_hz_original)
         cents_est = mir_eval.melody.hz2cents(f0_hz_encoder)
