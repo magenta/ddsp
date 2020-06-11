@@ -31,7 +31,8 @@ import tensorflow.compat.v2 as tf
 def evaluate_or_sample(data_provider,
                        model,
                        mode='eval',
-                       model_dir='~/tmp/ddsp/training',
+                       save_dir='~/tmp/ddsp/training',
+                       restore_dir='',
                        batch_size=32,
                        num_batches=50,
                        ckpt_delay_secs=0,
@@ -42,18 +43,22 @@ def evaluate_or_sample(data_provider,
     data_provider: DataProvider instance.
     model: Model instance.
     mode: Whether to 'eval' with metrics or create 'sample' s.
-    model_dir: Path to directory with checkpoints and summary events.
+    save_dir: Path to directory to save summary events.
+    restore_dir: Path to directory with checkpoints, defaults to save_dir.
     batch_size: Size of each eval/sample batch.
     num_batches: How many batches to eval from dataset. -1 denotes all batches.
     ckpt_delay_secs: Time to wait when a new checkpoint was not detected.
     run_once: Only run evaluation or sampling once.
   """
+  # Default to restoring from the save directory.
+  restore_dir = save_dir if not restore_dir else restore_dir
+
   # Set up the summary writer and metrics.
-  summary_dir = os.path.join(model_dir, 'summaries', 'eval')
+  summary_dir = os.path.join(save_dir, 'summaries', 'eval')
   summary_writer = tf.summary.create_file_writer(summary_dir)
 
   # Sample continuously and load the newest checkpoint each time
-  checkpoints_iterator = tf.train.checkpoints_iterator(model_dir,
+  checkpoints_iterator = tf.train.checkpoints_iterator(restore_dir,
                                                        ckpt_delay_secs)
 
   # Get the dataset.
@@ -178,7 +183,8 @@ def evaluate_or_sample(data_provider,
 @gin.configurable
 def evaluate(data_provider,
              model,
-             model_dir='~/tmp/ddsp/training',
+             save_dir='~/tmp/ddsp/training',
+             restore_dir='',
              batch_size=32,
              num_batches=50,
              ckpt_delay_secs=0,
@@ -188,7 +194,8 @@ def evaluate(data_provider,
   Args:
     data_provider: DataProvider instance.
     model: Model instance.
-    model_dir: Path to directory with checkpoints and summary events.
+    save_dir: Path to directory to save summary events.
+    restore_dir: Path to directory with checkpoints, defaults to save_dir.
     batch_size: Size of each eval/sample batch.
     num_batches: How many batches to eval from dataset. -1 denotes all batches.
     ckpt_delay_secs: Time to wait when a new checkpoint was not detected.
@@ -198,7 +205,8 @@ def evaluate(data_provider,
       data_provider=data_provider,
       model=model,
       mode='eval',
-      model_dir=model_dir,
+      save_dir=save_dir,
+      restore_dir=restore_dir,
       batch_size=batch_size,
       num_batches=num_batches,
       ckpt_delay_secs=ckpt_delay_secs,
@@ -208,7 +216,8 @@ def evaluate(data_provider,
 @gin.configurable
 def sample(data_provider,
            model,
-           model_dir='~/tmp/ddsp/training',
+           save_dir='~/tmp/ddsp/training',
+           restore_dir='',
            batch_size=16,
            num_batches=1,
            ckpt_delay_secs=0,
@@ -218,7 +227,8 @@ def sample(data_provider,
   Args:
     data_provider: DataProvider instance.
     model: Model instance.
-    model_dir: Path to directory with checkpoints and summary events.
+    save_dir: Path to directory to save summary events.
+    restore_dir: Path to directory with checkpoints, defaults to save_dir.
     batch_size: Size of each eval/sample batch.
     num_batches: How many batches to eval from dataset. -1 denotes all batches.
     ckpt_delay_secs: Time to wait when a new checkpoint was not detected.
@@ -228,7 +238,8 @@ def sample(data_provider,
       data_provider=data_provider,
       model=model,
       mode='sample',
-      model_dir=model_dir,
+      save_dir=save_dir,
+      restore_dir=restore_dir,
       batch_size=batch_size,
       num_batches=num_batches,
       ckpt_delay_secs=ckpt_delay_secs,

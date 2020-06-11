@@ -100,7 +100,7 @@ flags.DEFINE_multi_string('gin_param', [],
                           'Newline separated list of Gin parameter bindings.')
 
 # Evaluation/sampling specific flags.
-flags.DEFINE_boolean('eval_once', False, 'Whether evaluation will run once.')
+flags.DEFINE_boolean('run_once', False, 'Whether evaluation will run once.')
 flags.DEFINE_integer('initial_delay_secs', None,
                      'Time to wait before evaluation starts')
 
@@ -183,7 +183,9 @@ def main(unused_argv):
     delay_start()
     eval_util.evaluate(data_provider=gin.REQUIRED,
                        model=model,
-                       model_dir=save_dir)
+                       save_dir=save_dir,
+                       restore_dir=restore_dir,
+                       run_once=FLAGS.run_once)
 
   # Sampling.
   elif FLAGS.mode == 'sample':
@@ -191,7 +193,9 @@ def main(unused_argv):
     delay_start()
     eval_util.sample(data_provider=gin.REQUIRED,
                      model=model,
-                     model_dir=save_dir)
+                     save_dir=save_dir,
+                     restore_dir=restore_dir,
+                     run_once=FLAGS.run_once)
 
 
 def console_entry_point():
