@@ -63,7 +63,7 @@ def waveform_summary(audio, audio_gen, step, name=''):
 
     # Format and save plot to image
     name = name + '_' if name else ''
-    tag = 'waveform/{}{}_{}'.format(name, prefix, i + 1)
+    tag = f'waveform/{name}{prefix}_{i+1}'
     fig_summary(tag, fig, step)
 
   # Make plots at multiple lengths.
@@ -110,7 +110,7 @@ def spectrogram_summary(audio, audio_gen, step, name=''):
 
     # Format and save plot to image
     name = name + '_' if name else ''
-    tag = 'spectrogram/{}{}'.format(name, i + 1)
+    tag = f'spectrogram/{name}_{i+1}'
     fig_summary(tag, fig, step)
 
 
@@ -124,17 +124,17 @@ def audio_summary(audio, step, sample_rate=16000, name='audio'):
       name, audio, sample_rate, step, max_outputs=batch_size, encoding='wav')
 
 
-def f0_summary(f0_hz, f0_hz_predict, step, name=''):
+def f0_summary(f0_hz, f0_hz_predict, step, name='f0_midi'):
   """Creates a plot comparison of ground truth f0_hz and predicted values."""
   batch_size = int(f0_hz.shape[0])
+
+  # Resample predictions to match ground truth if they don't already.
+  if f0_hz.shape[1] != f0_hz_predict.shape[1]:
+    f0_hz_predict = ddsp.core.resample(f0_hz_predict, f0_hz.shape[1])
 
   for i in range(batch_size):
     f0_midi = ddsp.core.hz_to_midi(tf.squeeze(f0_hz[i]))
     f0_midi_predict = ddsp.core.hz_to_midi(tf.squeeze(f0_hz_predict[i]))
-
-    # Resample if f0_encoder has different number of time steps
-    if f0_midi_predict.shape[0] != f0_midi.shape[0]:
-      f0_midi_predict = ddsp.core.resample(f0_midi_predict, f0_midi.shape[0])
 
     # Manually specify exact size of fig for tensorboard
     fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(6.0, 2.0))
@@ -147,7 +147,7 @@ def f0_summary(f0_hz, f0_hz_predict, step, name=''):
 
     # Format and save plot to image
     name = name + '_' if name else ''
-    tag = 'f0_midi/{}{}'.format(name, i + 1)
+    tag = f'f0_midi/{name}_{i + 1}'
     fig_summary(tag, fig, step)
 
 

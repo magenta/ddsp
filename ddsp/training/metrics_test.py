@@ -133,24 +133,24 @@ class MetricsObjectsTest(parameterized.TestCase, tf.test.TestCase):
                                                    self.frame_rate)
     # Batch 1: known sin features vs. known sin audio
     f0_crepe_metrics.update_state(self.batch_of_sin_feats, self.batch_of_sin)
-    self.assertAllClose(f0_crepe_metrics.metrics['f0_crepe'].result(), 0)
+    self.assertAllClose(f0_crepe_metrics.metrics['f0_dist'].result(), 0)
     self.assertAllClose(
-        f0_crepe_metrics.metrics['f0_crepe_outlier_ratio'].result(), 0)
+        f0_crepe_metrics.metrics['outlier_ratio'].result(), 0)
 
     # Batch 2: known sin features vs. batch of sin audio at different f0
     f0_crepe_metrics.update_state(
         self.batch_of_sin_feats,
         gen_np_batched_sinusoids(2 * self.frequency, self.amp, self.sample_rate,
                                  self.audio_len_sec, self.batch_size))
-    self.assertGreater(f0_crepe_metrics.metrics['f0_crepe'].result(), 0)
+    self.assertGreater(f0_crepe_metrics.metrics['f0_dist'].result(), 0)
     self.assertAllClose(
-        f0_crepe_metrics.metrics['f0_crepe_outlier_ratio'].result(), 0)
+        f0_crepe_metrics.metrics['outlier_ratio'].result(), 0)
 
     # Batch 3: known sin features vs. batch of noise audio
     f0_crepe_metrics.update_state(self.batch_of_sin_feats, self.batch_of_noise)
-    self.assertGreater(f0_crepe_metrics.metrics['f0_crepe'].result(), 0)
+    self.assertGreater(f0_crepe_metrics.metrics['f0_dist'].result(), 0)
     self.assertGreater(
-        f0_crepe_metrics.metrics['f0_crepe_outlier_ratio'].result(), 0)
+        f0_crepe_metrics.metrics['outlier_ratio'].result(), 0)
 
     f0_crepe_metrics.flush(step=1)
 
@@ -159,12 +159,12 @@ class MetricsObjectsTest(parameterized.TestCase, tf.test.TestCase):
     # Batch 1: known sin features vs. batch of known sin f0_hz
     f0_metrics.update_state(self.batch_of_sin_feats,
                             self.batch_of_sin_feats['f0_hz'])
-    self.assertAllClose(f0_metrics.metrics['f0_encoder'].result(), 0)
+    self.assertAllClose(f0_metrics.metrics['f0_dist'].result(), 0)
 
     # Batch 2: known sin features vs. batch of f0_hz at different f0
     f0_metrics.update_state(self.batch_of_sin_feats,
                             self.batch_of_sin_feats['f0_hz'] * 3)
-    self.assertGreater(f0_metrics.metrics['f0_encoder'].result(), 0)
+    self.assertGreater(f0_metrics.metrics['f0_dist'].result(), 0)
 
     f0_metrics.flush(step=1)
 
@@ -177,7 +177,7 @@ class MetricsObjectsTest(parameterized.TestCase, tf.test.TestCase):
     f0_metrics.update_state(
         self.batch_of_sin_feats,
         3 * self.batch_of_sin_feats['f0_hz'][:, :shorter_len])
-    self.assertGreater(f0_metrics.metrics['f0_encoder'].result(), 0)
+    self.assertGreater(f0_metrics.metrics['f0_dist'].result(), 0)
 
     f0_metrics.flush(step=1)
 

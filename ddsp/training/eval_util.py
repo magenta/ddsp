@@ -19,7 +19,6 @@ import os
 import time
 
 from absl import logging
-import ddsp
 from ddsp.training import metrics
 from ddsp.training import summaries
 import gin
@@ -102,9 +101,9 @@ def evaluate_or_sample(data_provider,
           if mode == 'eval' and batch_idx == 1:
             loudness_metrics = metrics.LoudnessMetrics(
                 sample_rate=sample_rate, frame_rate=frame_rate)
-            f0_crepe_metrics = metrics.F0CrepeMetrics(
-                sample_rate=sample_rate, frame_rate=frame_rate)
             f0_metrics = metrics.F0Metrics(
+                sample_rate=sample_rate, frame_rate=frame_rate, name='f0_harm')
+            f0_crepe_metrics = metrics.F0CrepeMetrics(
                 sample_rate=sample_rate, frame_rate=frame_rate)
 
             avg_losses = {
@@ -112,14 +111,6 @@ def evaluate_or_sample(data_provider,
                 for name in list(losses.keys())}
 
           has_f0 = ('f0_hz' in outputs and 'f0_hz' in batch)
-
-          if has_f0:
-            # Resample f0_hz outputs to match batch if they don't already.
-            output_length = outputs['f0_hz'].shape[1]
-            batch_length = batch['f0_hz'].shape[1]
-            if output_length != batch_length:
-              outputs['f0_hz'] = ddsp.core.resample(
-                  outputs['f0_hz'], batch_length)
 
           logging.info('Prediction took %.1f seconds', time.time() - start_time)
 
@@ -137,7 +128,8 @@ def evaluate_or_sample(data_provider,
             summaries.waveform_summary(audio, audio_gen, step)
             summaries.spectrogram_summary(audio, audio_gen, step)
             if has_f0:
-              summaries.f0_summary(batch['f0_hz'], outputs['f0_hz'], step)
+              summaries.f0_summary(batch['f0_hz'], outputs['f0_hz'], step,
+                                   name='f0_harmonic')
 
             logging.info('Writing batch %i with size %i took %.1f seconds',
                          batch_idx, batch_size, time.time() - start_time)
@@ -146,11 +138,11 @@ def evaluate_or_sample(data_provider,
             start_time = time.time()
             logging.info('Calculating metrics for batch %d', batch_idx)
 
+            loudness_metrics.update_state(batch, audio_gen)
             if has_f0:
-              loudness_metrics.update_state(batch, audio_gen)
-              f0_crepe_metrics.update_state(batch, audio_gen)
               f0_metrics.update_state(batch, outputs['f0_hz'])
-
+            else:
+              f0_crepe_metrics.update_state(batch, audio_gen)
             # Loss.
             for k, v in losses.items():
               avg_losses[k].update_state(v)
@@ -166,10 +158,11 @@ def evaluate_or_sample(data_provider,
                    num_batches, time.time() - checkpoint_start_time)
 
       if mode == 'eval':
+        loudness_metrics.flush(step)
         if has_f0:
-          loudness_metrics.flush(step)
-          f0_crepe_metrics.flush(step)
           f0_metrics.flush(step)
+        else:
+          f0_crepe_metrics.flush(step)
         for k, metric in avg_losses.items():
           tf.summary.scalar('losses/{}'.format(k), metric.result(), step=step)
           metric.reset_states()
