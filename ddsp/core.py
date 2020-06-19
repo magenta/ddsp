@@ -84,6 +84,25 @@ def nested_lookup(nested_key: Text,
   return value
 
 
+# Math -------------------------------------------------------------------------
+def log(x, base=2.0):
+  """Logarithm with base as an argument."""
+  return tf.math.log(x) / tf.math.log(base)
+
+
+def log_scale(x, min_x, max_x):
+  """Scales a -1 to 1 value logarithmically between min and max."""
+  x = tf_float32(x)
+  x = (x + 1.0) / 2.0  # Scale [-1, 1] to [0, 1]
+  return tf.exp((1.0 - x) * tf.math.log(min_x) + x * tf.math.log(max_x))
+
+
+def soft_limit(x, x_min=0.0, x_max=1.0):
+  """Softly limits inputs to the range [x_min, x_max]."""
+  return tf.nn.softplus(x) + x_min - tf.nn.softplus(x - (x_max - x_min))
+
+
+# Unit Conversions -------------------------------------------------------------
 def midi_to_hz(notes: Number) -> Number:
   """TF-compatible midi_to_hz function."""
   notes = tf_float32(notes)
@@ -93,8 +112,7 @@ def midi_to_hz(notes: Number) -> Number:
 def hz_to_midi(frequencies: Number) -> Number:
   """TF-compatible hz_to_midi function."""
   frequencies = tf_float32(frequencies)
-  log2 = lambda x: tf.math.log(x) / tf.math.log(2.0)
-  notes = 12.0 * (log2(frequencies) - log2(440.0)) + 69.0
+  notes = 12.0 * (log(frequencies, 2.0) - log(440.0, 2.0)) + 69.0
   # Map 0 Hz to MIDI 0 (Replace -inf with 0.)
   cond = tf.equal(notes, -np.inf)
   notes = tf.where(cond, 0.0, notes)
@@ -143,6 +161,70 @@ def hz_to_unit(hz: Number,
                       clip=clip)
 
 
+def hz_to_bark(hz):
+  """From Tranmuller (1990, https://asa.scitation.org/doi/10.1121/1.399849)."""
+  return 26.81 / (1.0 + (1960.0 / hz)) - 0.53
+
+
+def bark_to_hz(bark):
+  """From Tranmuller (1990, https://asa.scitation.org/doi/10.1121/1.399849)."""
+  return 1960.0 / (26.81 / (bark + 0.53) - 1.0)
+
+
+def hz_to_mel(hz):
+  """From Young et al. "The HTK book", Chapter 5.4."""
+  return 2595.0 * log(1.0 + hz / 700.0, 10.0)
+
+
+def mel_to_hz(mel):
+  """From Young et al. "The HTK book", Chapter 5.4."""
+  return 700.0 * (10.0**(mel / 2595.0) - 1.0)
+
+
+def hz_to_erb(hz):
+  """Equivalent Rectangular Bandwidths (ERB) from Moore & Glasberg (1996).
+
+  https://research.tue.nl/en/publications/a-revision-of-zwickers-loudness-model
+  https://ccrma.stanford.edu/~jos/bbt/Equivalent_Rectangular_Bandwidth.html
+  Args:
+    hz: Inputs frequencies in hertz.
+
+  Returns:
+    Critical bandwidths (in hertz) for each input frequency.
+  """
+  return 0.108 * hz + 24.7
+
+
+# Scaling functions ------------------------------------------------------------
+@gin.register
+def exp_sigmoid(x, exponent=10.0, max_value=2.0, threshold=1e-7):
+  """Exponentiated Sigmoid pointwise nonlinearity.
+
+  Bounds input to [threshold, max_value] with slope given by exponent.
+
+  Args:
+    x: Input tensor.
+    exponent: In nonlinear regime (away from x=0), the output varies by this
+      factor for every change of x by 1.0.
+    max_value: Limiting value at x=inf.
+    threshold: Limiting value at x=-inf. Stablizes training when outputs are
+      pushed to 0.
+
+  Returns:
+    A tensor with pointwise nonlinearity applied.
+  """
+  x = tf_float32(x)
+  return max_value * tf.nn.sigmoid(x)**tf.math.log(exponent) + threshold
+
+
+@gin.register
+def sym_exp_sigmoid(x, width=8.0):
+  """Symmetrical version of exp_sigmoid centered at (0, 1e-7)."""
+  x = tf_float32(x)
+  return exp_sigmoid(width * (tf.abs(x)/2.0 - 1.0))
+
+
+# Resampling -------------------------------------------------------------------
 def resample(inputs: tf.Tensor,
              n_timesteps: int,
              method: Text = 'linear',
@@ -285,41 +367,6 @@ def upsample_with_windows(inputs: tf.Tensor,
 
   # Trim the rise and fall of the first and last window.
   return x[:, hop_size:-hop_size, :]
-
-
-def log_scale(x, min_x, max_x):
-  """Scales a -1 to 1 value logarithmically between min and max."""
-  x = tf_float32(x)
-  x = (x + 1.0) / 2.0  # Scale [-1, 1] to [0, 1]
-  return tf.exp((1.0 - x) * tf.math.log(min_x) + x * tf.math.log(max_x))
-
-
-@gin.register
-def exp_sigmoid(x, exponent=10.0, max_value=2.0, threshold=1e-7):
-  """Exponentiated Sigmoid pointwise nonlinearity.
-
-  Bounds input to [threshold, max_value] with slope given by exponent.
-
-  Args:
-    x: Input tensor.
-    exponent: In nonlinear regime (away from x=0), the output varies by this
-      factor for every change of x by 1.0.
-    max_value: Limiting value at x=inf.
-    threshold: Limiting value at x=-inf. Stablizes training when outputs are
-      pushed to 0.
-
-  Returns:
-    A tensor with pointwise nonlinearity applied.
-  """
-  x = tf_float32(x)
-  return max_value * tf.nn.sigmoid(x)**tf.math.log(exponent) + threshold
-
-
-@gin.register
-def sym_exp_sigmoid(x, width=8.0):
-  """Symmetrical version of exp_sigmoid centered at (0, 1e-7)."""
-  x = tf_float32(x)
-  return exp_sigmoid(width * (tf.abs(x)/2.0 - 1.0))
 
 
 # Additive Synthesizer ---------------------------------------------------------
