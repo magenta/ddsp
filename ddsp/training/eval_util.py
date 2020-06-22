@@ -35,7 +35,8 @@ def evaluate_or_sample(data_provider,
                        batch_size=32,
                        num_batches=50,
                        ckpt_delay_secs=0,
-                       run_once=False):
+                       run_once=False,
+                       run_until_step=0):
   """Run evaluation loop.
 
   Args:
@@ -48,6 +49,8 @@ def evaluate_or_sample(data_provider,
     num_batches: How many batches to eval from dataset. -1 denotes all batches.
     ckpt_delay_secs: Time to wait when a new checkpoint was not detected.
     run_once: Only run evaluation or sampling once.
+    run_until_step: Run until we see a checkpoint with a step greater or equal
+      to the specified value. Ignored if <= 0.
   """
   # Default to restoring from the save directory.
   restore_dir = save_dir if not restore_dir else restore_dir
@@ -172,6 +175,12 @@ def evaluate_or_sample(data_provider,
       if run_once:
         break
 
+      if run_until_step > 0 and step >= run_until_step:
+        logging.info(
+            'Saw checkpoint with step %d, which is greater or equal to'
+            ' `run_until_step` of %d. Exiting.', step, run_until_step)
+        break
+
 
 @gin.configurable
 def evaluate(data_provider,
@@ -181,7 +190,8 @@ def evaluate(data_provider,
              batch_size=32,
              num_batches=50,
              ckpt_delay_secs=0,
-             run_once=False):
+             run_once=False,
+             run_until_step=0):
   """Run evaluation loop.
 
   Args:
@@ -193,6 +203,8 @@ def evaluate(data_provider,
     num_batches: How many batches to eval from dataset. -1 denotes all batches.
     ckpt_delay_secs: Time to wait when a new checkpoint was not detected.
     run_once: Only run evaluation or sampling once.
+    run_until_step: Run until we see a checkpoint with a step greater or equal
+      to the specified value. Ignored if <= 0.
   """
   evaluate_or_sample(
       data_provider=data_provider,
@@ -203,7 +215,8 @@ def evaluate(data_provider,
       batch_size=batch_size,
       num_batches=num_batches,
       ckpt_delay_secs=ckpt_delay_secs,
-      run_once=run_once)
+      run_once=run_once,
+      run_until_step=run_until_step)
 
 
 @gin.configurable
@@ -214,7 +227,8 @@ def sample(data_provider,
            batch_size=16,
            num_batches=1,
            ckpt_delay_secs=0,
-           run_once=False):
+           run_once=False,
+           run_until_step=0):
   """Run sampling loop.
 
   Args:
@@ -226,6 +240,8 @@ def sample(data_provider,
     num_batches: How many batches to eval from dataset. -1 denotes all batches.
     ckpt_delay_secs: Time to wait when a new checkpoint was not detected.
     run_once: Only run evaluation or sampling once.
+    run_until_step: Run until we see a checkpoint with a step greater or equal
+      to the specified value. Ignored if <= 0.
   """
   evaluate_or_sample(
       data_provider=data_provider,
@@ -236,4 +252,5 @@ def sample(data_provider,
       batch_size=batch_size,
       num_batches=num_batches,
       ckpt_delay_secs=ckpt_delay_secs,
-      run_once=run_once)
+      run_once=run_once,
+      run_until_step=run_until_step)
