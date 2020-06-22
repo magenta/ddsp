@@ -3,7 +3,7 @@
 </div>
 
 # DDSP: Differentiable Digital Signal Processing
-[![Build Status](https://travis-ci.org/magenta/ddsp.svg?branch=master)](https://travis-ci.org/magenta/ddsp)
+[![Build Status](https://github.com/magenta/ddsp/workflows/build/badge.svg)](https://github.com/magenta/ddsp/actions?query=workflow%3Abuild)
 
 [**Demos**](./ddsp/colab/demos)
 | [**Tutorials**](./ddsp/colab/tutorials)

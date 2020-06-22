@@ -39,9 +39,8 @@ use GitHub pull requests for this purpose. Consult
 information on using pull requests.
 
 Please be sure to test your code by running `pytest` and `pylint` before
-submitting a pull request for review. The easiest way to do this is to run
-`sh ci-test.sh` from the base directory. Note that code cannot be merged until
-these tests pass on [Travis](https://travis-ci.org/magenta/ddsp).
+submitting a pull request for review. Note that code cannot be merged until
+these tests pass on [GitHub Actions](https://github.com/magenta/ddsp/actions?query=workflow%3Abuild).
 
 
 ## Getting Started
