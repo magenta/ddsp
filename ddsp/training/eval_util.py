@@ -175,7 +175,7 @@ def evaluate_or_sample(data_provider,
       if run_once:
         break
 
-      if run_until_step > 0 and step >= run_until_step:
+      if 0 < run_until_step <= step:
         logging.info(
             'Saw checkpoint with step %d, which is greater or equal to'
             ' `run_until_step` of %d. Exiting.', step, run_until_step)
