@@ -165,10 +165,13 @@ class EmbeddingLoss(tfkl.Layer):
     self.pretrained_model = pretrained_model
 
   def call(self, target_audio, audio):
-    audio, target_audio = tf_float32(audio), tf_float32(target_audio)
-    target_emb = self.pretrained_model(target_audio)
-    synth_emb = self.pretrained_model(audio)
-    loss = self.weight * mean_difference(target_emb, synth_emb, self.loss_type)
+    loss = 0.0
+    if self.weight > 0.0:
+      audio, target_audio = tf_float32(audio), tf_float32(target_audio)
+      target_emb = self.pretrained_model(target_audio)
+      synth_emb = self.pretrained_model(audio)
+      loss = self.weight * mean_difference(
+          target_emb, synth_emb, self.loss_type)
     return loss
 
 

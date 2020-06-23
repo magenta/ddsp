@@ -23,14 +23,15 @@ tfkl = tf.keras.layers
 
 # ------------------ Normalization ---------------------------------------------
 def normalize_op(x, norm_type='layer', eps=1e-5):
-  """Apply either Group, Instance, or Layer normalization."""
-  mb, h, w, ch = x.shape
-  n_groups = {'instance': ch, 'layer': 1, 'group': 32}[norm_type]
+  """Apply either Group, Instance, or Layer normalization, or None."""
+  if norm_type is not None:
+    mb, h, w, ch = x.shape
+    n_groups = {'instance': ch, 'layer': 1, 'group': 32}[norm_type]
 
-  x = tf.reshape(x, [mb, h, w, n_groups, ch // n_groups])
-  mean, var = tf.nn.moments(x, [1, 2, 4], keepdims=True)
-  x = (x - mean) / tf.sqrt(var + eps)
-  x = tf.reshape(x, [mb, h, w, ch])
+    x = tf.reshape(x, [mb, h, w, n_groups, ch // n_groups])
+    mean, var = tf.nn.moments(x, [1, 2, 4], keepdims=True)
+    x = (x - mean) / tf.sqrt(var + eps)
+    x = tf.reshape(x, [mb, h, w, ch])
   return x
 
 
