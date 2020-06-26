@@ -126,7 +126,7 @@ class Trainer(object):
 
   def run(self, fn, *args, **kwargs):
     """Distribute and run function on processors."""
-    return self.strategy.experimental_run_v2(fn, args=args, kwargs=kwargs)
+    return self.strategy.run(fn, args=args, kwargs=kwargs)
 
   def build(self, batch):
     """Build the model by running a distributed batch through it."""
