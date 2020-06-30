@@ -69,6 +69,7 @@ class SpectralLoss(tfkl.Layer):
                delta_delta_time_weight=0.0,
                delta_freq_weight=0.0,
                delta_delta_freq_weight=0.0,
+               cumsum_freq_weight=0.0,
                logmag_weight=0.0,
                loudness_weight=0.0,
                name='spectral_loss'):
@@ -80,21 +81,24 @@ class SpectralLoss(tfkl.Layer):
     self.delta_delta_time_weight = delta_delta_time_weight
     self.delta_freq_weight = delta_freq_weight
     self.delta_delta_freq_weight = delta_delta_freq_weight
+    self.cumsum_freq_weight = cumsum_freq_weight
     self.logmag_weight = logmag_weight
     self.loudness_weight = loudness_weight
+
+    self.spectrogram_ops = []
+    for size in self.fft_sizes:
+      spectrogram_op = functools.partial(spectral_ops.compute_mag, size=size)
+      self.spectrogram_ops.append(spectrogram_op)
 
   def call(self, target_audio, audio):
 
     loss = 0.0
-    loss_ops = []
-    diff = spectral_ops.diff
 
-    for size in self.fft_sizes:
-      loss_op = functools.partial(spectral_ops.compute_mag, size=size)
-      loss_ops.append(loss_op)
+    diff = spectral_ops.diff
+    cumsum = tf.math.cumsum
 
     # Compute loss for each fft size.
-    for loss_op in loss_ops:
+    for loss_op in self.spectrogram_ops:
       target_mag = loss_op(target_audio)
       value_mag = loss_op(audio)
 
@@ -125,6 +129,12 @@ class SpectralLoss(tfkl.Layer):
         target = diff(diff(target_mag, axis=2), axis=2)
         value = diff(diff(value_mag, axis=2), axis=2)
         loss += self.delta_delta_freq_weight * mean_difference(
+            target, value, self.loss_type)
+      # TODO(kyriacos) normalize cumulative spectrogram
+      if self.cumsum_freq_weight > 0:
+        target = cumsum(target_mag, axis=2)
+        value = cumsum(value_mag, axis=2)
+        loss += self.cumsum_freq_weight * mean_difference(
             target, value, self.loss_type)
 
       # Add logmagnitude loss, reusing spectrogram.
