@@ -13,10 +13,11 @@
 # limitations under the License.
 
 # Lint as: python3
-r"""Separate file for storing the current version of DDSP.
+"""Tests for ddsp.training.decoders."""
 
-Stored in a separate file so that setup.py can reference the version without
-pulling in all the dependencies in __init__.py.
-"""
+import tensorflow.compat.v2 as tf
 
-__version__ = '0.6.0'
+
+
+if __name__ == '__main__':
+  tf.test.main()
