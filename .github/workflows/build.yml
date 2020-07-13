@@ -13,6 +13,7 @@ jobs:
         python-version: '3.x'
     - name: Install dependencies
       run: |
+        sudo apt update
         sudo apt-get -y install ffmpeg
         pip install -e .[data_preparation,test]
     - name: Test with pytest
