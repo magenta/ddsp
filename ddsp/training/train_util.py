@@ -23,6 +23,7 @@ import gin
 import tensorflow.compat.v2 as tf
 
 
+
 # ---------------------- Helper Functions --------------------------------------
 def get_strategy(tpu='', gpus=None):
   """Create a distribution strategy.
@@ -40,7 +41,7 @@ def get_strategy(tpu='', gpus=None):
     resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=tpu)
     tf.config.experimental_connect_to_cluster(resolver)
     tf.tpu.experimental.initialize_tpu_system(resolver)
-    strategy = tf.distribute.experimental.TPUStrategy(resolver)
+    strategy = tf.distribute.TPUStrategy(resolver)
   elif gpus:
     for gpu_address in gpus:
       logging.info('Use GPU at %s', gpu_address)
