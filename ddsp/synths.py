@@ -21,6 +21,7 @@ import gin
 import tensorflow.compat.v2 as tf
 
 
+# TODO(jesseengel): Rename Additive to Harmonic.
 @gin.register
 class Additive(processors.Processor):
   """Synthesize audio with a bank of harmonic sinusoidal oscillators."""
@@ -208,6 +209,72 @@ class Wavetable(processors.Processor):
                                       frequencies=f0_hz,
                                       n_samples=self.n_samples,
                                       sample_rate=self.sample_rate)
+    return signal
+
+
+@gin.register
+class Sinusoidal(processors.Processor):
+  """Synthesize audio with a bank of arbitrary sinusoidal oscillators."""
+
+  def __init__(self,
+               n_samples=64000,
+               sample_rate=16000,
+               amp_scale_fn=core.exp_sigmoid,
+               amp_resample_method='window',
+               freq_scale_fn=core.frequencies_sigmoid,
+               name='sinusoidal'):
+    super().__init__(name=name)
+    self.n_samples = n_samples
+    self.sample_rate = sample_rate
+    self.amp_scale_fn = amp_scale_fn
+    self.amp_resample_method = amp_resample_method
+    self.freq_scale_fn = freq_scale_fn
+
+  def get_controls(self, amplitudes, frequencies):
+    """Convert network output tensors into a dictionary of synthesizer controls.
+
+    Args:
+      amplitudes: 3-D Tensor of synthesizer controls, of shape
+        [batch, time, n_sinusoids].
+      frequencies: 3-D Tensor of synthesizer controls, of shape
+        [batch, time, n_sinusoids]. Expects strictly positive in Hertz.
+
+    Returns:
+      controls: Dictionary of tensors of synthesizer controls.
+    """
+    # Scale the inputs.
+    if self.amp_scale_fn is not None:
+      amplitudes = self.amp_scale_fn(amplitudes)
+
+    if self.freq_scale_fn is not None:
+      frequencies = self.freq_scale_fn(frequencies)
+      amplitudes = core.remove_above_nyquist(frequencies,
+                                             amplitudes,
+                                             self.sample_rate)
+
+    return {'amplitudes': amplitudes,
+            'frequencies': frequencies}
+
+  def get_signal(self, amplitudes, frequencies):
+    """Synthesize audio with sinusoidal synthesizer from controls.
+
+    Args:
+      amplitudes: Amplitude tensor of shape [batch, n_frames, n_sinusoids].
+        Expects float32 that is strictly positive.
+      frequencies: Tensor of shape [batch, n_frames, n_sinusoids].
+        Expects float32 in Hertz that is strictly positive.
+
+    Returns:
+      signal: A tensor of harmonic waves of shape [batch, n_samples].
+    """
+    # Create sample-wise envelopes.
+    amplitude_envelopes = core.resample(amplitudes, self.n_samples,
+                                        method=self.amp_resample_method)
+    frequency_envelopes = core.resample(frequencies, self.n_samples)
+
+    signal = core.oscillator_bank(frequency_envelopes=frequency_envelopes,
+                                  amplitude_envelopes=amplitude_envelopes,
+                                  sample_rate=self.sample_rate)
     return signal
 
 

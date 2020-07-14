@@ -15,7 +15,9 @@
 # Lint as: python3
 """Tests for ddsp.synths."""
 
+from ddsp import core
 from ddsp import synths
+import numpy as np
 import tensorflow.compat.v2 as tf
 
 
@@ -67,6 +69,46 @@ class WavetableTest(tf.test.TestCase):
     output = synthesizer(amp, wavetables, f0_hz)
 
     self.assertAllEqual([batch_size, 64000], output.shape.as_list())
+
+
+class SinusoidalTest(tf.test.TestCase):
+
+  def test_output_shape_is_correct(self):
+    synthesizer = synths.Sinusoidal(n_samples=32000, sample_rate=16000)
+    batch_size = 3
+    num_frames = 1000
+    n_partials = 10
+    amps = tf.zeros((batch_size, num_frames, n_partials),
+                    dtype=tf.float32)
+    freqs = tf.zeros((batch_size, num_frames, n_partials),
+                     dtype=tf.float32)
+
+    output = synthesizer(amps, freqs)
+
+    self.assertAllEqual([batch_size, 32000], output.shape.as_list())
+
+  def test_frequencies_controls_are_bounded(self):
+    depth = 10
+    def freq_scale_fn(x):
+      return core.frequencies_sigmoid(x, depth=depth, hz_min=0.0, hz_max=8000.0)
+
+    synthesizer = synths.Sinusoidal(
+        n_samples=32000, sample_rate=16000, freq_scale_fn=freq_scale_fn)
+    batch_size = 3
+    num_frames = 10
+    n_partials = 100
+    amps = tf.zeros((batch_size, num_frames, n_partials), dtype=tf.float32)
+    freqs = tf.linspace(-100.0, 100.0, n_partials)
+    freqs = tf.tile(freqs[tf.newaxis, tf.newaxis, :, tf.newaxis],
+                    [batch_size, num_frames, 1, depth])
+
+    controls = synthesizer.get_controls(amps, freqs)
+    freqs = controls['frequencies']
+    lt_nyquist = (freqs <= 8000.0)
+    gt_zero = (freqs >= 0.0)
+    both_conditions = np.logical_and(lt_nyquist, gt_zero)
+
+    self.assertTrue(np.all(both_conditions))
 
 
 if __name__ == '__main__':
