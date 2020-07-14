@@ -51,6 +51,10 @@ def evaluate_or_sample(data_provider,
     run_once: Only run evaluation or sampling once.
     run_until_step: Run until we see a checkpoint with a step greater or equal
       to the specified value. Ignored if <= 0.
+
+  Returns:
+    If the mode is 'eval', then returns a dictionary of Tensors keyed by loss
+    type. Otherwise, returns None.
   """
   # Default to restoring from the save directory.
   restore_dir = save_dir if not restore_dir else restore_dir
@@ -72,6 +76,8 @@ def evaluate_or_sample(data_provider,
   sample_rate = data_provider.sample_rate
   # Get feature frame rate
   frame_rate = data_provider.frame_rate
+
+  latest_losses = None
 
   with summary_writer.as_default():
     for checkpoint_path in checkpoints_iterator:
@@ -166,7 +172,9 @@ def evaluate_or_sample(data_provider,
           f0_metrics.flush(step)
         else:
           f0_crepe_metrics.flush(step)
+        latest_losses = {}
         for k, metric in avg_losses.items():
+          latest_losses[k] = metric.result()
           tf.summary.scalar('losses/{}'.format(k), metric.result(), step=step)
           metric.reset_states()
 
@@ -180,6 +188,7 @@ def evaluate_or_sample(data_provider,
             'Saw checkpoint with step %d, which is greater or equal to'
             ' `run_until_step` of %d. Exiting.', step, run_until_step)
         break
+  return latest_losses
 
 
 @gin.configurable
@@ -205,8 +214,12 @@ def evaluate(data_provider,
     run_once: Only run evaluation or sampling once.
     run_until_step: Run until we see a checkpoint with a step greater or equal
       to the specified value. Ignored if <= 0.
+
+  Returns:
+    A dictionary of tensors containing the loss values, keyed by loss type.
+
   """
-  evaluate_or_sample(
+  return evaluate_or_sample(
       data_provider=data_provider,
       model=model,
       mode='eval',
