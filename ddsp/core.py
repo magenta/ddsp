@@ -106,6 +106,11 @@ def soft_limit(x, x_min=0.0, x_max=1.0):
   return tf.nn.softplus(x) + x_min - tf.nn.softplus(x - (x_max - x_min))
 
 
+def gradient_reversal(x):
+  """Identity operation that reverses the gradient."""
+  return tf.stop_gradient(2.0 * x) - x
+
+
 # Unit Conversions -------------------------------------------------------------
 def midi_to_hz(notes: Number) -> Number:
   """TF-compatible midi_to_hz function."""
