@@ -81,6 +81,24 @@ def nested_lookup(nested_key: Text,
   return value
 
 
+def pad_axis(x, padding=(0, 0), axis=0, **pad_kwargs):
+  """Pads only one axis of a tensor.
+
+  Args:
+    x: Input tensor.
+    padding: Tuple of number of samples to pad (before, after).
+    axis: Which axis to pad.
+    **pad_kwargs: Other kwargs to pass to tf.pad.
+
+  Returns:
+    A tensor padded with padding along axis.
+  """
+  n_end_dims = len(x.shape) - axis - 1
+  n_end_dims *= n_end_dims > 0
+  paddings = [[0, 0]] * axis + [list(padding)] + [[0, 0]] * n_end_dims
+  return tf.pad(x, paddings, **pad_kwargs)
+
+
 # Math -------------------------------------------------------------------------
 def safe_divide(numerator, denominator, eps=1e-7):
   """Avoid dividing by zero by adding a small epsilon."""
@@ -599,6 +617,70 @@ def harmonic_to_sinusoidal(harm_amp, harm_dist, f0_hz, sample_rate=16000):
 
 
 # Additive Synthesizer ---------------------------------------------------------
+def angular_cumsum(angular_frequency, chunk_size=1000):
+  """Get phase by cummulative sumation of angular frequency.
+
+  Custom cumsum splits first axis into chunks to avoid accumulation error.
+  Just taking tf.sin(tf.cumsum(angular_frequency)) leads to accumulation of
+  phase errors that are audible for long segments or at high sample rates. Also,
+  in reduced precision settings, cumsum can overflow the threshold.
+
+  Given that we are going to take the sin of the accumulated phase anyways, we
+  don't care about the phase modulo 2 pi. This code chops the incoming frequency
+  into chunks, applies cumsum to each chunk, takes mod 2pi, and then stitches
+  them back together by adding the cumulative values of the final step of each
+  chunk to the next chunk.
+
+  Seems to be ~30% faster on CPU, but at least 40% slower on TPU.
+
+  Args:
+    angular_frequency: Radians per a sample. Shape [batch, time, ...].
+      If there is no batch dimension, one will be temporarily added.
+    chunk_size: Number of samples per a chunk. to avoid overflow at low
+       precision [chunk_size <= (accumulation_threshold / pi)].
+
+  Returns:
+    The accumulated phase in range [0, 2*pi], shape [batch, time, ...].
+  """
+  # Get tensor shapes.
+  n_batch = angular_frequency.shape[0]
+  n_time = angular_frequency.shape[1]
+  n_dims = len(angular_frequency.shape)
+  n_ch_dims = n_dims - 2
+
+  # Pad if needed.
+  remainder = n_time % chunk_size
+  if remainder:
+    pad = chunk_size - remainder
+    angular_frequency = pad_axis(angular_frequency, [0, pad], axis=1)
+
+  # Split input into chunks.
+  length = angular_frequency.shape[1]
+  n_chunks = int(length / chunk_size)
+  chunks = tf.reshape(angular_frequency,
+                      [n_batch, n_chunks, chunk_size] + [-1] * n_ch_dims)
+  phase = tf.cumsum(chunks, axis=2)
+
+  # Add offsets.
+  # Offset of the next row is the last entry of the previous row.
+  offsets = phase[:, :, -1:, ...] % (2.0 * np.pi)
+  offsets = pad_axis(offsets, [1, 0], axis=1)
+  offsets = offsets[:, :-1, ...]
+
+  # Offset is cumulative among the rows.
+  offsets = tf.cumsum(offsets, axis=1) % (2.0 * np.pi)
+  phase = phase + offsets
+
+  # Put back in original shape.
+  phase = phase % (2.0 * np.pi)
+  phase = tf.reshape(phase, [n_batch, length] + [-1] * n_ch_dims)
+
+  # Remove padding if added it.
+  if remainder:
+    phase = phase[:, :n_time]
+  return phase
+
+
 def remove_above_nyquist(frequency_envelopes: tf.Tensor,
                          amplitude_envelopes: tf.Tensor,
                          sample_rate: int = 16000) -> tf.Tensor:
@@ -624,10 +706,13 @@ def remove_above_nyquist(frequency_envelopes: tf.Tensor,
   return amplitude_envelopes
 
 
+# TODO(jesseengel): Remove reliance on global injection of chunk_size.
+@gin.configurable
 def oscillator_bank(frequency_envelopes: tf.Tensor,
                     amplitude_envelopes: tf.Tensor,
                     sample_rate: int = 16000,
-                    sum_sinusoids: bool = True) -> tf.Tensor:
+                    sum_sinusoids: bool = True,
+                    chunk_size: int = 0) -> tf.Tensor:
   """Generates audio from sample-wise frequencies for a bank of oscillators.
 
   Args:
@@ -637,6 +722,8 @@ def oscillator_bank(frequency_envelopes: tf.Tensor,
       n_samples, n_sinusoids].
     sample_rate: Sample rate in samples per a second.
     sum_sinusoids: Add up audio from all the sinusoids.
+    chunk_size: Perform cumsum in chunks using angular_cumsum if chunk_size > 0.
+      Avoids accumulation of errors during summation but slower on accelerators.
 
   Returns:
     wav: Sample-wise audio. Shape [batch_size, n_samples, n_sinusoids] if
@@ -650,12 +737,18 @@ def oscillator_bank(frequency_envelopes: tf.Tensor,
                                              amplitude_envelopes,
                                              sample_rate)
 
-  # Change Hz to radians per sample.
+  # Angular frequency, Hz -> radians per sample.
   omegas = frequency_envelopes * (2.0 * np.pi)  # rad / sec
   omegas = omegas / float(sample_rate)  # rad / sample
 
   # Accumulate phase and synthesize.
-  phases = tf.cumsum(omegas, axis=1)
+  if chunk_size > 0:
+    # Avoids accumulation errors.
+    phases = angular_cumsum(omegas, chunk_size=chunk_size)
+  else:
+    phases = tf.cumsum(omegas, axis=1)
+
+  # Convert to waveforms.
   wavs = tf.sin(phases)
   audio = amplitude_envelopes * wavs  # [mb, n_samples, n_sinusoids]
   if sum_sinusoids:
