@@ -27,9 +27,7 @@ class SpectralLossTest(tf.test.TestCase):
     loss_obj = losses.SpectralLoss(
         mag_weight=1.0,
         delta_time_weight=1.0,
-        delta_delta_time_weight=1.0,
         delta_freq_weight=1.0,
-        delta_delta_freq_weight=1.0,
         cumsum_freq_weight=1.0,
         logmag_weight=1.0,
         loudness_weight=1.0,

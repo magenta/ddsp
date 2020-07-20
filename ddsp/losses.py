@@ -59,28 +59,58 @@ def mean_difference(target, value, loss_type='L1', weights=None):
 
 @gin.register
 class SpectralLoss(tfkl.Layer):
-  """Multi-scale spectrogram loss."""
+  """Multi-scale spectrogram loss.
+
+  This loss is the bread-and-butter of comparing two audio signals. It offers
+  a range of options to compare spectrograms, many of which are redunant, but
+  emphasize different aspects of the signal. By far, the most common comparisons
+  are magnitudes (mag_weight) and log magnitudes (logmag_weight).
+  """
 
   def __init__(self,
                fft_sizes=(2048, 1024, 512, 256, 128, 64),
                loss_type='L1',
                mag_weight=1.0,
                delta_time_weight=0.0,
-               delta_delta_time_weight=0.0,
                delta_freq_weight=0.0,
-               delta_delta_freq_weight=0.0,
                cumsum_freq_weight=0.0,
                logmag_weight=0.0,
                loudness_weight=0.0,
                name='spectral_loss'):
+    """Constructor, set loss weights of various components.
+
+    Args:
+      fft_sizes: Compare spectrograms at each of this list of fft sizes. Each
+        spectrogram has a time-frequency resolution trade-off based on fft size,
+        so comparing multiple scales allows multiple resolutions.
+      loss_type: One of 'L1', 'L2', or 'COSINE'.
+      mag_weight: Weight to compare linear magnitudes of spectrograms. Core
+        audio similarity loss. More sensitive to peak magnitudes than log
+        magnitudes.
+      delta_time_weight: Weight to compare the first finite difference of
+        spectrograms in time. Emphasizes changes of magnitude in time, such as
+        at transients.
+      delta_freq_weight: Weight to compare the first finite difference of
+        spectrograms in frequency. Emphasizes changes of magnitude in frequency,
+        such as at the boundaries of a stack of harmonics.
+      cumsum_freq_weight: Weight to compare the cumulative sum of spectrograms
+        across frequency for each slice in time. Similar to a 1-D Wasserstein
+        loss, this hopefully provides a non-vanishing gradient to push two
+        non-overlapping sinusoids towards eachother.
+      logmag_weight: Weight to compare log magnitudes of spectrograms. Core
+        audio similarity loss. More sensitive to quiet magnitudes than linear
+        magnitudes.
+      loudness_weight: Weight to compare the overall perceptual loudness of two
+        signals. Very high-level loss signal that is a subset of mag and
+        logmag losses.
+      name: Name of the module.
+    """
     super().__init__(name=name)
     self.fft_sizes = fft_sizes
     self.loss_type = loss_type
     self.mag_weight = mag_weight
     self.delta_time_weight = delta_time_weight
-    self.delta_delta_time_weight = delta_delta_time_weight
     self.delta_freq_weight = delta_freq_weight
-    self.delta_delta_freq_weight = delta_delta_freq_weight
     self.cumsum_freq_weight = cumsum_freq_weight
     self.logmag_weight = logmag_weight
     self.loudness_weight = loudness_weight
@@ -113,23 +143,12 @@ class SpectralLoss(tfkl.Layer):
         loss += self.delta_time_weight * mean_difference(
             target, value, self.loss_type)
 
-      if self.delta_delta_time_weight > 0:
-        target = diff(diff(target_mag, axis=1), axis=1)
-        value = diff(diff(value_mag, axis=1), axis=1)
-        loss += self.delta_delta_time_weight * mean_difference(
-            target, value, self.loss_type)
-
       if self.delta_freq_weight > 0:
         target = diff(target_mag, axis=2)
         value = diff(value_mag, axis=2)
         loss += self.delta_freq_weight * mean_difference(
             target, value, self.loss_type)
 
-      if self.delta_delta_freq_weight > 0:
-        target = diff(diff(target_mag, axis=2), axis=2)
-        value = diff(diff(value_mag, axis=2), axis=2)
-        loss += self.delta_delta_freq_weight * mean_difference(
-            target, value, self.loss_type)
       # TODO(kyriacos) normalize cumulative spectrogram
       if self.cumsum_freq_weight > 0:
         target = cumsum(target_mag, axis=2)
@@ -158,10 +177,15 @@ class SpectralLoss(tfkl.Layer):
 class EmbeddingLoss(tfkl.Layer):
   """Embedding loss for a given pretrained model.
 
-  Calculates the embedding loss given a pretrained model.
-
-  You may also define a trivial pretrained model to apply any function that
-  computes the embedding.
+  Using these "perceptual" loss functions will help encourage better matching
+  of higher-order structure than just a spectral loss. In image models, these
+  perceptual losses help overcome the tendancy of straightforward L1 and L2
+  losses to lead to blurry images. For ddsp, a "blurry" image is often a
+  filtered noise synthesizer or reverb smearing power density in the right areas
+  of a spectrogram but without the appropriate harmonic structure. This
+  perceptual loss encouages output from harmonic and sinusoidal models because
+  the pretrained model compares the two audio signals with features that are
+  trained to detect the harmonic structure of natural sounds.
   """
 
   def __init__(self,
@@ -187,7 +211,7 @@ class EmbeddingLoss(tfkl.Layer):
 
 @gin.register
 class PretrainedCREPEEmbeddingLoss(EmbeddingLoss):
-  """Embedding loss of the CREPE model."""
+  """Embedding loss of a pretrained CREPE model."""
 
   def __init__(self,
                weight=1.0,
