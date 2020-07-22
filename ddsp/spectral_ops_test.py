@@ -127,7 +127,7 @@ class PadOrTrimVectorToExpectedLengthTest(parameterized.TestCase,
     self.assertAllClose(target_trimmed, vector_trimmmed)
 
 
-class ComputeF0AndLoudnessTest(parameterized.TestCase, tf.test.TestCase):
+class ComputeFeaturesTest(parameterized.TestCase, tf.test.TestCase):
 
   def setUp(self):
     """Creates some common default values for the test sinusoid."""
@@ -238,6 +238,42 @@ class ComputeF0AndLoudnessTest(parameterized.TestCase, tf.test.TestCase):
       with self.assertRaises(ValueError):
         spectral_ops.compute_loudness(
             audio_sin, sample_rate, self.frame_rate, use_tf=use_tf)
+
+  @parameterized.named_parameters(
+      ('16k_.21secs', 16000, .21),
+      ('24k_.21secs', 24000, .21),
+      ('48k_.21secs', 48000, .21),
+      ('16k_.4secs', 16000, .4),
+      ('24k_.4secs', 24000, .4),
+      ('48k_.4secs', 48000, .4),
+  )
+  def test_compute_rms_energy(self, sample_rate, audio_len_sec):
+    audio_sin = gen_np_sinusoid(self.frequency, self.amp, sample_rate,
+                                audio_len_sec)
+    expected_rmse_len = int(self.frame_rate * audio_len_sec)
+
+    rms_energy = spectral_ops.compute_rms_energy(
+        audio_sin, sample_rate, self.frame_rate)
+    self.assertLen(rms_energy, expected_rmse_len)
+    self.assertTrue(np.all(np.isfinite(rms_energy)))
+
+  @parameterized.named_parameters(
+      ('16k_.21secs', 16000, .21),
+      ('24k_.21secs', 24000, .21),
+      ('48k_.21secs', 48000, .21),
+      ('16k_.4secs', 16000, .4),
+      ('24k_.4secs', 24000, .4),
+      ('48k_.4secs', 48000, .4),
+  )
+  def test_compute_power(self, sample_rate, audio_len_sec):
+    audio_sin = gen_np_sinusoid(self.frequency, self.amp, sample_rate,
+                                audio_len_sec)
+    expected_power_len = int(self.frame_rate * audio_len_sec)
+
+    power = spectral_ops.compute_power(
+        audio_sin, sample_rate, self.frame_rate)
+    self.assertLen(power, expected_power_len)
+    self.assertTrue(np.all(np.isfinite(power)))
 
 
 if __name__ == '__main__':

@@ -162,6 +162,16 @@ def diff(x, axis=-1):
   return d
 
 
+def amplitude_to_db(amplitude, use_tf=False):
+  """Converts amplitude to dB."""
+  lib = tf if use_tf else np
+  log10 = (lambda x: tf.math.log(x) / tf.math.log(10.0)) if use_tf else np.log10
+  amin = 1e-20  # Avoid log(0) instabilities.
+  db = log10(lib.maximum(amin, amplitude))
+  db *= 20.0
+  return db
+
+
 @gin.register
 def compute_loudness(audio,
                      sample_rate=16000,
@@ -213,12 +223,9 @@ def compute_loudness(audio,
   stft_fn = stft if use_tf else stft_np
   s = stft_fn(audio, frame_size=n_fft, overlap=overlap, pad_end=True)
 
-  # Compute power
+  # Compute power.
   amplitude = lib.abs(s)
-  log10 = (lambda x: tf.math.log(x) / tf.math.log(10.0)) if use_tf else np.log10
-  amin = 1e-20  # Avoid log(0) instabilities.
-  power_db = log10(lib.maximum(amin, amplitude))
-  power_db *= 20.0
+  power_db = amplitude_to_db(amplitude, use_tf=use_tf)
 
   # Perceptual weighting.
   frequencies = librosa.fft_frequencies(sr=sample_rate, n_fft=n_fft)
@@ -286,6 +293,31 @@ def compute_f0(audio, sample_rate, frame_rate, viterbi=True):
   f0_confidence = np.nan_to_num(f0_confidence)   # Set nans to 0 in confidence
   f0_confidence = f0_confidence.astype(np.float32)
   return f0_hz, f0_confidence
+
+
+def compute_rms_energy(audio,
+                       sample_rate=16000,
+                       frame_rate=250,
+                       frame_size=2048):
+  """Compute root mean squared energy of audio."""
+  n_secs = len(audio) / float(sample_rate)  # `n_secs` can have milliseconds
+  expected_len = int(n_secs * frame_rate)
+
+  audio = tf_float32(audio)
+
+  hop_size = sample_rate // frame_rate
+  audio_frames = tf.signal.frame(audio, frame_size, hop_size, pad_end=True)
+  rms_energy = tf.reduce_mean(audio_frames**2.0, axis=-1)**0.5
+  return pad_or_trim_to_expected_length(rms_energy, expected_len, use_tf=True)
+
+
+def compute_power(audio,
+                  sample_rate=16000,
+                  frame_rate=250,
+                  frame_size=2048):
+  """Compute power of audio in dB."""
+  return amplitude_to_db(
+      compute_rms_energy(audio, sample_rate, frame_rate, frame_size)**2)
 
 
 def pad_or_trim_to_expected_length(vector,
