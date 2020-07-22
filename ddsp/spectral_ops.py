@@ -16,6 +16,7 @@
 """Library of FFT operations for loss functions and conditioning."""
 
 import crepe
+from ddsp.core import safe_log
 from ddsp.core import tf_float32
 import gin
 import librosa
@@ -27,10 +28,6 @@ _CREPE_FRAME_SIZE = 1024
 
 F0_RANGE = 127.0  # MIDI
 LD_RANGE = 120.0  # dB
-
-
-def safe_log(x, eps=1e-5):
-  return tf.math.log(x + eps)
 
 
 def stft(audio, frame_size=2048, overlap=0.75, pad_end=True):

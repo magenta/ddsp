@@ -102,21 +102,26 @@ def pad_axis(x, padding=(0, 0), axis=0, **pad_kwargs):
 # Math -------------------------------------------------------------------------
 def safe_divide(numerator, denominator, eps=1e-7):
   """Avoid dividing by zero by adding a small epsilon."""
-  safe_denominator = tf.where(
-      denominator == 0.0, eps * tf.ones_like(denominator), denominator)
+  safe_denominator = tf.where(denominator == 0.0, eps, denominator)
   return numerator / safe_denominator
 
 
-def log(x, base=2.0):
-  """Logarithm with base as an argument."""
-  return tf.math.log(x) / tf.math.log(base)
+def safe_log(x, eps=1e-5):
+  """Avoid taking the log of a non-positive number."""
+  safe_x = tf.where(x <= 0.0, eps, x)
+  return tf.math.log(safe_x)
+
+
+def logb(x, base=2.0):
+  """Safe logarithm with base as an argument."""
+  return safe_log(x) / tf.math.log(base)
 
 
 def log_scale(x, min_x, max_x):
   """Scales a -1 to 1 value logarithmically between min and max."""
   x = tf_float32(x)
   x = (x + 1.0) / 2.0  # Scale [-1, 1] to [0, 1]
-  return tf.exp((1.0 - x) * tf.math.log(min_x) + x * tf.math.log(max_x))
+  return tf.exp((1.0 - x) * safe_log(min_x) + x * safe_log(max_x))
 
 
 def soft_limit(x, x_min=0.0, x_max=1.0):
@@ -139,7 +144,7 @@ def midi_to_hz(notes: Number) -> Number:
 def hz_to_midi(frequencies: Number) -> Number:
   """TF-compatible hz_to_midi function."""
   frequencies = tf_float32(frequencies)
-  notes = 12.0 * (log(frequencies, 2.0) - log(440.0, 2.0)) + 69.0
+  notes = 12.0 * (logb(frequencies, 2.0) - logb(440.0, 2.0)) + 69.0
   # Map 0 Hz to MIDI 0 (Replace -inf with 0.)
   cond = tf.equal(notes, -np.inf)
   notes = tf.where(cond, 0.0, notes)
@@ -200,7 +205,7 @@ def bark_to_hz(bark):
 
 def hz_to_mel(hz):
   """From Young et al. "The HTK book", Chapter 5.4."""
-  return 2595.0 * log(1.0 + hz / 700.0, 10.0)
+  return 2595.0 * logb(1.0 + hz / 700.0, 10.0)
 
 
 def mel_to_hz(mel):
@@ -241,7 +246,7 @@ def exp_sigmoid(x, exponent=10.0, max_value=2.0, threshold=1e-7):
     A tensor with pointwise nonlinearity applied.
   """
   x = tf_float32(x)
-  return max_value * tf.nn.sigmoid(x)**tf.math.log(exponent) + threshold
+  return max_value * tf.nn.sigmoid(x)**safe_log(exponent) + threshold
 
 
 @gin.register
