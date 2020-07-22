@@ -112,16 +112,19 @@ def safe_log(x, eps=1e-5):
   return tf.math.log(safe_x)
 
 
-def logb(x, base=2.0):
-  """Safe logarithm with base as an argument."""
-  return safe_log(x) / tf.math.log(base)
+def logb(x, base=2.0, safe=False):
+  """Logarithm with base as an argument."""
+  if safe:
+    return safe_divide(safe_log(x), safe_log(base))
+  else:
+    return tf.math.log(x) / tf.math.log(base)
 
 
 def log_scale(x, min_x, max_x):
   """Scales a -1 to 1 value logarithmically between min and max."""
   x = tf_float32(x)
   x = (x + 1.0) / 2.0  # Scale [-1, 1] to [0, 1]
-  return tf.exp((1.0 - x) * safe_log(min_x) + x * safe_log(max_x))
+  return tf.exp((1.0 - x) * tf.math.log(min_x) + x * tf.math.log(max_x))
 
 
 def soft_limit(x, x_min=0.0, x_max=1.0):
@@ -145,9 +148,8 @@ def hz_to_midi(frequencies: Number) -> Number:
   """TF-compatible hz_to_midi function."""
   frequencies = tf_float32(frequencies)
   notes = 12.0 * (logb(frequencies, 2.0) - logb(440.0, 2.0)) + 69.0
-  # Map 0 Hz to MIDI 0 (Replace -inf with 0.)
-  cond = tf.equal(notes, -np.inf)
-  notes = tf.where(cond, 0.0, notes)
+  # Map 0 Hz to MIDI 0 (Replace -inf MIDI with 0.)
+  notes = tf.where(tf.less_equal(frequencies, 0.0), 0.0, notes)
   return notes
 
 
@@ -246,7 +248,7 @@ def exp_sigmoid(x, exponent=10.0, max_value=2.0, threshold=1e-7):
     A tensor with pointwise nonlinearity applied.
   """
   x = tf_float32(x)
-  return max_value * tf.nn.sigmoid(x)**safe_log(exponent) + threshold
+  return max_value * tf.nn.sigmoid(x)**tf.math.log(exponent) + threshold
 
 
 @gin.register

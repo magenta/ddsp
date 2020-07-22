@@ -34,8 +34,9 @@ class UtilitiesTest(parameterized.TestCase, tf.test.TestCase):
 
   def test_hz_to_midi_is_accurate(self):
     """Tests converting between MIDI values and their frequencies in hertz."""
-    hz = np.linspace(20.0, 20000.0, 128)
+    hz = np.linspace(0.0, 20000.0, 128)
     librosa_midi = librosa.hz_to_midi(hz)
+    librosa_midi = tf.where(tf.less_equal(hz, 0.0), 0.0, librosa_midi)
     tf_midi = core.hz_to_midi(hz)
     self.assertAllClose(librosa_midi, tf_midi)
 
