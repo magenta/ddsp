@@ -253,7 +253,12 @@ functions with `@gin.register` so that they can be specified as arguments of mor
 `Model`, `train()`, `evaluate()`, and `sample()` in [`ddsp/training`](./ddsp/training).
 
 As you can see in the code, this allows us to flexibly define hyperparameters of
-most functions without worrying about side-effects. One exception is `ddsp.core.cumsum` where we configure special optimizations for TPU.
+most functions without worrying about side-effects. One exception is `ddsp.core.oscillator_bank.use_angular_cumsum` where we can enable a slower but more accurate algorithm globally.
+
+
+### Backwards compatability
+
+For backwards compatability, we keep track of changes in function signatures in `update_gin_config.py`, which can be used to update old operative configs to work with the current library.
 
 <a id='Installation'></a>
 # Installation

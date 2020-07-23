@@ -103,6 +103,12 @@ will be saved to the `${MODEL_DIR}/operative_config-0.gin` file, which is then l
 [this doc](https://github.com/google/gin-config/blob/master/docs/index.md#saving-gins-operative-config-to-a-file-and-tensorboard)
 for more details.
 
+### Backwards compatability
+
+
+For backwards compatability, we keep track of changes in function signatures in `update_gin_config.py`, which can be used to update old operative configs to work with the current library.
+
+
 ### Using Cloud TPU
 
 To use a [Cloud TPU](https://cloud.google.com/tpu/) for any of the above commands, there are a few minor changes.
