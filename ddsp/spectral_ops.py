@@ -311,10 +311,17 @@ def compute_rms_energy(audio,
 def compute_power(audio,
                   sample_rate=16000,
                   frame_rate=250,
-                  frame_size=2048):
+                  frame_size=1024,
+                  range_db=LD_RANGE,
+                  ref_db=20.7):
   """Compute power of audio in dB."""
-  return amplitude_to_db(
-      compute_rms_energy(audio, sample_rate, frame_rate, frame_size)**2)
+  # TODO(hanoih@): enable `use_tf` to be True or False like `compute_loudness`
+  rms_energy = compute_rms_energy(audio, sample_rate, frame_rate, frame_size)
+  power_db = amplitude_to_db(rms_energy**2, use_tf=True)
+  # Set dynamic range.
+  power_db -= ref_db
+  power_db = tf.maximum(power_db, -range_db)
+  return power_db
 
 
 def pad_or_trim_to_expected_length(vector,
