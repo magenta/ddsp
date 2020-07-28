@@ -30,8 +30,11 @@ F0_RANGE = 127.0  # MIDI
 LD_RANGE = 120.0  # dB
 
 
-def stft(audio, frame_size=2048, overlap=0.75, pad_end=True):
+def stft(audio, frame_size=2048, overlap=0.75, pad_end=True, centered=False):
   """Differentiable stft in tensorflow, computed in batch."""
+  if centered:
+    # TODO(chrisdonahue)
+    raise NotImplementedError()
   audio = tf_float32(audio)
   assert frame_size * overlap % 2.0 == 0.0
   s = tf.signal.stft(
@@ -43,7 +46,7 @@ def stft(audio, frame_size=2048, overlap=0.75, pad_end=True):
   return s
 
 
-def stft_np(audio, frame_size=2048, overlap=0.75, pad_end=True):
+def stft_np(audio, frame_size=2048, overlap=0.75, pad_end=True, centered=False):
   """Non-differentiable stft using librosa, one example at a time."""
   assert frame_size * overlap % 2.0 == 0.0
   hop_size = int(frame_size * (1.0 - overlap))
@@ -54,7 +57,12 @@ def stft_np(audio, frame_size=2048, overlap=0.75, pad_end=True):
     n_frames = int(np.ceil(n_samples_initial / hop_size))
     n_samples_final = (n_frames - 1) * hop_size + frame_size
     pad = n_samples_final - n_samples_initial
-    padding = ((0, 0), (0, pad)) if is_2d else ((0, pad),)
+    if centered:
+      pad_l = pad // 2
+    else:
+      pad_l = 0
+    pad_r = pad - pad_l
+    padding = ((0, 0), (pad_l, pad_r)) if is_2d else ((pad_l, pad_r),)
     audio = np.pad(audio, padding, 'constant')
 
   def stft_fn(y):
@@ -176,7 +184,8 @@ def compute_loudness(audio,
                      n_fft=2048,
                      range_db=LD_RANGE,
                      ref_db=20.7,
-                     use_tf=False):
+                     use_tf=False,
+                     centered=False):
   """Perceptual loudness in dB, relative to white noise, amplitude=1.
 
   Function is differentiable if use_tf=True.
@@ -194,6 +203,7 @@ def compute_loudness(audio,
       slight dependence on fft_size due to different granularity of perceptual
       weighting.
     use_tf: Make function differentiable by using tensorflow.
+    centered: Center loudness signal on corresponding audio.
 
   Returns:
     Loudness in decibels. Shape [batch_size, n_frames] or [n_frames,].
@@ -218,7 +228,7 @@ def compute_loudness(audio,
   hop_size = sample_rate // frame_rate
   overlap = 1 - hop_size / n_fft
   stft_fn = stft if use_tf else stft_np
-  s = stft_fn(audio, frame_size=n_fft, overlap=overlap, pad_end=True)
+  s = stft_fn(audio, frame_size=n_fft, overlap=overlap, pad_end=True, centered=centered)
 
   # Compute power.
   amplitude = lib.abs(s)

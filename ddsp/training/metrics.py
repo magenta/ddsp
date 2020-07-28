@@ -54,13 +54,14 @@ def is_outlier(ground_truth_f0_conf):
 def compute_audio_features(audio,
                            n_fft=2048,
                            sample_rate=16000,
-                           frame_rate=250):
+                           frame_rate=250,
+                           centered=False):
   """Compute features from audio."""
   audio_feats = {'audio': audio}
   audio = squeeze(audio)
 
   audio_feats['loudness_db'] = ddsp.spectral_ops.compute_loudness(
-      audio, sample_rate, frame_rate, n_fft)
+      audio, sample_rate, frame_rate, n_fft, centered=centered)
 
   audio_feats['f0_hz'], audio_feats['f0_confidence'] = (
       ddsp.spectral_ops.compute_f0(audio, sample_rate, frame_rate))
