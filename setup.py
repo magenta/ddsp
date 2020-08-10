@@ -50,6 +50,7 @@ setuptools.setup(
         'scipy',
         'six',
         'tensorflow',
+        'tensorflow-probability',
         # TODO(adarob): Switch to tensorflow_datasets once includes nsynth 2.3.
         'tfds-nightly',
     ],

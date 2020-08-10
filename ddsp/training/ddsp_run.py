@@ -73,6 +73,7 @@ import gin
 import pkg_resources
 import tensorflow.compat.v2 as tf
 
+gfile = tf.io.gfile
 FLAGS = flags.FLAGS
 
 # Program flags.
@@ -161,7 +162,9 @@ def main(unused_argv):
   logging.info('Restore Dir: %s', restore_dir)
   logging.info('Save Dir: %s', save_dir)
 
+  gfile.makedirs(restore_dir)  # Only makes dirs if they don't exist.
   parse_gin(restore_dir)
+
   if FLAGS.allow_memory_growth:
     allow_memory_growth()
 

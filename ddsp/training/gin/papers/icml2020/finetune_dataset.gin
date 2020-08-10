@@ -1,0 +1,29 @@
+# -*-Python-*-
+include 'papers/icml2020/pretrain_dataset.gin'
+
+# Datasets
+train.data_provider = @train_data/data.ZippedProvider()
+evaluate.data_provider = @test_data/data.ZippedProvider()
+sample.data_provider = @test_data/data.ZippedProvider()
+
+
+
+# Training
+train_data/ZippedProvider.data_providers = [
+    @data.SyntheticNotes(),
+    @train_data/data.TFRecordProvider(),
+]
+
+
+# Testing
+test_data/ZippedProvider.data_providers = [
+    @data.SyntheticNotes(),
+    @test_data/data.TFRecordProvider(),
+]
+
+
+# Make dataset with ddsp/training/data_preparation/ddsp_prepare_tfrecord.py
+# --gin_param="TFRecordProvider.file_pattern='/path/to/dataset*.tfrecord'"
+
+train_data/TFRecordProvider.file_pattern = 'gs://ddsp-inv/datasets/all_instruments_train.tfrecord*'
+test_data/TFRecordProvider.file_pattern = 'gs://ddsp-inv/datasets/all_instruments_test.tfrecord*'

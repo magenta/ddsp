@@ -200,3 +200,135 @@ class ResnetF0Encoder(F0Encoder):
     return f0
 
 
+# Transcribing Autoencoder Encoders --------------------------------------------
+@gin.register
+class ResnetSinusoidalEncoder(tfkl.Layer):
+  """This encoder maps directly from audio to synthesizer parameters.
+
+  EXPERIMENTAL
+
+  It is equivalent of a base Encoder and Decoder together.
+  """
+
+  def __init__(self,
+               output_splits=(('frequencies', 100 * 64),
+                              ('amplitudes', 100),
+                              ('noise_magnitudes', 60)),
+               spectral_fn=spectral_ops.compute_logmel,
+               size='tiny',
+               name='resnet_sinusoidal_encoder'):
+    super().__init__(name=name)
+    self.output_splits = output_splits
+    self.spectral_fn = spectral_fn
+
+    # Layers.
+    self.resnet = nn.resnet(size=size)
+    self.dense_outs = [nn.dense(v[1]) for v in output_splits]
+
+  def call(self, features):
+    """Updates conditioning with z and (optionally) f0."""
+    outputs = {}
+
+    # [batch, 64000, 1]
+    mag = self.spectral_fn(features['audio'])
+
+    # [batch, 125, 229]
+    mag = mag[:, :, :, tf.newaxis]
+    x = self.resnet(mag)
+
+    # [batch, 125, 8, 1024]
+    # # Collapse the frequency dimension.
+    x = tf.reshape(x, [int(x.shape[0]), int(x.shape[1]), -1])
+
+    # [batch, 125, 8192]
+    for layer, (key, _) in zip(self.dense_outs, self.output_splits):
+      outputs[key] = layer(x)
+
+    return outputs
+
+
+@gin.register
+class SinusoidalToHarmonicEncoder(tfkl.Layer):
+  """Predicts harmonic controls from sinusoidal controls.
+
+  EXPERIMENTAL
+  """
+
+  def __init__(self,
+               fc_stack_layers=2,
+               fc_stack_ch=256,
+               rnn_ch=512,
+               rnn_type='gru',
+               n_harmonics=100,
+               amp_scale_fn=ddsp.core.exp_sigmoid,
+               f0_depth=64,
+               hz_min=20.0,
+               hz_max=1200.0,
+               sample_rate=16000,
+               name='sinusoidal_to_harmonic_encoder'):
+    """Constructor."""
+    super().__init__(name=name)
+    self.n_harmonics = n_harmonics
+    self.amp_scale_fn = amp_scale_fn
+    self.f0_depth = f0_depth
+    self.hz_min = hz_min
+    self.hz_max = hz_max
+    self.sample_rate = sample_rate
+
+    # Layers.
+    self.pre_rnn = nn.fc_stack(fc_stack_ch, fc_stack_layers)
+    self.rnn = nn.rnn(rnn_ch, rnn_type)
+    self.post_rnn = nn.fc_stack(fc_stack_ch, fc_stack_layers)
+
+    self.amp_out = nn.dense(1)
+    self.hd_out = nn.dense(n_harmonics)
+    self.f0_out = nn.dense(f0_depth)
+
+  def call(self, sin_freqs, sin_amps):
+    """Converts (sin_freqs, sin_amps) to (f0, amp, hd).
+
+    Args:
+      sin_freqs: Sinusoidal frequencies in Hertz, of shape
+        [batch, time, n_sinusoids].
+      sin_amps: Sinusoidal amplitudes, linear scale, greater than 0, of shape
+        [batch, time, n_sinusoids].
+
+    Returns:
+      f0: Fundamental frequency in Hertz, of shape [batch, time, 1].
+      amp: Amplitude, linear scale, greater than 0, of shape [batch, time, 1].
+      hd: Harmonic distribution, linear scale, greater than 0, of shape
+        [batch, time, n_harmonics].
+    """
+    # Scale the inputs.
+    nyquist = self.sample_rate / 2.0
+    sin_freqs_unit = ddsp.core.hz_to_unit(sin_freqs, hz_min=0.0, hz_max=nyquist)
+
+    # Combine.
+    x = tf.concat([sin_freqs_unit, sin_amps], axis=-1)
+
+    # Run it through the network.
+    x = self.pre_rnn(x)
+    x = self.rnn(x)
+    x = self.post_rnn(x)
+
+    harm_amp = self.amp_out(x)
+    harm_dist = self.hd_out(x)
+    f0 = self.f0_out(x)
+
+    # Output scaling.
+    harm_amp = self.amp_scale_fn(harm_amp)
+    harm_dist = self.amp_scale_fn(harm_dist)
+    f0_hz = ddsp.core.frequencies_softmax(
+        f0, depth=self.f0_depth, hz_min=self.hz_min, hz_max=self.hz_max)
+
+    # Filter harmonic distribution for nyquist.
+    harm_freqs = ddsp.core.get_harmonic_frequencies(f0_hz, self.n_harmonics)
+    harm_dist = ddsp.core.remove_above_nyquist(harm_freqs,
+                                               harm_dist,
+                                               self.sample_rate)
+    harm_dist = ddsp.core.safe_divide(
+        harm_dist, tf.reduce_sum(harm_dist, axis=-1, keepdims=True))
+
+    return (harm_amp, harm_dist, f0_hz)
+
+

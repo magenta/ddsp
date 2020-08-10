@@ -12,6 +12,7 @@ The current supported models are variants of an audio autoencoder.
 *Unlike the base `ddsp/` library, this folder is actively modified for new
 experiments and has a higher chance of making breaking changes in the future.*
 
+_Functions and classes marked **EXPERIMENTAL** in their doc string are under active development and very likely to change. They should not be expected to be maintained in their current state._
 
 ## Modules
 

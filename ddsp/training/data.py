@@ -234,3 +234,129 @@ class TFRecordProvider(RecordProvider):
                      frame_rate, tf.data.TFRecordDataset)
 
 
+# ------------------------------------------------------------------------------
+# Zipped DataProvider
+# ------------------------------------------------------------------------------
+@gin.register
+class ZippedProvider(DataProvider):
+  """Combines datasets from two providers with zip."""
+
+  def __init__(self, data_providers, batch_size_ratios=()):
+    """Constructor.
+
+    Args:
+      data_providers: A list of data_providers.
+      batch_size_ratios: A list of ratios of batch sizes for each provider.
+        These do not need to sum to 1. For example, [2, 1] will produce batches
+        with a size ratio of 2 to 1.
+    """
+    # Normalize the ratios.
+    if batch_size_ratios:
+      # Check lengths match.
+      if len(batch_size_ratios) != len(data_providers):
+        raise ValueError('List of batch size ratios ({}) must be of the same '
+                         'length as the list of data providers ({}) for varying'
+                         'batch sizes.'.format(
+                             len(batch_size_ratios), len(data_providers)))
+      total = sum(batch_size_ratios)
+      batch_size_ratios = [float(bsr) / total for bsr in batch_size_ratios]
+
+    # Make sure all sample rates are the same.
+    sample_rates = [dp.sample_rate for dp in data_providers]
+    assert len(set(sample_rates)) <= 1
+    sample_rate = sample_rates[0]
+
+    # Make sure all frame rates are the same.
+    frame_rates = [dp.frame_rate for dp in data_providers]
+    assert len(set(frame_rates)) <= 1
+    frame_rate = frame_rates[0]
+
+    super().__init__(sample_rate, frame_rate)
+    self._data_providers = data_providers
+    self._batch_size_ratios = batch_size_ratios
+
+  def get_dataset(self, shuffle=True):
+    """Read dataset.
+
+    Args:
+      shuffle: Whether to shuffle the input files.
+
+    Returns:
+      dataset: A zipped tf.data.Dataset from multiple providers.
+    """
+    datasets = tuple(dp.get_dataset(shuffle) for dp in self._data_providers)
+    return tf.data.Dataset.zip(datasets)
+
+  def get_batch(self, batch_size, shuffle=True, repeats=-1):
+    """Read dataset.
+
+    Args:
+      batch_size: Size of batches, can be a list to have varying batch_sizes.
+      shuffle: Whether to shuffle the examples.
+      repeats: Number of times to repeat dataset. -1 for endless repeats.
+
+    Returns:
+      A batched tf.data.Dataset.
+    """
+    if not self._batch_size_ratios:
+      # One batch size for all datasets ('None' is batch shape).
+      return super().get_batch(batch_size)
+
+    else:
+      # Varying batch sizes (Integer batch shape for each).
+      batch_sizes = [int(batch_size * bsr) for bsr in self._batch_size_ratios]
+      datasets = tuple(
+          dp.get_dataset(shuffle).batch(bs, drop_remainder=True)
+          for bs, dp in zip(batch_sizes, self._data_providers))
+      dataset = tf.data.Dataset.zip(datasets)
+      dataset = dataset.repeat(repeats)
+      dataset = dataset.prefetch(buffer_size=_AUTOTUNE)
+      return dataset
+
+
+# ------------------------------------------------------------------------------
+# Synthetic Data for TranscribingAutoencoder
+# ------------------------------------------------------------------------------
+@gin.register
+class SyntheticNotes(TFRecordProvider):
+  """Create self-supervised control signal.
+
+  EXPERIMENTAL
+
+  Pass file_pattern to tfrecords created by `ddsp_generate_synthetic_data.py`.
+  """
+
+  def __init__(self,
+               n_timesteps,
+               n_harmonics,
+               n_mags,
+               file_pattern=None,
+               sample_rate=16000):
+    self.n_timesteps = n_timesteps
+    self.n_harmonics = n_harmonics
+    self.n_mags = n_mags
+    super().__init__(file_pattern=file_pattern, sample_rate=sample_rate)
+
+  @property
+  def features_dict(self):
+    """Dictionary of features to read from dataset."""
+    return {
+        'f0_hz':
+            tf.io.FixedLenFeature([self.n_timesteps, 1], dtype=tf.float32),
+        'harm_amp':
+            tf.io.FixedLenFeature([self.n_timesteps, 1], dtype=tf.float32),
+        'harm_dist':
+            tf.io.FixedLenFeature(
+                [self.n_timesteps, self.n_harmonics], dtype=tf.float32),
+        'sin_amps':
+            tf.io.FixedLenFeature(
+                [self.n_timesteps, self.n_harmonics], dtype=tf.float32),
+        'sin_freqs':
+            tf.io.FixedLenFeature(
+                [self.n_timesteps, self.n_harmonics], dtype=tf.float32),
+        'noise_magnitudes':
+            tf.io.FixedLenFeature(
+                [self.n_timesteps, self.n_mags], dtype=tf.float32),
+    }
+
+
