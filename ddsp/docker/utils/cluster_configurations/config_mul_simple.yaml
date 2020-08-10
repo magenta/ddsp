@@ -1,0 +1,6 @@
+trainingInput:
+  scaleTier: CUSTOM
+  masterType: standard_gpu
+  workerType: standard_gpu
+  workerCount: 3
+  useChiefInTfConfig: True

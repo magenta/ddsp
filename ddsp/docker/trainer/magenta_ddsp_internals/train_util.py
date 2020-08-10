@@ -27,11 +27,9 @@ import tensorflow.compat.v2 as tf
 # ---------------------- Helper Functions --------------------------------------
 def get_strategy(tpu='', gpus=None):
   """Create a distribution strategy.
-
   Args:
     tpu: Address of the TPU. No TPU if left blank.
     gpus: List of GPU addresses for synchronous training.
-
   Returns:
     A distribution strategy.
   """
@@ -62,11 +60,9 @@ def get_strategy(tpu='', gpus=None):
 
 def get_latest_chekpoint(checkpoint_path):
   """Helper function to get path to latest checkpoint.
-
   Args:
     checkpoint_path: Path to the directory containing model checkpoints, or
       to a specific checkpoint (e.g. `path/to/model.ckpt-iteration`).
-
   Returns:
     Path to latest checkpoint, or None if none exist.
   """

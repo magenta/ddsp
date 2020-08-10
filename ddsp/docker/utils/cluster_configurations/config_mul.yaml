@@ -1,0 +1,16 @@
+trainingInput:
+  scaleTier: CUSTOM
+  # Configure a master worker with 4 T4 GPUs
+  masterType: n1-highcpu-16
+  masterConfig:
+    acceleratorConfig:
+      count: 2
+      type: nvidia-tesla-t4
+  # Configure 3 workers, each with 4 T4 GPUs
+  workerCount: 3
+  workerType: n1-highcpu-16
+  workerConfig:
+    acceleratorConfig:
+      count: 2
+      type: nvidia-tesla-t4
+  useChiefInTfConfig: True

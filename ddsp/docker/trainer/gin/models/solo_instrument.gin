@@ -1,0 +1,40 @@
+# -*-Python-*-
+# Decodes from (loudness, f0). Has a trainable reverb component as well.
+# Since it uses a trainable reverb, training data should all be from the same
+# acoustic environment.
+
+include 'models/ae.gin'
+
+# Encoder
+Autoencoder.encoder = None
+
+# Decoder
+Autoencoder.decoder = @decoders.RnnFcDecoder()
+RnnFcDecoder.rnn_channels = 512
+RnnFcDecoder.rnn_type = 'gru'
+RnnFcDecoder.ch = 512
+RnnFcDecoder.layers_per_stack = 3
+RnnFcDecoder.input_keys = ('ld_scaled', 'f0_scaled')
+RnnFcDecoder.output_splits = (('amps', 1),
+                              ('harmonic_distribution', 60),
+                              ('noise_magnitudes', 65))
+
+# ==============
+# ProcessorGroup
+# ==============
+
+ProcessorGroup.dag = [
+  (@synths.Additive(),
+    ['amps', 'harmonic_distribution', 'f0_hz']),
+  (@synths.FilteredNoise(),
+    ['noise_magnitudes']),
+  (@processors.Add(),
+    ['filtered_noise/signal', 'additive/signal']),
+  (@effects.Reverb(),
+    ['add/signal']),
+]
+
+# Reverb
+Reverb.name = 'reverb'
+Reverb.reverb_length = 48000
+Reverb.trainable = True

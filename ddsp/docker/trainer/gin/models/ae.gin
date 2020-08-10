@@ -1,0 +1,72 @@
+# -*-Python-*-
+# Autoencoder that decodes from (loudness, f0, z).
+# z = encoder(audio)
+
+import ddsp
+import ddsp.training
+
+# =====
+# Model
+# =====
+get_model.model = @models.Autoencoder()
+
+# Preprocessor
+Autoencoder.preprocessor = @preprocessing.DefaultPreprocessor()
+DefaultPreprocessor.time_steps = 1000
+
+# Encoder
+Autoencoder.encoder = @encoders.MfccTimeDistributedRnnEncoder()
+MfccTimeDistributedRnnEncoder.rnn_channels = 512
+MfccTimeDistributedRnnEncoder.rnn_type = 'gru'
+MfccTimeDistributedRnnEncoder.z_dims = 16
+MfccTimeDistributedRnnEncoder.z_time_steps = 125
+
+# Decoder
+Autoencoder.decoder = @decoders.RnnFcDecoder()
+RnnFcDecoder.rnn_channels = 512
+RnnFcDecoder.rnn_type = 'gru'
+RnnFcDecoder.ch = 512
+RnnFcDecoder.layers_per_stack = 3
+RnnFcDecoder.input_keys = ('ld_scaled', 'f0_scaled', 'z')
+RnnFcDecoder.output_splits = (('amps', 1),
+                              ('harmonic_distribution', 100),
+                              ('noise_magnitudes', 65))
+
+# Losses
+Autoencoder.losses = [
+    @losses.SpectralLoss(),
+]
+SpectralLoss.loss_type = 'L1'
+SpectralLoss.mag_weight = 1.0
+SpectralLoss.logmag_weight = 1.0
+
+# ==============
+# ProcessorGroup
+# ==============
+
+Autoencoder.processor_group = @processors.ProcessorGroup()
+
+ProcessorGroup.dag = [
+  (@synths.Additive(),
+    ['amps', 'harmonic_distribution', 'f0_hz']),
+  (@synths.FilteredNoise(),
+    ['noise_magnitudes']),
+  (@processors.Add(),
+    ['filtered_noise/signal', 'additive/signal']),
+]
+
+# Additive Synthesizer
+Additive.name = 'additive'
+Additive.n_samples = 64000
+Additive.sample_rate = 16000
+Additive.normalize_below_nyquist = True
+Additive.scale_fn = @core.exp_sigmoid
+
+# Filtered Noise Synthesizer
+FilteredNoise.name = 'filtered_noise'
+FilteredNoise.n_samples = 64000
+FilteredNoise.window_size = 0
+FilteredNoise.scale_fn = @core.exp_sigmoid
+
+# Add
+Add.name = 'add'
