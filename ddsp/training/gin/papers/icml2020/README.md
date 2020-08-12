@@ -48,7 +48,7 @@ ddsp_run \
 
 This command points to datasets on GCP, and the gin_params for file_pattern are redudant with the default values in the gin files, but provided here to show how you would modify them for local dataset paths.
 
-In the paper we train for ~1.2M steps with a batch size of 64. The command above is tuned for a single v100 (max batch size = 32), you would need to use multiple gpus to exactly reproduce the experiement. Given the large amount of pretraining, a pretrained checkpoint [is available here](https://storage.googleapis.com/ddsp-inv/ckpts/synthetic_pretrained_ckpt.zip)
+In the paper we train for ~1.2M steps with a batch size of 64. The command above is tuned for a single v100 (max batch size of 32), you would need to use multiple gpus to exactly reproduce the experiement. Given the large amount of pretraining, a pretrained checkpoint [is available here](https://storage.googleapis.com/ddsp-inv/ckpts/synthetic_pretrained_ckpt.zip)
 or on GCP at `gs://ddsp-inv/ckpts/synthetic_pretrained_ckpt`.
 
 ### Eval and Sample
@@ -82,8 +82,13 @@ ddsp_run \
 
 ### Train
 Now we finetune the model from above on a specific dataset. Use the `--restore_dir` flag to point to your pretrained checkpoint.
+
 A pretrained model on 1.2M steps (batch size=64) of synthetic data [is available here](https://storage.googleapis.com/ddsp-inv/ckpts/synthetic_pretrained_ckpt.zip)
-or on GCP at `gs://ddsp-inv/ckpts/synthetic_pretrained_ckpt`.
+or on GCP.
+
+```bash
+gsutil cp -r gs://ddsp-inv/ckpts/synthetic_pretrained_ckpt /path/to/synthetic_pretrained_ckpt
+```
 
 ```bash
 ddsp_run \
@@ -94,7 +99,7 @@ ddsp_run \
 --gin_file=papers/icml2020/finetune_dataset.gin \
 --gin_param="SyntheticNotes.file_pattern='gs://ddsp-inv/datasets/notes_t125_h100_m65_v2.tfrecord*'" \
 --gin_param="train_data/TFRecordProvider.file_pattern='gs://ddsp-inv/datasets/all_instruments_train.tfrecord*'" \
---gin_param="test_data/TFRecordProvider.file_pattern = 'gs://ddsp-inv/datasets/all_instruments_test.tfrecord*'" \
+--gin_param="test_data/TFRecordProvider.file_pattern='gs://ddsp-inv/datasets/all_instruments_test.tfrecord*'" \
 --gin_param="batch_size=12" \
 --alsologtostderr
 ```
@@ -104,7 +109,7 @@ We have provided sharded TFRecord files for the [URMP dataset](http://www2.ece.r
 If training on GCP it is fast to directly read from these buckets, but if training locally you will probably want to download the files locally (~16 GB) using the `gsutil` command line utility from the [gcloud sdk](https://cloud.google.com/sdk/docs/downloads-interactive).
 
 
-In the paper, this model was trained with a batch size of 64 on 8 accelerators (8 per an accelerator), and typically converges after 50-100k iterations. The command above is tuned for a single v100 (max batch size = 12), you would need to use multiple gpus to exactly reproduce the experiement.
+In the paper, this model was trained with a batch size of 64 on 8 accelerators (8 per an accelerator), and typically converges after 200-400k iterations. The command above is tuned for a single v100 (max batch size of 12), you would need to use multiple GPUs or TPUs to exactly reproduce the experiement. To use a TPU, start up an instance from the web interface and pass the internal ip address to the tpu flag `--tpu=grpc://<internal-ip-address>`.
 
 ### Eval and Sample
 
