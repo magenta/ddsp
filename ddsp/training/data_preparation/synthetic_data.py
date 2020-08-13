@@ -164,10 +164,8 @@ def generate_notes_v2(n_batch=1,
   f0_midi = np.zeros([n_batch, n_timesteps, 1])
   mags = np.zeros([n_batch, n_timesteps, n_mags])
 
-  b = 0
-  t_start = 0
-
   for b in range(n_batch):
+    t_start = 0
     while t_start < n_timesteps:
       note_length = uniform_int(min_note_length, max_note_length)
       t_end = min(t_start + note_length, n_timesteps)
