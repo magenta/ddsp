@@ -35,10 +35,10 @@ COPY training/train_util.py /root/trainer/magenta_ddsp_internals/train_util.py
 
 # Copies default gin configuration files
 COPY docker/trainer/gin/optimization/base.gin /root/trainer/gin/optimization/base.gin
-COPY docker/trainer/gin/models/solo_instrument.gin /root/trainer/gin/models/solo_instrument.gin 
-COPY docker/trainer/gin/models/ae.gin /root/trainer/gin/models/ae.gin 
+COPY training/gin/models/solo_instrument.gin /root/trainer/gin/models/solo_instrument.gin 
+COPY training/gin/models/ae.gin /root/trainer/gin/models/ae.gin 
 COPY docker/trainer/gin/datasets/tfrecord.gin /root/trainer/gin/datasets/tfrecord.gin
-COPY docker/trainer/gin/datasets/base.gin /root/trainer/gin/datasets/base.gin
+COPY training/gin/datasets/base.gin /root/trainer/gin/datasets/base.gin
 
 # These parameters can be also specified as part of the job submission arguments
 ENTRYPOINT ["python", "trainer/ddsp_run.py", "--mode=train", \
