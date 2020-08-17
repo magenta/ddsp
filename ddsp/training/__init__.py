@@ -23,6 +23,7 @@ from ddsp.training import inference
 from ddsp.training import metrics
 from ddsp.training import models
 from ddsp.training import nn
+from ddsp.training import plotting
 from ddsp.training import preprocessing
 from ddsp.training import summaries
 from ddsp.training import train_util
