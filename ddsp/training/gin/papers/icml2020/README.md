@@ -42,13 +42,13 @@ ddsp_run \
 --gin_file=papers/icml2020/pretrain_model.gin \
 --gin_file=papers/icml2020/pretrain_dataset.gin \
 --gin_param="SyntheticNotes.file_pattern='gs://ddsp-inv/datasets/notes_t125_h100_m65_v2.tfrecord*'" \
---gin_param="batch_size=32" \
+--gin_param="batch_size=64" \
 --alsologtostderr
 ```
 
 This command points to datasets on GCP, and the gin_params for file_pattern are redudant with the default values in the gin files, but provided here to show how you would modify them for local dataset paths.
 
-In the paper we train for ~1.2M steps with a batch size of 64. The command above is tuned for a single v100 (max batch size of 32), you would need to use multiple gpus to exactly reproduce the experiement. Given the large amount of pretraining, a pretrained checkpoint [is available here](https://storage.googleapis.com/ddsp-inv/ckpts/synthetic_pretrained_ckpt.zip)
+In the paper we train for ~1.2M steps with a batch size of 64. A single v100 can fit a max batch size of 32, so you will need to use multiple gpus to exactly reproduce the experiment. Given the large amount of pretraining, a pretrained checkpoint [is available here](https://storage.googleapis.com/ddsp-inv/ckpts/synthetic_pretrained_ckpt.zip)
 or on GCP at `gs://ddsp-inv/ckpts/synthetic_pretrained_ckpt`.
 
 ### Eval and Sample
@@ -100,7 +100,7 @@ ddsp_run \
 --gin_param="SyntheticNotes.file_pattern='gs://ddsp-inv/datasets/notes_t125_h100_m65_v2.tfrecord*'" \
 --gin_param="train_data/TFRecordProvider.file_pattern='gs://ddsp-inv/datasets/all_instruments_train.tfrecord*'" \
 --gin_param="test_data/TFRecordProvider.file_pattern='gs://ddsp-inv/datasets/all_instruments_test.tfrecord*'" \
---gin_param="batch_size=12" \
+--gin_param="batch_size=64" \
 --alsologtostderr
 ```
 
@@ -109,7 +109,13 @@ We have provided sharded TFRecord files for the [URMP dataset](http://www2.ece.r
 If training on GCP it is fast to directly read from these buckets, but if training locally you will probably want to download the files locally (~16 GB) using the `gsutil` command line utility from the [gcloud sdk](https://cloud.google.com/sdk/docs/downloads-interactive).
 
 
-In the paper, this model was trained with a batch size of 64 on 8 accelerators (8 per an accelerator), and typically converges after 200-400k iterations. The command above is tuned for a single v100 (max batch size of 12), you would need to use multiple GPUs or TPUs to exactly reproduce the experiement. To use a TPU, start up an instance from the web interface and pass the internal ip address to the tpu flag `--tpu=grpc://<internal-ip-address>`.
+In the paper, this model was trained with a batch size of 64 on 8 accelerators (8 per an accelerator), and typically converges after 200-400k iterations. A single v100 can fit a max batch size of 12, so you will need to use multiple GPUs or TPUs to exactly reproduce the experiment. To use a TPU, start up an instance from the web interface and pass the internal ip address to the tpu flag `--tpu=grpc://<internal-ip-address>`.
+
+
+Finetuned models for +400k steps (batch size=64) are available on GCP the
+[URMP](http://www2.ece.rochester.edu/projects/air/projects/URMP/annotations_5P.html) ([ckpt](https://storage.googleapis.com/ddsp-inv/ckpts/urmp_ckpt.zip)),
+[MDB-stem-synth](https://zenodo.org/record/1481172#.Xzouy5NKhTY) ([ckpt](https://storage.googleapis.com/ddsp-inv/ckpts/mdb_stem_synth_ckpt.zip)),
+and [MIR1k](https://sites.google.com/site/unvoicedsoundseparation/mir-1k) ([ckpt](https://storage.googleapis.com/ddsp-inv/ckpts/mir1k_ckpt.zip)) datasets.
 
 ### Eval and Sample
 
