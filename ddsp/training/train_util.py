@@ -141,7 +141,9 @@ def train(data_provider,
           steps_per_summary=300,
           steps_per_save=300,
           save_dir='~/tmp/ddsp',
-          restore_dir='~/tmp/ddsp'):
+          restore_dir='~/tmp/ddsp',
+          skip_writing=False,
+          early_stop_loss_value=None):
   """Main training loop."""
   # Get a distributed dataset iterator.
   dataset = data_provider.get_batch(batch_size, shuffle=True, repeats=-1)
@@ -159,7 +161,8 @@ def train(data_provider,
   summary_writer = tf.summary.create_file_writer(summary_dir)
 
   # Save the gin config.
-  write_gin_config(summary_writer, save_dir, trainer.step.numpy())
+  if not skip_writing:
+    write_gin_config(summary_writer, save_dir, trainer.step.numpy())
 
   # Train.
   with summary_writer.as_default():
@@ -189,7 +192,7 @@ def train(data_provider,
       logging.info(log_str)
 
       # Write Summaries.
-      if step % steps_per_summary == 0:
+      if step % steps_per_summary == 0 and not skip_writing:
         # Speed.
         steps_per_sec = steps_per_summary / (time.time() - tick)
         tf.summary.scalar('steps_per_sec', steps_per_sec, step=step)
@@ -200,8 +203,18 @@ def train(data_provider,
           tf.summary.scalar('losses/{}'.format(k), metric.result(), step=step)
           metric.reset_states()
 
+      # Stop the training when the loss reaches given value
+      if (early_stop_loss_value is not None and
+          losses['total_loss'] <= early_stop_loss_value):
+        logging.info('Total loss reached provided value of %s',
+                     early_stop_loss_value)
+        if not skip_writing:
+          trainer.save(save_dir)
+          summary_writer.flush()
+        break
+
       # Save Model.
-      if step % steps_per_save == 0:
+      if step % steps_per_save == 0 and not skip_writing:
         trainer.save(save_dir)
         summary_writer.flush()
 
