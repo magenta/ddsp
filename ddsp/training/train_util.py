@@ -15,6 +15,7 @@
 # Lint as: python3
 """Library of training functions."""
 
+import json
 import os
 import time
 
@@ -25,12 +26,21 @@ import tensorflow.compat.v2 as tf
 
 
 # ---------------------- Helper Functions --------------------------------------
-def get_strategy(tpu='', gpus=None):
+def get_strategy(tpu='', cluster_config=''):
   """Create a distribution strategy.
 
   Args:
     tpu: Address of the TPU. No TPU if left blank.
-    gpus: List of GPU addresses for synchronous training.
+    cluster_config: VM specific string for cluster configuration dict
+                    in the TF_CONFIG format. Two components should be specified:
+                    cluster and task. Cluster provides information about the
+                    training cluster, which is a dict consisting of different
+                    types of jobs such as chief, worker, ps. Task is information
+                    about the current task.
+                    Do not specify this parameter for a single VM job.
+                    For example: "{"cluster": {"worker":
+                                              ["host1:port", "host2:port"]},
+                                   "task": {"type": "worker", "index": 0}}"
 
   Returns:
     A distribution strategy.
@@ -42,18 +52,15 @@ def get_strategy(tpu='', gpus=None):
     tf.config.experimental_connect_to_cluster(resolver)
     tf.tpu.experimental.initialize_tpu_system(resolver)
     strategy = tf.distribute.TPUStrategy(resolver)
-  elif gpus:
-    for gpu_address in gpus:
-      logging.info('Use GPU at %s', gpu_address)
-    cluster_spec = tf.train.ClusterSpec({'worker': gpus})
+  elif  cluster_config:
+    cluster_config_dict = json.loads(cluster_config)
+    cluster_spec = tf.train.ClusterSpec(cluster_config_dict['cluster'])
     resolver = tf.distribute.cluster_resolver.SimpleClusterResolver(
         cluster_spec=cluster_spec,
-        master=gpus[0],
-        environment='google',
-        rpc_layer='grpc')
-    tf.config.experimental_connect_to_cluster(resolver)
-    devices = tf.config.list_logical_devices('GPU')
-    strategy = tf.distribute.MirroredStrategy(devices=devices)
+        task_type=cluster_config_dict['task']['type'],
+        task_id=cluster_config_dict['task']['index'])
+    strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
+        cluster_resolver=resolver)
   else:
     logging.info('Defaulting to MirroredStrategy')
     strategy = tf.distribute.MirroredStrategy()
