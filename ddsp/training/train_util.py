@@ -29,18 +29,19 @@ import tensorflow.compat.v2 as tf
 def get_strategy(tpu='', cluster_config=''):
   """Create a distribution strategy.
 
+  If you run a multi-gpu job on a single worker call the function with no args.
+
   Args:
     tpu: Address of the TPU. No TPU if left blank.
-    cluster_config: VM specific string for cluster configuration dict
-                    in the TF_CONFIG format. Two components should be specified:
-                    cluster and task. Cluster provides information about the
-                    training cluster, which is a dict consisting of different
-                    types of jobs such as chief, worker, ps. Task is information
-                    about the current task.
-                    Do not specify this parameter for a single VM job.
-                    For example: "{"cluster": {"worker":
-                                              ["host1:port", "host2:port"]},
-                                   "task": {"type": "worker", "index": 0}}"
+    cluster_config: Should be specified only for multi-worker jobs.
+      Task specific string for cluster config dict in the TF_CONFIG format.
+      https://www.tensorflow.org/guide/distributed_training#setting_up_tf_config_environment_variable
+      Two components should be specified: cluster and task. Cluster provides
+      information about the training cluster, which is a dict consisting of
+      different types of jobs such as chief and worker. Task is information
+      about the current task.
+      For example: "{"cluster": {"worker": ["host1:port", "host2:port"]},
+                     "task": {"type": "worker", "index": 0}}"
 
   Returns:
     A distribution strategy.
@@ -142,7 +143,6 @@ def train(data_provider,
           steps_per_save=300,
           save_dir='~/tmp/ddsp',
           restore_dir='~/tmp/ddsp',
-          skip_writing=False,
           early_stop_loss_value=None):
   """Main training loop."""
   # Get a distributed dataset iterator.
@@ -156,13 +156,15 @@ def train(data_provider,
   # Load latest checkpoint if one exists in load directory.
   trainer.restore(restore_dir)
 
-  # Set up the summary writer and metrics.
-  summary_dir = os.path.join(save_dir, 'summaries', 'train')
-  summary_writer = tf.summary.create_file_writer(summary_dir)
+  if save_dir is not None:
+    # Set up the summary writer and metrics.
+    summary_dir = os.path.join(save_dir, 'summaries', 'train')
+    summary_writer = tf.summary.create_file_writer(summary_dir)
 
-  # Save the gin config.
-  if not skip_writing:
+    # Save the gin config.
     write_gin_config(summary_writer, save_dir, trainer.step.numpy())
+  else:
+    summary_writer = tf.summary.create_noop_writer()
 
   # Train.
   with summary_writer.as_default():
@@ -192,7 +194,7 @@ def train(data_provider,
       logging.info(log_str)
 
       # Write Summaries.
-      if step % steps_per_summary == 0 and not skip_writing:
+      if step % steps_per_summary == 0 and save_dir is not None:
         # Speed.
         steps_per_sec = steps_per_summary / (time.time() - tick)
         tf.summary.scalar('steps_per_sec', steps_per_sec, step=step)
@@ -206,15 +208,15 @@ def train(data_provider,
       # Stop the training when the loss reaches given value
       if (early_stop_loss_value is not None and
           losses['total_loss'] <= early_stop_loss_value):
-        logging.info('Total loss reached provided value of %s',
+        logging.info('Total loss reached early stopping value of %s',
                      early_stop_loss_value)
-        if not skip_writing:
+        if save_dir is not None:
           trainer.save(save_dir)
           summary_writer.flush()
         break
 
       # Save Model.
-      if step % steps_per_save == 0 and not skip_writing:
+      if step % steps_per_save == 0 and save_dir is not None:
         trainer.save(save_dir)
         summary_writer.flush()
 
