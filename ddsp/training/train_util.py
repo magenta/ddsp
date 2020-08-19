@@ -144,7 +144,23 @@ def train(data_provider,
           save_dir='~/tmp/ddsp',
           restore_dir='~/tmp/ddsp',
           early_stop_loss_value=None):
-  """Main training loop."""
+  """Main training loop.
+
+  Args:
+   data_provider: Data provider.
+   trainer: Object of Trainer class.
+   batch_size: Total batch size.
+   num_steps: Number of training steps.
+   steps_per_summary: Number of training steps per summary save.
+   steps_per_save: Number of training steps per checkpoint save.
+   save_dir: Directory where checkpoints and summaries will be stored.
+     If None there will be no checkpoints and summary stored.
+   restore_dir: Directory where latest checkpoints for resuming the training
+     are stored. If there are no checkpoints stored under this directory,
+     training will begin anew.
+   early_stop_loss_value: When the total_loss reaches this value training stops.
+     If None training will run for num_steps steps.
+  """
   # Get a distributed dataset iterator.
   dataset = data_provider.get_batch(batch_size, shuffle=True, repeats=-1)
   dataset = trainer.distribute_dataset(dataset)
