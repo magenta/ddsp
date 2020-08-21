@@ -21,6 +21,7 @@ import pickle
 import tempfile
 
 import ddsp
+import ddsp.training
 from IPython import display
 import librosa
 import numpy as np

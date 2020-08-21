@@ -95,7 +95,7 @@ class ProcessorGroup(tfkl.Layer):
         (or inputs to the processor_group).
       name: Name of processor_group.
     """
-    super(ProcessorGroup, self).__init__(name=name)
+    super().__init__(name=name)
     self.dag = dag
     # Collect a list of processors.
     self.processors = [node[0] for node in self.dag]
@@ -169,7 +169,7 @@ class Add(Processor):
   """Sum two signals."""
 
   def __init__(self, name: Text = 'add'):
-    super(Add, self).__init__(name=name)
+    super().__init__(name=name)
 
   def get_controls(self, signal_one: tf.Tensor,
                    signal_two: tf.Tensor) -> TensorDict:
@@ -186,7 +186,7 @@ class Mix(Processor):
   """Constant-power crossfade between two signals."""
 
   def __init__(self, name: Text = 'mix'):
-    super(Mix, self).__init__(name=name)
+    super().__init__(name=name)
 
   def get_controls(self, signal_one: tf.Tensor,
                    signal_two: tf.Tensor,

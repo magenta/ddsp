@@ -259,7 +259,7 @@ class PretrainedCREPE(tfkl.Layer):
                activation_layer='conv5-maxpool',
                name='pretrained_crepe',
                trainable=False):
-    super(PretrainedCREPE, self).__init__(name=name, trainable=trainable)
+    super().__init__(name=name, trainable=trainable)
     self._model_capacity = model_capacity
     self._activation_layer = activation_layer
     spectral_ops.reset_crepe()
