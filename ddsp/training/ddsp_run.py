@@ -86,9 +86,6 @@ flags.DEFINE_string('restore_dir', '',
                     'Path from which checkpoints will be restored before '
                     'training. Can be different than the save_dir.')
 flags.DEFINE_string('tpu', '', 'Address of the TPU. No TPU if left blank.')
-flags.DEFINE_multi_string('gpu', [],
-                          'Addresses of GPUs for sync data-parallel training.'
-                          'Only needs to be specified for using multiple GPUs.')
 flags.DEFINE_boolean('allow_memory_growth', False,
                      'Whether to grow the GPU memory usage as is needed by the '
                      'process. Prevents crashes on GPUs with smaller memory.')
@@ -170,7 +167,7 @@ def main(unused_argv):
 
   # Training.
   if FLAGS.mode == 'train':
-    strategy = train_util.get_strategy(tpu=FLAGS.tpu, gpus=FLAGS.gpu)
+    strategy = train_util.get_strategy(tpu=FLAGS.tpu)
     with strategy.scope():
       model = models.get_model()
       trainer = trainers.Trainer(model, strategy)
