@@ -140,6 +140,13 @@ def write_gin_config(summary_writer, save_dir, step):
     tf.summary.text(name='gin/' + base_name, data=text_tensor, step=step)
     summary_writer.flush()
 
+def report_metric_to_ai_platform(loss_report, step):
+  """Uses hypertune to report metrics for hyperparameter tuning."""
+  hpt = hypertune.HyperTune()
+  hpt.report_hyperparameter_tuning_metric(
+          hyperparameter_metric_tag='Loss',
+          metric_value=loss_report,
+          global_step=step)
 
 # ------------------------ Training Loop ---------------------------------------
 @gin.configurable
@@ -230,6 +237,9 @@ def train(data_provider,
           tf.summary.scalar('losses/{}'.format(k), metric.result(), step=step)
           metric.reset_states()
 
+      # Report metrics for hyperparameter tuning.
+      report_metric_to_ai_platform(losses['total_loss'], step)
+      
       # Stop the training when the loss reaches given value
       if (early_stop_loss_value is not None and
           losses['total_loss'] <= early_stop_loss_value):
