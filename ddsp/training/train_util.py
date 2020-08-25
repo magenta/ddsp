@@ -239,7 +239,7 @@ def train(data_provider,
           tf.summary.scalar('losses/{}'.format(k), metric.result(), step=step)
           metric.reset_states()
 
-      # Report metrics for hyperparameter tuning if enabled
+      # Report metrics for hyperparameter tuning if enabled.
       if report_loss_to_hypertune == True:
         report_metric_to_hypertune(losses['total_loss'], step)
 
