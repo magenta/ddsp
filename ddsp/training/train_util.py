@@ -22,6 +22,7 @@ import time
 from absl import logging
 import gin
 import tensorflow.compat.v2 as tf
+import hypertune
 
 
 
@@ -140,12 +141,12 @@ def write_gin_config(summary_writer, save_dir, step):
     tf.summary.text(name='gin/' + base_name, data=text_tensor, step=step)
     summary_writer.flush()
 
-def report_metric_to_ai_platform(loss_report, step):
+def report_metric_to_hypertune(metric_value, step, tag='Loss'):
   """Uses hypertune to report metrics for hyperparameter tuning."""
   hpt = hypertune.HyperTune()
   hpt.report_hyperparameter_tuning_metric(
-          hyperparameter_metric_tag='Loss',
-          metric_value=loss_report,
+          hyperparameter_metric_tag=tag,
+          metric_value=metric_value,
           global_step=step)
 
 # ------------------------ Training Loop ---------------------------------------
@@ -158,7 +159,8 @@ def train(data_provider,
           steps_per_save=300,
           save_dir='~/tmp/ddsp',
           restore_dir='~/tmp/ddsp',
-          early_stop_loss_value=None):
+          early_stop_loss_value=None,
+          report_loss_to_hypertune=False):
   """Main training loop.
 
   Args:
@@ -237,9 +239,10 @@ def train(data_provider,
           tf.summary.scalar('losses/{}'.format(k), metric.result(), step=step)
           metric.reset_states()
 
-      # Report metrics for hyperparameter tuning.
-      report_metric_to_ai_platform(losses['total_loss'], step)
-      
+      # Report metrics for hyperparameter tuning if enabled
+      if report_loss_to_hypertune == True:
+        report_metric_to_hypertune(losses['total_loss'], step)
+
       # Stop the training when the loss reaches given value
       if (early_stop_loss_value is not None and
           losses['total_loss'] <= early_stop_loss_value):
