@@ -20,6 +20,7 @@ import os
 import time
 
 from absl import logging
+from ddsp.training import cloud
 import gin
 import tensorflow.compat.v2 as tf
 
@@ -151,7 +152,8 @@ def train(data_provider,
           steps_per_save=300,
           save_dir='~/tmp/ddsp',
           restore_dir='~/tmp/ddsp',
-          early_stop_loss_value=None):
+          early_stop_loss_value=None,
+          report_loss_to_hypertune=False):
   """Main training loop.
 
   Args:
@@ -168,6 +170,8 @@ def train(data_provider,
      begin anew.
    early_stop_loss_value: Early stopping. When the total_loss reaches below this
      value training stops. If None training will run for num_steps steps.
+   report_loss_to_hypertune: Report loss values to hypertune package for
+     hyperparameter tuning, such as on Google Cloud AI-Platform.
   """
   # Get a distributed dataset iterator.
   dataset = data_provider.get_batch(batch_size, shuffle=True, repeats=-1)
@@ -229,6 +233,10 @@ def train(data_provider,
         for k, metric in avg_losses.items():
           tf.summary.scalar('losses/{}'.format(k), metric.result(), step=step)
           metric.reset_states()
+
+      # Report metrics for hyperparameter tuning if enabled.
+      if report_loss_to_hypertune:
+        cloud.report_metric_to_hypertune(losses['total_loss'], step)
 
       # Stop the training when the loss reaches given value
       if (early_stop_loss_value is not None and
