@@ -13,11 +13,11 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Tests for ddsp.training.ddsp_run."""
+"""Tests for ddsp.training.cloud"""
 
 from unittest import mock
 
-import ddsp_run
+from ddsp.training import cloud
 import tensorflow.compat.v2 as tf
 
 class DownloadFromGstorageTest(tf.test.TestCase):
@@ -25,46 +25,50 @@ class DownloadFromGstorageTest(tf.test.TestCase):
   @mock.patch('google.cloud.storage.Client.bucket')
   def test_bucket_name(self, bucket_function):
     """Check if proper bucket name is infered from path."""
-    ddsp_run.download_from_gstorage(
+    cloud.download_from_gstorage(
         'gs://bucket-name/bucket/dir/some_file.gin',
         'local/path/some_file.gin')
     bucket_function.assert_called_with('bucket-name')
 
 
-class HandleGstoragePathsTest(tf.test.TestCase):
+class MakeFilePathsLocalTest(tf.test.TestCase):
 
-  @mock.patch('ddsp_run.download_from_gstorage')
+  @mock.patch('cloud.download_from_gstorage')
   def test_single_path_handling(self, download_from_gstorage_function):
     """Tests that function returns a single value if given single value."""
-    path = ddsp_run.handle_gstorage_paths(
-        'gs://bucket-name/bucket/dir/some_file.gin')
+    path = cloud.make_file_paths_local(
+        'gs://bucket-name/bucket/dir/some_file.gin',
+        'gin/search/path')
     download_from_gstorage_function.assert_called_once()
     self.assertEqual(path, 'some_file.gin')
 
-  @mock.patch('ddsp_run.download_from_gstorage')
+  @mock.patch('cloud.download_from_gstorage')
   def test_single_local_path_handling(self, download_from_gstorage_function):
     """Tests that function does nothing if given local file path."""
-    path = ddsp_run.handle_gstorage_paths(
-        'local_file.gin')
+    path = cloud.make_file_paths_local(
+        'local_file.gin',
+        'gin/search/path')
     download_from_gstorage_function.assert_not_called()
     self.assertEqual(path, 'local_file.gin')
 
-  @mock.patch('ddsp_run.download_from_gstorage')
+  @mock.patch('cloud.download_from_gstorage')
   def test_single_path_in_list_handling(self, download_from_gstorage_function):
     """Tests that function returns a single-element list if given one."""
-    path = ddsp_run.handle_gstorage_paths(
-        ['gs://bucket-name/bucket/dir/some_file.gin'])
+    path = cloud.make_file_paths_local(
+        ['gs://bucket-name/bucket/dir/some_file.gin'],
+        'gin/search/path')
     download_from_gstorage_function.assert_called_once()
     self.assertNotIsInstance(path, str)
     self.assertListEqual(path, ['some_file.gin'])
 
-  @mock.patch('ddsp_run.download_from_gstorage')
+  @mock.patch('cloud.download_from_gstorage')
   def test_more_paths_in_list_handling(self, download_from_gstorage_function):
     """Tests that function handle both local and gstorage paths in one list."""
-    paths = ddsp_run.handle_gstorage_paths(
+    paths = cloud.make_file_paths_local(
         ['gs://bucket-name/bucket/dir/first_file.gin',
          'local_file.gin',
-         'gs://bucket-name/bucket/dir/second_file.gin'])
+         'gs://bucket-name/bucket/dir/second_file.gin'],
+        'gin/search/path')
     self.assertEqual(download_from_gstorage_function.call_count, 2)
     download_from_gstorage_function.assert_has_calls(
         [mock.call('gs://bucket-name/bucket/dir/first_file.gin', mock.ANY),

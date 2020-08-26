@@ -60,18 +60,17 @@ ddsp_run \
 """
 
 import os
-import re
 import time
 
 from absl import app
 from absl import flags
 from absl import logging
+from ddsp.training import cloud
 from ddsp.training import eval_util
 from ddsp.training import models
 from ddsp.training import train_util
 from ddsp.training import trainers
 import gin
-from google.cloud import storage
 import pkg_resources
 import tensorflow.compat.v2 as tf
 
@@ -88,9 +87,9 @@ flags.DEFINE_string('restore_dir', '',
                     'Path from which checkpoints will be restored before '
                     'training. Can be different than the save_dir.')
 flags.DEFINE_string('tpu', '', 'Address of the TPU. No TPU if left blank.')
-flags.DEFINE_string('cluster_config', '', 'Worker-specific JSON string for'
-                    'multiworker setup. For more information check'
-                    'train_util.get_strategy() docstring.')
+flags.DEFINE_string('cluster_config', '',
+                    'Worker-specific JSON string for multiworker setup. '
+                    'For more information check train_util.get_strategy().')
 flags.DEFINE_boolean('allow_memory_growth', False,
                      'Whether to grow the GPU memory usage as is needed by the '
                      'process. Prevents crashes on GPUs with smaller memory.')
@@ -98,9 +97,10 @@ flags.DEFINE_boolean('allow_memory_growth', False,
 # Gin config flags.
 flags.DEFINE_multi_string('gin_search_path', [],
                           'Additional gin file search paths.')
-flags.DEFINE_multi_string('gin_file', [], 'List of paths to the config files.'
-                          'If file in gstorage bucket specify whole gstorage'
-                          'path: gs://bucket-name/dir/in/bucket/file.gin.')
+flags.DEFINE_multi_string('gin_file', [],
+                          'List of paths to the config files. If file '
+                          'in gstorage bucket specify whole gstorage path: '
+                          'gs://bucket-name/dir/in/bucket/file.gin.')
 flags.DEFINE_multi_string('gin_param', [],
                           'Newline separated list of Gin parameter bindings.')
 
@@ -119,59 +119,6 @@ def delay_start():
     logging.info('Waiting for %i second(s)', delay_time)
     time.sleep(delay_time)
 
-def download_from_gstorage(gstorage_path, local_path):
-  """Downloads the bucket.
-
-  Args:
-    gstorage_path: Path to the object inside the bucket that needs to be
-      downloaded. Format: gs://bucket-name/path/to/file.txt
-    local_path: Local path where downloaded file should be stored.
-  """
-  gstorage_path = gstorage_path.strip('gs:/')
-  bucket_name = gstorage_path.split('/')[0]
-  blob_name = os.path.relpath(gstorage_path, bucket_name)
-
-  storage_client = storage.Client()
-
-  bucket = storage_client.bucket(bucket_name)
-  blob = bucket.blob(blob_name)
-
-  blob.download_to_filename(local_path)
-  logging.info(
-      'Downloaded the bucket object %s. Current location: %s',
-      gstorage_path, local_path)
-
-def handle_gstorage_paths(paths):
-  """Handles gstorage paths.
-
-  If gstorage path is provided calls a function which downloads the file.
-  If local path is provided nothing happens.
-
-  Args:
-    paths: Single path or a list of paths.
-
-  Returns:
-    Single local path or a list of local paths.
-  """
-  if isinstance(paths, str):
-    if re.match('gs://*', paths):
-      local_name = os.path.basename(paths)
-      download_from_gstorage(paths, os.path.join(GIN_PATH, local_name))
-      return local_name
-    else:
-      return paths
-  else:
-    local_paths = []
-    for path in paths:
-      if re.match('gs://*', path):
-        local_name = os.path.basename(path)
-        download_from_gstorage(path, os.path.join(GIN_PATH, local_name))
-        local_paths.append(local_name)
-      else:
-        local_paths.append(path)
-    return local_paths
-
-
 def parse_gin(restore_dir):
   """Parse gin config from --gin_file, --gin_param, and the model directory."""
   # Add user folders to the gin search path.
@@ -189,14 +136,13 @@ def parse_gin(restore_dir):
     operative_config = train_util.get_latest_operative_config(restore_dir)
     if tf.io.gfile.exists(operative_config):
       logging.info('Using operative config: %s', operative_config)
-      operative_config = handle_gstorage_paths(operative_config)
+      operative_config = cloud.make_file_paths_local(operative_config, GIN_PATH)
       gin.parse_config_file(operative_config, skip_unknown=True)
 
     # User gin config and user hyperparameters from flags.
-    gin_file = handle_gstorage_paths(FLAGS.gin_file)
+    gin_file = cloud.make_file_paths_local(FLAGS.gin_file, GIN_PATH)
     gin.parse_config_files_and_bindings(
         gin_file, FLAGS.gin_param, skip_unknown=True)
-
 
 def allow_memory_growth():
   """Sets the GPUs to grow the memory usage as is needed by the process."""
