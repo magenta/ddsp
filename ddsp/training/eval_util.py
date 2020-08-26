@@ -113,8 +113,13 @@ def evaluate_or_sample(data_provider,
 
           # TODO(jesseengel): Find a way to add losses with training=False.
           audio = batch['audio']
-          audio_gen, losses = model(batch, return_losses=True, training=True)
-          audio_gen = np.array(audio_gen)
+          audio_gen = None
+          model_output, losses = model(batch, return_losses=True, training=True)
+
+          if not isinstance(model_output, dict):
+            # TODO(emanilow): Assume if it's not a dict it's generated audio.
+            audio_gen = model_output
+
           outputs = model.get_controls(batch, training=True)
 
           # Create metrics on first batch.
@@ -134,34 +139,36 @@ def evaluate_or_sample(data_provider,
                 name: tf.keras.metrics.Mean(name=name, dtype=tf.float32)
                 for name in list(losses.keys())}
 
-          for processor in model.processor_group.processors:
-            # If using a sinusoidal model, infer f0 with two-way mismatch.
-            if isinstance(processor, ddsp.synths.Sinusoidal):
-              # Run on CPU to avoid running out of memory (not expensive comp).
-              with tf.device('CPU'):
-                processor_controls = outputs[processor.name]['controls']
-                amps = processor_controls['amplitudes']
-                freqs = processor_controls['frequencies']
-                twm = ddsp.losses.TWMLoss()
-                # Treat all freqs as candidate f0s.
-                outputs['f0_hz_twm'] = twm.predict_f0(freqs, freqs, amps)
-                logging.info('Added f0 estimate from sinusoids.')
-                break
+          processor_group = getattr(model, 'processor_group', None)
+          if processor_group is not None:
+            for processor in processor_group.processors:
+              # If using a sinusoidal model, infer f0 with two-way mismatch.
+              if isinstance(processor, ddsp.synths.Sinusoidal):
+                # Run on CPU to avoid running out of memory (not expensive).
+                with tf.device('CPU'):
+                  processor_controls = outputs[processor.name]['controls']
+                  amps = processor_controls['amplitudes']
+                  freqs = processor_controls['frequencies']
+                  twm = ddsp.losses.TWMLoss()
+                  # Treat all freqs as candidate f0s.
+                  outputs['f0_hz_twm'] = twm.predict_f0(freqs, freqs, amps)
+                  logging.info('Added f0 estimate from sinusoids.')
+                  break
 
-            # If using a noisy sinusoidal model, infer f0 with two-way mismatch.
-            elif isinstance(processor, ddsp.synths.NoisySinusoidal):
-              # Run on CPU to avoid running out of memory (not expensive comp).
-              with tf.device('CPU'):
-                processor_controls = outputs[processor.name]['controls']
-                amps = processor_controls['amplitudes']
-                freqs = processor_controls['frequencies']
-                noise_ratios = processor_controls['noise_ratios']
-                amps = amps * (1.0 - noise_ratios)
-                twm = ddsp.losses.TWMLoss()
-                # Treat all freqs as candidate f0s.
-                outputs['f0_hz_twm'] = twm.predict_f0(freqs, freqs, amps)
-                logging.info('Added f0 estimate from sinusoids.')
-                break
+              # If using a noisy sinusoidal model, infer f0 w/ two-way mismatch.
+              elif isinstance(processor, ddsp.synths.NoisySinusoidal):
+                # Run on CPU to avoid running out of memory (not expensive).
+                with tf.device('CPU'):
+                  processor_controls = outputs[processor.name]['controls']
+                  amps = processor_controls['amplitudes']
+                  freqs = processor_controls['frequencies']
+                  noise_ratios = processor_controls['noise_ratios']
+                  amps = amps * (1.0 - noise_ratios)
+                  twm = ddsp.losses.TWMLoss()
+                  # Treat all freqs as candidate f0s.
+                  outputs['f0_hz_twm'] = twm.predict_f0(freqs, freqs, amps)
+                  logging.info('Added f0 estimate from sinusoids.')
+                  break
 
           has_f0_twm = ('f0_hz_twm' in outputs and 'f0_hz' in batch)
           has_f0 = ('f0_hz' in outputs and 'f0_hz' in batch)
@@ -172,15 +179,18 @@ def evaluate_or_sample(data_provider,
             start_time = time.time()
             logging.info('Writing summmaries for batch %d', batch_idx)
 
-            # Add audio.
-            summaries.audio_summary(
-                audio_gen, step, sample_rate, name='audio_generated')
-            summaries.audio_summary(
-                audio, step, sample_rate, name='audio_original')
+            if audio_gen is not None:
+              audio_gen = np.array(model_output)
+              # Add audio.
+              summaries.audio_summary(
+                  audio_gen, step, sample_rate, name='audio_generated')
+              summaries.audio_summary(
+                  audio, step, sample_rate, name='audio_original')
 
-            # Add plots.
-            summaries.waveform_summary(audio, audio_gen, step)
-            summaries.spectrogram_summary(audio, audio_gen, step)
+              # Add plots.
+              summaries.waveform_summary(audio, audio_gen, step)
+              summaries.spectrogram_summary(audio, audio_gen, step)
+
             if has_f0:
               summaries.f0_summary(batch['f0_hz'], outputs['f0_hz'], step,
                                    name='f0_harmonic')
@@ -195,11 +205,13 @@ def evaluate_or_sample(data_provider,
             start_time = time.time()
             logging.info('Calculating metrics for batch %d', batch_idx)
 
-            loudness_metrics.update_state(batch, audio_gen)
-            if has_f0:
-              f0_metrics.update_state(batch, outputs['f0_hz'])
-            else:
-              f0_crepe_metrics.update_state(batch, audio_gen)
+            if audio_gen is not None:
+              loudness_metrics.update_state(batch, audio_gen)
+              if has_f0:
+                f0_metrics.update_state(batch, outputs['f0_hz'])
+              else:
+                f0_crepe_metrics.update_state(batch, audio_gen)
+
             if has_f0_twm:
               f0_twm_metrics.update_state(batch, outputs['f0_hz_twm'])
             # Loss.

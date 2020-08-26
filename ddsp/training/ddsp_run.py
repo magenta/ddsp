@@ -93,6 +93,9 @@ flags.DEFINE_string('cluster_config', '',
 flags.DEFINE_boolean('allow_memory_growth', False,
                      'Whether to grow the GPU memory usage as is needed by the '
                      'process. Prevents crashes on GPUs with smaller memory.')
+flags.DEFINE_boolean('hypertune', False,
+                     'Enable metric reporting for hyperparameter tuning, such '
+                     'as on Google Cloud AI-Platform.')
 
 # Gin config flags.
 flags.DEFINE_multi_string('gin_search_path', [],
@@ -184,7 +187,8 @@ def main(unused_argv):
     train_util.train(data_provider=gin.REQUIRED,
                      trainer=trainer,
                      save_dir=save_dir,
-                     restore_dir=restore_dir)
+                     restore_dir=restore_dir,
+                     report_loss_to_hypertune=FLAGS.hypertune)
 
   # Evaluation.
   elif FLAGS.mode == 'eval':

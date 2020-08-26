@@ -45,11 +45,12 @@ def _load_audio_as_array(audio_path: str,
     expected_len = int(audio_segment.duration_seconds * sample_rate)
     # Resample to `sample_rate`
     audio_segment = audio_segment.set_frame_rate(sample_rate)
-    audio = np.array(audio_segment.get_array_of_samples()).astype(np.float32)
+    sample_arr = audio_segment.get_array_of_samples()
+    audio = np.array(sample_arr).astype(np.float32)
     # Zero pad missing samples, if any
     audio = spectral_ops.pad_or_trim_to_expected_length(audio, expected_len)
   # Convert from int to float representation.
-  audio /= 2**(8 * audio_segment.sample_width)
+  audio /= np.iinfo(sample_arr.typecode).max
   return audio
 
 

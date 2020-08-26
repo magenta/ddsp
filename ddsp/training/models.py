@@ -83,6 +83,10 @@ class Model(tf.keras.Model):
       logging.info('Could not find checkpoint to load at %s, skipping.',
                    checkpoint_path)
 
+  def get_controls(self, features, keys=None, training=False):
+    """Base method for getting controls. Not implemented."""
+    raise NotImplementedError('`get_controls` not implemented in base class!')
+
 
 @gin.configurable
 class Autoencoder(Model):
