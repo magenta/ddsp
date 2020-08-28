@@ -68,7 +68,9 @@ def get_strategy(tpu='', cluster_config=''):
     resolver = tf.distribute.cluster_resolver.SimpleClusterResolver(
         cluster_spec=cluster_spec,
         task_type=cluster_config['task']['type'],
-        task_id=cluster_config['task']['index'])
+        task_id=cluster_config['task']['index'],
+        num_accelerators={'GPU': len(tf.config.list_physical_devices('GPU'))},
+        rpc_layer='grpc')
     strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
         cluster_resolver=resolver)
   else:
@@ -164,7 +166,7 @@ def train(data_provider,
    steps_per_summary: Number of training steps per summary save.
    steps_per_save: Number of training steps per checkpoint save.
    save_dir: Directory where checkpoints and summaries will be saved.
-     If None, no checkpoints or summaries will be saved.
+     If empty string, no checkpoints or summaries will be saved.
    restore_dir: Directory where latest checkpoints for resuming the training
      are stored. If there are no checkpoints in this directory, training will
      begin anew.
@@ -184,7 +186,7 @@ def train(data_provider,
   # Load latest checkpoint if one exists in load directory.
   trainer.restore(restore_dir)
 
-  if save_dir is not None:
+  if save_dir:
     # Set up the summary writer and metrics.
     summary_dir = os.path.join(save_dir, 'summaries', 'train')
     summary_writer = tf.summary.create_file_writer(summary_dir)
@@ -223,7 +225,7 @@ def train(data_provider,
       logging.info(log_str)
 
       # Write Summaries.
-      if step % steps_per_summary == 0 and save_dir is not None:
+      if step % steps_per_summary == 0 and save_dir:
         # Speed.
         steps_per_sec = steps_per_summary / (time.time() - tick)
         tf.summary.scalar('steps_per_sec', steps_per_sec, step=step)
@@ -245,13 +247,13 @@ def train(data_provider,
                      early_stop_loss_value)
 
         # Write a final checkpoint.
-        if save_dir is not None:
+        if save_dir:
           trainer.save(save_dir)
           summary_writer.flush()
         break
 
       # Save Model.
-      if step % steps_per_save == 0 and save_dir is not None:
+      if step % steps_per_save == 0 and save_dir:
         trainer.save(save_dir)
         summary_writer.flush()
 
