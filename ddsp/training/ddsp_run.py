@@ -96,6 +96,10 @@ flags.DEFINE_boolean('allow_memory_growth', False,
 flags.DEFINE_boolean('hypertune', False,
                      'Enable metric reporting for hyperparameter tuning, such '
                      'as on Google Cloud AI-Platform.')
+flags.DEFINE_float('early_stop_loss_value', None,
+                   'Early stopping. When the total_loss reaches below this '
+                   'value training stops. If None training will run for '
+                   'num_steps steps.')
 
 # Gin config flags.
 flags.DEFINE_multi_string('gin_search_path', [],
@@ -188,7 +192,8 @@ def main(unused_argv):
                      trainer=trainer,
                      save_dir=save_dir,
                      restore_dir=restore_dir,
-                     report_loss_to_hypertune=FLAGS.hypertune)
+                     report_loss_to_hypertune=FLAGS.hypertune,
+                     early_stop_loss_value=FLAGS.early_stop_loss_value)
 
   # Evaluation.
   elif FLAGS.mode == 'eval':
