@@ -238,7 +238,7 @@ def train(data_provider,
 
       # Report metrics for hyperparameter tuning if enabled.
       if report_loss_to_hypertune:
-        cloud.report_metric_to_hypertune(losses['total_loss'], int(step.numpy()))
+        cloud.report_metric_to_hypertune(losses['total_loss'], step.numpy())
 
       # Stop the training when the loss reaches given value
       if (early_stop_loss_value is not None and
