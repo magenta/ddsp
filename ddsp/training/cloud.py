@@ -19,8 +19,8 @@ import os
 import re
 
 from absl import logging
-from google.cloud import storage
 import hypertune
+from google.cloud import storage
 
 
 def download_from_gstorage(gstorage_path, local_path):
@@ -49,14 +49,14 @@ def download_from_gstorage(gstorage_path, local_path):
 def make_file_paths_local(paths, local_directory):
   """Makes sure that given files are locally available.
 
-  If Cloud Storage path is provided calls a function which downloads
-  the file and returns its new path relative to local_directory.
-  If local path is provided it is returend with no modification.
+  If a Cloud Storage path is provided, downloads the file and returns the new
+  path relative to local_directory. If a local path is provided it is returns
+  path with no modification.
 
   Args:
     paths: Single path or a list of paths.
-    new_location_path: Local path to the place were downloaded files
-      will be stored. Note that if you want to download gin configuration files
+    local_directory: Local path to the directory were downloaded files will be
+      stored. Note that if you want to download gin configuration files
 
   Returns:
     Single local path or a list of local paths.

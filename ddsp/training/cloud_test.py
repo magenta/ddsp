@@ -13,27 +13,17 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Tests for ddsp.training.cloud"""
+"""Tests for ddsp.training.cloud."""
 
 from unittest import mock
 
 from ddsp.training import cloud
 import tensorflow.compat.v2 as tf
 
-class DownloadFromGstorageTest(tf.test.TestCase):
-
-  @mock.patch('google.cloud.storage.Client.bucket')
-  def test_bucket_name(self, bucket_function):
-    """Check if proper bucket name is infered from path."""
-    cloud.download_from_gstorage(
-        'gs://bucket-name/bucket/dir/some_file.gin',
-        'local/path/some_file.gin')
-    bucket_function.assert_called_with('bucket-name')
-
 
 class MakeFilePathsLocalTest(tf.test.TestCase):
 
-  @mock.patch('cloud.download_from_gstorage')
+  @mock.patch.object(cloud, 'download_from_gstorage', autospec=True)
   def test_single_path_handling(self, download_from_gstorage_function):
     """Tests that function returns a single value if given single value."""
     path = cloud.make_file_paths_local(
@@ -42,7 +32,7 @@ class MakeFilePathsLocalTest(tf.test.TestCase):
     download_from_gstorage_function.assert_called_once()
     self.assertEqual(path, 'some_file.gin')
 
-  @mock.patch('cloud.download_from_gstorage')
+  @mock.patch.object(cloud, 'download_from_gstorage', autospec=True)
   def test_single_local_path_handling(self, download_from_gstorage_function):
     """Tests that function does nothing if given local file path."""
     path = cloud.make_file_paths_local(
@@ -51,7 +41,7 @@ class MakeFilePathsLocalTest(tf.test.TestCase):
     download_from_gstorage_function.assert_not_called()
     self.assertEqual(path, 'local_file.gin')
 
-  @mock.patch('cloud.download_from_gstorage')
+  @mock.patch.object(cloud, 'download_from_gstorage', autospec=True)
   def test_single_path_in_list_handling(self, download_from_gstorage_function):
     """Tests that function returns a single-element list if given one."""
     path = cloud.make_file_paths_local(
@@ -61,7 +51,7 @@ class MakeFilePathsLocalTest(tf.test.TestCase):
     self.assertNotIsInstance(path, str)
     self.assertListEqual(path, ['some_file.gin'])
 
-  @mock.patch('cloud.download_from_gstorage')
+  @mock.patch.object(cloud, 'download_from_gstorage', autospec=True)
   def test_more_paths_in_list_handling(self, download_from_gstorage_function):
     """Tests that function handle both local and gstorage paths in one list."""
     paths = cloud.make_file_paths_local(

@@ -89,7 +89,7 @@ flags.DEFINE_string('restore_dir', '',
 flags.DEFINE_string('tpu', '', 'Address of the TPU. No TPU if left blank.')
 flags.DEFINE_string('cluster_config', '',
                     'Worker-specific JSON string for multiworker setup. '
-                    'For more information check train_util.get_strategy().')
+                    'For more information see train_util.get_strategy().')
 flags.DEFINE_boolean('allow_memory_growth', False,
                      'Whether to grow the GPU memory usage as is needed by the '
                      'process. Prevents crashes on GPUs with smaller memory.')
@@ -98,8 +98,7 @@ flags.DEFINE_boolean('hypertune', False,
                      'as on Google Cloud AI-Platform.')
 flags.DEFINE_float('early_stop_loss_value', None,
                    'Early stopping. When the total_loss reaches below this '
-                   'value training stops. If None training will run for '
-                   'num_steps steps.')
+                   'value training stops.')
 
 # Gin config flags.
 flags.DEFINE_multi_string('gin_search_path', [],
@@ -126,6 +125,7 @@ def delay_start():
     logging.info('Waiting for %i second(s)', delay_time)
     time.sleep(delay_time)
 
+
 def parse_gin(restore_dir):
   """Parse gin config from --gin_file, --gin_param, and the model directory."""
   # Add user folders to the gin search path.
@@ -150,6 +150,7 @@ def parse_gin(restore_dir):
     gin_file = cloud.make_file_paths_local(FLAGS.gin_file, GIN_PATH)
     gin.parse_config_files_and_bindings(
         gin_file, FLAGS.gin_param, skip_unknown=True)
+
 
 def allow_memory_growth():
   """Sets the GPUs to grow the memory usage as is needed by the process."""
@@ -181,9 +182,8 @@ def main(unused_argv):
 
   # Training.
   if FLAGS.mode == 'train':
-    strategy = train_util.get_strategy(
-        tpu=FLAGS.tpu,
-        cluster_config=FLAGS.cluster_config)
+    strategy = train_util.get_strategy(tpu=FLAGS.tpu,
+                                       cluster_config=FLAGS.cluster_config)
     with strategy.scope():
       model = models.get_model()
       trainer = trainers.Trainer(model, strategy)
@@ -192,8 +192,8 @@ def main(unused_argv):
                      trainer=trainer,
                      save_dir=save_dir,
                      restore_dir=restore_dir,
-                     report_loss_to_hypertune=FLAGS.hypertune,
-                     early_stop_loss_value=FLAGS.early_stop_loss_value)
+                     early_stop_loss_value=FLAGS.early_stop_loss_value,
+                     report_loss_to_hypertune=FLAGS.hypertune)
 
   # Evaluation.
   elif FLAGS.mode == 'eval':
