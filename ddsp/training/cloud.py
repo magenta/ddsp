@@ -83,6 +83,7 @@ def make_file_paths_local(paths, local_directory):
 def report_metric_to_hypertune(metric_value, step, tag='Loss'):
   """Use hypertune to report metrics for hyperparameter tuning."""
   hpt = hypertune.HyperTune()
+  logging.info(step)
   hpt.report_hyperparameter_tuning_metric(
       hyperparameter_metric_tag=tag,
       metric_value=metric_value,
