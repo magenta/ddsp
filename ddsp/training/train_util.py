@@ -257,10 +257,4 @@ def train(data_provider,
         trainer.save(save_dir)
         summary_writer.flush()
 
-      if early_stop_loss_value is not None and losses['total_loss'] <= early_stop_loss_value:
-        logging.info('Total loss reached provided value of %s', early_stop_loss_value)
-        trainer.save(save_dir)
-        summary_writer.flush()
-        break
-
   logging.info('Training Finished!')

@@ -1,0 +1,12 @@
+# Recommended batch_size: 16
+# Recommended learning_rate: 0.0001
+# Recommended number of steps: 40000
+trainingInput:
+  scaleTier: CUSTOM
+  # Configures a single worker with 2 NVIDIA T4 GPUs
+  masterType: n1-highcpu-16
+  masterConfig:
+    acceleratorConfig:
+      count: 1
+      type: NVIDIA_TESLA_T4
+  useChiefInTfConfig: True
