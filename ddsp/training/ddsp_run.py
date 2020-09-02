@@ -65,6 +65,7 @@ import time
 from absl import app
 from absl import flags
 from absl import logging
+from ddsp.training import cloud
 from ddsp.training import eval_util
 from ddsp.training import models
 from ddsp.training import train_util
@@ -73,6 +74,7 @@ import gin
 import pkg_resources
 import tensorflow.compat.v2 as tf
 
+gfile = tf.io.gfile
 FLAGS = flags.FLAGS
 
 # Program flags.
@@ -85,17 +87,26 @@ flags.DEFINE_string('restore_dir', '',
                     'Path from which checkpoints will be restored before '
                     'training. Can be different than the save_dir.')
 flags.DEFINE_string('tpu', '', 'Address of the TPU. No TPU if left blank.')
-flags.DEFINE_multi_string('gpu', [],
-                          'Addresses of GPUs for sync data-parallel training.'
-                          'Only needs to be specified for using multiple GPUs.')
+flags.DEFINE_string('cluster_config', '',
+                    'Worker-specific JSON string for multiworker setup. '
+                    'For more information see train_util.get_strategy().')
 flags.DEFINE_boolean('allow_memory_growth', False,
                      'Whether to grow the GPU memory usage as is needed by the '
                      'process. Prevents crashes on GPUs with smaller memory.')
+flags.DEFINE_boolean('hypertune', False,
+                     'Enable metric reporting for hyperparameter tuning, such '
+                     'as on Google Cloud AI-Platform.')
+flags.DEFINE_float('early_stop_loss_value', None,
+                   'Stops training early when the `total_loss` reaches below '
+                   'this value during training.')
 
 # Gin config flags.
 flags.DEFINE_multi_string('gin_search_path', [],
                           'Additional gin file search paths.')
-flags.DEFINE_multi_string('gin_file', [], 'List of paths to the config files.')
+flags.DEFINE_multi_string('gin_file', [],
+                          'List of paths to the config files. If file '
+                          'in gstorage bucket specify whole gstorage path: '
+                          'gs://bucket-name/dir/in/bucket/file.gin.')
 flags.DEFINE_multi_string('gin_param', [],
                           'Newline separated list of Gin parameter bindings.')
 
@@ -132,11 +143,13 @@ def parse_gin(restore_dir):
     operative_config = train_util.get_latest_operative_config(restore_dir)
     if tf.io.gfile.exists(operative_config):
       logging.info('Using operative config: %s', operative_config)
+      operative_config = cloud.make_file_paths_local(operative_config, GIN_PATH)
       gin.parse_config_file(operative_config, skip_unknown=True)
 
     # User gin config and user hyperparameters from flags.
+    gin_file = cloud.make_file_paths_local(FLAGS.gin_file, GIN_PATH)
     gin.parse_config_files_and_bindings(
-        FLAGS.gin_file, FLAGS.gin_param, skip_unknown=True)
+        gin_file, FLAGS.gin_param, skip_unknown=True)
 
 
 def allow_memory_growth():
@@ -161,13 +174,16 @@ def main(unused_argv):
   logging.info('Restore Dir: %s', restore_dir)
   logging.info('Save Dir: %s', save_dir)
 
+  gfile.makedirs(restore_dir)  # Only makes dirs if they don't exist.
   parse_gin(restore_dir)
+
   if FLAGS.allow_memory_growth:
     allow_memory_growth()
 
   # Training.
   if FLAGS.mode == 'train':
-    strategy = train_util.get_strategy(tpu=FLAGS.tpu, gpus=FLAGS.gpu)
+    strategy = train_util.get_strategy(tpu=FLAGS.tpu,
+                                       cluster_config=FLAGS.cluster_config)
     with strategy.scope():
       model = models.get_model()
       trainer = trainers.Trainer(model, strategy)
@@ -175,7 +191,9 @@ def main(unused_argv):
     train_util.train(data_provider=gin.REQUIRED,
                      trainer=trainer,
                      save_dir=save_dir,
-                     restore_dir=restore_dir)
+                     restore_dir=restore_dir,
+                     early_stop_loss_value=FLAGS.early_stop_loss_value,
+                     report_loss_to_hypertune=FLAGS.hypertune)
 
   # Evaluation.
   elif FLAGS.mode == 'eval':

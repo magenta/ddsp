@@ -21,9 +21,9 @@ import pickle
 import tempfile
 
 import ddsp
+import ddsp.training
 from IPython import display
 import librosa
-import matplotlib.pyplot as plt
 import numpy as np
 from pydub import AudioSegment
 from scipy import stats
@@ -34,9 +34,14 @@ from google.colab import files
 from google.colab import output
 download = files.download
 
-DEFAULT_SAMPLE_RATE = 16000
+DEFAULT_SAMPLE_RATE = ddsp.spectral_ops.CREPE_SAMPLE_RATE
 
 _play_count = 0  # Used for ephemeral play().
+
+# Alias these for backwards compatibility and ease.
+specplot = ddsp.training.plotting.specplot
+plot_impulse_responses = ddsp.training.plotting.plot_impulse_responses
+transfer_function = ddsp.training.plotting.transfer_function
 
 
 # ------------------------------------------------------------------------------
@@ -183,69 +188,6 @@ def upload(sample_rate=DEFAULT_SAMPLE_RATE, normalize_db=None):
                                    normalize_db=normalize_db)
     audio.append(file_audio)
   return fnames, audio
-
-
-# ------------------------------------------------------------------------------
-# Plotting
-# ------------------------------------------------------------------------------
-def specplot(audio,
-             vmin=-5,
-             vmax=1,
-             rotate=True,
-             size=512 + 256,
-             **matshow_kwargs):
-  """Plot the log magnitude spectrogram of audio."""
-  # If batched, take first element.
-  if len(audio.shape) == 2:
-    audio = audio[0]
-
-  logmag = ddsp.spectral_ops.compute_logmag(ddsp.core.tf_float32(audio),
-                                            size=size)
-  if rotate:
-    logmag = np.rot90(logmag)
-  # Plotting.
-  plt.matshow(logmag,
-              vmin=vmin,
-              vmax=vmax,
-              cmap=plt.cm.magma,
-              aspect='auto',
-              **matshow_kwargs)
-  plt.xticks([])
-  plt.yticks([])
-  plt.xlabel('Time')
-  plt.ylabel('Frequency')
-
-
-def transfer_function(ir, sample_rate=DEFAULT_SAMPLE_RATE):
-  """Get true transfer function from an impulse_response."""
-  n_fft = ddsp.core.get_fft_size(0, ir.shape.as_list()[-1])
-  frequencies = np.abs(
-      np.fft.fftfreq(n_fft, 1 / sample_rate)[:int(n_fft / 2) + 1])
-  magnitudes = tf.abs(tf.signal.rfft(ir, [n_fft]))
-  return frequencies, magnitudes
-
-
-def plot_impulse_responses(impulse_response,
-                           desired_magnitudes,
-                           sample_rate=DEFAULT_SAMPLE_RATE):
-  """Plot a target frequency response, and that of an impulse response."""
-  n_fft = desired_magnitudes.shape[-1] * 2
-  frequencies = np.fft.fftfreq(n_fft, 1 / sample_rate)[:n_fft // 2]
-  true_frequencies, true_magnitudes = transfer_function(impulse_response)
-
-  # Plot it.
-  plt.figure(figsize=(12, 6))
-  plt.subplot(121)
-  # Desired transfer function.
-  plt.semilogy(frequencies, desired_magnitudes, label='Desired')
-  # True transfer function.
-  plt.semilogy(true_frequencies, true_magnitudes[0, 0, :], label='True')
-  plt.title('Transfer Function')
-  plt.legend()
-
-  plt.subplot(122)
-  plt.plot(impulse_response[0, 0, :])
-  plt.title('Impulse Response')
 
 
 # ------------------------------------------------------------------------------

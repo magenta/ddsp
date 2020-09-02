@@ -12,20 +12,3 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
-"""Training code for DDSP models."""
-
-from ddsp.training import cloud
-from ddsp.training import data
-from ddsp.training import decoders
-from ddsp.training import encoders
-from ddsp.training import eval_util
-from ddsp.training import inference
-from ddsp.training import metrics
-from ddsp.training import models
-from ddsp.training import nn
-from ddsp.training import plotting
-from ddsp.training import preprocessing
-from ddsp.training import summaries
-from ddsp.training import train_util
-from ddsp.training import trainers

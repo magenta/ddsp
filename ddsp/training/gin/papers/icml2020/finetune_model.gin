@@ -1,0 +1,17 @@
+# -*-Python-*-
+include 'papers/icml2020/pretrain_model.gin'
+
+SpectralLoss.mag_weight = 1.0
+SpectralLoss.logmag_weight = 1.0
+
+KDEConsistencyLoss.weight_mean_amp = 0.1
+KDEConsistencyLoss.weight_a = 0.1
+KDEConsistencyLoss.weight_b = 0.1
+KDEConsistencyLoss.scale_a = 0.1
+KDEConsistencyLoss.scale_b = 0.1
+
+FilteredNoiseConsistencyLoss.weight = 100.0
+
+HarmonicConsistencyLoss.amp_weight = 10.0
+HarmonicConsistencyLoss.dist_weight = 100.0
+HarmonicConsistencyLoss.f0_weight = 1.0

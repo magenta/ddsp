@@ -1,0 +1,60 @@
+# -*-Python-*-
+
+import ddsp
+import ddsp.training
+
+# =====
+# Model
+# =====
+get_model.model = @models.TranscribingAutoencoder()
+
+TranscribingAutoencoder.reverb = False
+
+# Sinusoidal Encoder
+TranscribingAutoencoder.sinusoidal_encoder = @encoders.ResnetSinusoidalEncoder()
+ResnetSinusoidalEncoder.size = 'small'
+ResnetSinusoidalEncoder.output_splits = (('frequencies', 6400),
+                                         ('amplitudes', 100),
+                                         ('noise_magnitudes', 65))
+
+
+# FFT input parameters from onsets and frames transcription experiments.
+ResnetSinusoidalEncoder.spectral_fn = @f0_spectral/spectral_ops.compute_logmel
+f0_spectral/compute_logmel.lo_hz = 0.0
+f0_spectral/compute_logmel.hi_hz = 8000.0
+f0_spectral/compute_logmel.bins = 229
+f0_spectral/compute_logmel.fft_size = 2048
+f0_spectral/compute_logmel.overlap = 0.75
+f0_spectral/compute_logmel.pad_end = True
+
+# Harmonic Encoder
+TranscribingAutoencoder.harmonic_encoder = @encoders.SinusoidalToHarmonicEncoder()
+
+
+# Audio Losses
+TranscribingAutoencoder.losses = [
+    @losses.SpectralLoss(),
+]
+SpectralLoss.loss_type = 'L1'
+SpectralLoss.mag_weight = 0.0
+SpectralLoss.logmag_weight = 0.0
+
+
+# Sinusoidal Consistency loss:
+TranscribingAutoencoder.sinusoidal_consistency_losses = @losses.KDEConsistencyLoss()
+KDEConsistencyLoss.weight_a = 1.0
+KDEConsistencyLoss.weight_b = 1.0
+KDEConsistencyLoss.scale_a = 0.1
+KDEConsistencyLoss.scale_b = 0.1
+
+
+# Harmonic Consistency Loss.
+TranscribingAutoencoder.harmonic_consistency_losses = @losses.HarmonicConsistencyLoss()
+HarmonicConsistencyLoss.amp_weight = 1.0
+HarmonicConsistencyLoss.dist_weight = 1.0
+HarmonicConsistencyLoss.f0_weight = 1.0
+
+
+# Filtered Noise Consistency loss:
+TranscribingAutoencoder.filtered_noise_consistency_loss = @losses.FilteredNoiseConsistencyLoss()
+FilteredNoiseConsistencyLoss.weight = 1.0

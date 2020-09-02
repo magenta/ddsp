@@ -23,7 +23,7 @@ import librosa
 import numpy as np
 import tensorflow.compat.v2 as tf
 
-_CREPE_SAMPLE_RATE = 16000
+CREPE_SAMPLE_RATE = 16000
 _CREPE_FRAME_SIZE = 1024
 
 F0_RANGE = 127.0  # MIDI

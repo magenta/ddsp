@@ -1,9 +1,7 @@
 # Gin Configs: Papers
 
 This directory contains gin configs for replicating the experiments in published
-papers using ddsp. Each config file specifies both the dataset and the model,
-so only a single --gin_file flag is required.
-
+papers using ddsp.
 
 ## List of papers
 
@@ -17,5 +15,18 @@ so only a single --gin_file flag is required.
   booktitle={International Conference on Learning Representations},
   year={2020},
   url={https://openreview.net/forum?id=B1x1ma4tDr}
+}
+```
+
+* [icml2020](./icml2020/): Experiments from the ICML 2020 SAS Workshop paper on Inverse Audio Synthesis ([paper](https://goo.gl/magenta/ddsp-inv)).
+
+```latex
+@inproceedings{
+  engel2020ddsp,
+  title={Self-supervised Pitch Detection with Inverse Audio Synthesis},
+  author={Jesse Engel and Rigel Swavely and Lamtharn (Hanoi) Hantrakul and Adam Roberts and Curtis Hawthorne},
+  booktitle={International Conference on Machine Learning, Self-supervised Audio and Speech Workshop},
+  year={2020},
+  url={https://openreview.net/forum?id=RlVTYWhsky7}
 }
 ```

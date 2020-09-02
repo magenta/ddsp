@@ -21,7 +21,6 @@ ddsp_generate_synthetic_dataset \
 --output_tfrecord_path=/tmp/synthetic_data.tfrecord \
 --num_shards=1 \
 --gin_param="generate_examples.generate_fn = @generate_notes_v2" \
---gin_param="generate_notes.n_timesteps = 125" \
 --num_examples=100 \
 --alsologtostderr
 

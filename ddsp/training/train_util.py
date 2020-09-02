@@ -15,45 +15,64 @@
 # Lint as: python3
 """Library of training functions."""
 
+import json
 import os
 import time
 
 from absl import logging
+from ddsp.training import cloud
 import gin
 import tensorflow.compat.v2 as tf
 
 
 
 # ---------------------- Helper Functions --------------------------------------
-def get_strategy(tpu='', gpus=None):
-  """Create a distribution strategy.
+def get_strategy(tpu='', cluster_config=''):
+  """Create a distribution strategy for running on accelerators.
+
+  For CPU, single-GPU, or multi-GPU jobs on a single machine, call this function
+  without args to return a MirroredStrategy.
+
+  For TPU jobs, specify an address to the `tpu` argument.
+
+  For multi-machine GPU jobs, specify a `cluster_config` argument of the cluster
+  configuration.
 
   Args:
     tpu: Address of the TPU. No TPU if left blank.
-    gpus: List of GPU addresses for synchronous training.
+    cluster_config: Should be specified only for multi-worker jobs.
+      Task specific dictionary for cluster config dict in the TF_CONFIG format.
+      https://www.tensorflow.org/guide/distributed_training#setting_up_tf_config_environment_variable
+      If passed as a string, will be parsed to a dictionary. Two components
+      should be specified: cluster and task. Cluster provides information about
+      the training cluster, which is a dict consisting of different types of
+      jobs such as chief and worker. Task is information about the current task.
+      For example: "{"cluster": {"worker": ["host1:port", "host2:port"]},
+                     "task": {"type": "worker", "index": 0}}"
 
   Returns:
-    A distribution strategy.
+    A distribution strategy. MirroredStrategy by default. TPUStrategy if `tpu`
+    arg is specified. MultiWorkerMirroredStrategy if `cluster_config` arg is
+    specified.
   """
-  # Get a distribution strategy.
   if tpu:
     logging.info('Use TPU at %s', tpu)
     resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=tpu)
     tf.config.experimental_connect_to_cluster(resolver)
     tf.tpu.experimental.initialize_tpu_system(resolver)
     strategy = tf.distribute.TPUStrategy(resolver)
-  elif gpus:
-    for gpu_address in gpus:
-      logging.info('Use GPU at %s', gpu_address)
-    cluster_spec = tf.train.ClusterSpec({'worker': gpus})
+  elif  cluster_config:
+    if not isinstance(cluster_config, dict):
+      cluster_config = json.loads(cluster_config)
+    cluster_spec = tf.train.ClusterSpec(cluster_config['cluster'])
     resolver = tf.distribute.cluster_resolver.SimpleClusterResolver(
         cluster_spec=cluster_spec,
-        master=gpus[0],
-        environment='google',
+        task_type=cluster_config['task']['type'],
+        task_id=cluster_config['task']['index'],
+        num_accelerators={'GPU': len(tf.config.list_physical_devices('GPU'))},
         rpc_layer='grpc')
-    tf.config.experimental_connect_to_cluster(resolver)
-    devices = tf.config.list_logical_devices('GPU')
-    strategy = tf.distribute.MirroredStrategy(devices=devices)
+    strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
+        cluster_resolver=resolver)
   else:
     logging.info('Defaulting to MirroredStrategy')
     strategy = tf.distribute.MirroredStrategy()
@@ -135,8 +154,27 @@ def train(data_provider,
           steps_per_save=300,
           save_dir='~/tmp/ddsp',
           restore_dir='~/tmp/ddsp',
-          early_stop_loss_value=None):
-  """Main training loop."""
+          early_stop_loss_value=None,
+          report_loss_to_hypertune=False):
+  """Main training loop.
+
+  Args:
+   data_provider: DataProvider object for training data.
+   trainer: Trainer object built with Model to train.
+   batch_size: Total batch size.
+   num_steps: Number of training steps.
+   steps_per_summary: Number of training steps per summary save.
+   steps_per_save: Number of training steps per checkpoint save.
+   save_dir: Directory where checkpoints and summaries will be saved.
+     If empty string, no checkpoints or summaries will be saved.
+   restore_dir: Directory where latest checkpoints for resuming the training
+     are stored. If there are no checkpoints in this directory, training will
+     begin anew.
+   early_stop_loss_value: Early stopping. When the total_loss reaches below this
+     value training stops. If None training will run for num_steps steps.
+   report_loss_to_hypertune: Report loss values to hypertune package for
+     hyperparameter tuning, such as on Google Cloud AI-Platform.
+  """
   # Get a distributed dataset iterator.
   dataset = data_provider.get_batch(batch_size, shuffle=True, repeats=-1)
   dataset = trainer.distribute_dataset(dataset)
@@ -148,12 +186,16 @@ def train(data_provider,
   # Load latest checkpoint if one exists in load directory.
   trainer.restore(restore_dir)
 
-  # Set up the summary writer and metrics.
-  summary_dir = os.path.join(save_dir, 'summaries', 'train')
-  summary_writer = tf.summary.create_file_writer(summary_dir)
+  if save_dir:
+    # Set up the summary writer and metrics.
+    summary_dir = os.path.join(save_dir, 'summaries', 'train')
+    summary_writer = tf.summary.create_file_writer(summary_dir)
 
-  # Save the gin config.
-  write_gin_config(summary_writer, save_dir, trainer.step.numpy())
+    # Save the gin config.
+    write_gin_config(summary_writer, save_dir, trainer.step.numpy())
+  else:
+    # Need to create a dummy writer, even if no save_dir is provided.
+    summary_writer = tf.summary.create_noop_writer()
 
   # Train.
   with summary_writer.as_default():
@@ -183,7 +225,7 @@ def train(data_provider,
       logging.info(log_str)
 
       # Write Summaries.
-      if step % steps_per_summary == 0:
+      if step % steps_per_summary == 0 and save_dir:
         # Speed.
         steps_per_sec = steps_per_summary / (time.time() - tick)
         tf.summary.scalar('steps_per_sec', steps_per_sec, step=step)
@@ -194,8 +236,24 @@ def train(data_provider,
           tf.summary.scalar('losses/{}'.format(k), metric.result(), step=step)
           metric.reset_states()
 
+      # Report metrics for hyperparameter tuning if enabled.
+      if report_loss_to_hypertune:
+        cloud.report_metric_to_hypertune(losses['total_loss'], step)
+
+      # Stop the training when the loss reaches given value
+      if (early_stop_loss_value is not None and
+          losses['total_loss'] <= early_stop_loss_value):
+        logging.info('Total loss reached early stopping value of %s',
+                     early_stop_loss_value)
+
+        # Write a final checkpoint.
+        if save_dir:
+          trainer.save(save_dir)
+          summary_writer.flush()
+        break
+
       # Save Model.
-      if step % steps_per_save == 0:
+      if step % steps_per_save == 0 and save_dir:
         trainer.save(save_dir)
         summary_writer.flush()
 
