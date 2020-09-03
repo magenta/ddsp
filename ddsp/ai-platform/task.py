@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Script for running a containerised training on Google Cloud AI Platform."""
+"""Script for running a containerized training on Google Cloud AI Platform."""
 
 import json
 import os
@@ -72,8 +72,8 @@ def get_worker_behavior_info(save_dir):
     save_dir: Save directory given by the user.
 
   Returns:
-    cluster_config: Infered cluster configuration.
-    save_dir: Infered save directory.
+    cluster_config: Inferred cluster configuration.
+    save_dir: Inferred save directory.
   """
   if 'TF_CONFIG' in os.environ:
     cluster_config = os.environ['TF_CONFIG']

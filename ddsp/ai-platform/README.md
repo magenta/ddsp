@@ -6,8 +6,8 @@ Docker image for training autoencoder on [Google Cloud AI Platform](https://clou
 Make sure that you have completed the following steps:
 * Set up your [GCP project](https://cloud.google.com/resource-manager/docs/creating-managing-projects)
 * Create a [Google Cloud Storage Bucket](https://cloud.google.com/storage/docs/creating-buckets)
-* Enable [AI Platform Training and Prediction, Container Registry, and Compute Engine APIs](https://pantheon.corp.google.com/flows/enableapi?apiid=ml.googleapis.com,compute_component,containerregistry.googleapis.com)
-* Install [Docker](https://docs.docker.com/engine/install/)
+* Enable [AI Platform Training and Prediction and Container Registry APIs](https://pantheon.corp.google.com/flows/enableapi?apiid=ml.googleapis.com,containerregistry.googleapis.com)
+* Install [Docker](https://docs.docker.com/engine/install/) locally
 * [Configure Docker for Cloud Container Registry](https://cloud.google.com/container-registry/docs/pushing-and-pulling)
 * [Upload the training data](https://cloud.google.com/storage/docs/uploading-objects) in the [TFRecord](https://www.tensorflow.org/tutorials/load_data/tfrecord) format to the GCS bucket. You can preprocess your audio files into this format using the `ddsp_prepare_tfrecord` tool as described in [Making a TFRecord dataset from your own sounds](https://github.com/magenta/ddsp/tree/master/ddsp/training/data_preparation).
 
@@ -50,7 +50,7 @@ gcloud ai-platform jobs submit training $JOB_NAME \
 ```
 ##### AI Platform flags:
 * `--region` - Region when the training job is run
-* `--config` - Cluster configuration. In the example above, training on multiple VMs with multiple GPUs is set. For more information about various configurations take a look at **Note on cluster configuration and hyperparameters** below.
+* `--config` - Cluster configuration. In the example above, training on single VM with single GPU is set. For more information about various configurations take a look at **Note on cluster configuration and hyperparameters** below.
 * `--master-image-uri` - URI of the Docker image you've built and submitted to Container Registry
 
 ##### Program flags:
@@ -82,22 +82,8 @@ You can add your own Gin config files in two ways:
 ### Note on cluster configuration and hyperparameters
 
 There are two cluster configurations prepared:
-* `config_single_vm.yaml` - 1 VM configuration with 1 NVIDIA Tesla T4 GPUs. Training with this configuration and recommended parameters (*batch_size: 16, learning_rate:0.0001, num_steps:40000, early_stop_loss_value:5.0*) takes around 10 hours and consumes around 19 [ML units](https://cloud.google.com/ai-platform/training/pricing#ml-units).
+* `config_single_vm.yaml` - 1 VM configuration with 1 NVIDIA Tesla T4 GPU. Training with this configuration and recommended parameters (*batch_size: 16, learning_rate:0.0001, num_steps:40000, early_stop_loss_value:5.0*) takes around 10 hours and consumes around 19 [ML units](https://cloud.google.com/ai-platform/training/pricing#ml-units).
 
 * `config_multiple_vms.yaml` - 4 VM configuration with 8 NVIDIA Tesla T4 GPUs. Training with this configuration and recommended parameters (*batch_size: 128, learning_rate:0.001, num_steps:15000, early_stop_loss_value:5.0*) takes around 5 hours and consumes around 44 [ML units](https://cloud.google.com/ai-platform/training/pricing#ml-units).
 
 Feel free to experiment and define your [cluster configurations](https://cloud.google.com/ai-platform/training/docs/using-gpus).
-
-### Note on dataset location
-
-Instead of uploading the preprocessed dataset into the GCS bucket, you can copy it inside the Docker container. To do so you need to place the folder with files in the same folder as Dockerfile and rebuild the image with the following code snippet added into Dockerfile:
-
-```docker
-COPY [FOLDER_WITH_DATA] /root/data
-```
-Then you should set the file pattern variable as follows:
-
-```bash
-export FILE_PATTERN=/root/data/train.tfrecord*
-```
-and complete the remaining steps as described above.
