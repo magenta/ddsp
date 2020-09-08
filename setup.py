@@ -43,6 +43,7 @@ setuptools.setup(
         'crepe>=0.0.11',
         'future',
         'gin-config>=0.3.0',
+        'google-cloud-storage',
         'librosa',
         'pydub',
         'mir_eval',
@@ -57,7 +58,7 @@ setuptools.setup(
     ],
     extras_require={
         'gcp': ['gevent', 'google-api-python-client', 'google-compute-engine',
-                'google-cloud-storage', 'oauth2client'],
+                'oauth2client'],
         'data_preparation': [
             # TODO(adarob): Remove next line once avro-python3 is fixed.
             'avro-python3!=1.9.2',

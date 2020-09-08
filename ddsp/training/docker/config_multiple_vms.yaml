@@ -1,0 +1,21 @@
+# Recommended batch_size: 128
+# Recommended learning_rate: 0.001
+# Recommended number of steps: 15000
+#
+trainingInput:
+  scaleTier: CUSTOM
+  # Configures a chief worker with 2 T4 GPUs
+  masterType: n1-highcpu-32
+  masterConfig:
+    acceleratorConfig:
+      count: 2
+      type: NVIDIA_TESLA_T4
+  # Configures 3 workers, each with 2 T4 GPUs
+  workerCount: 3
+  workerType: n1-highcpu-32
+  workerConfig:
+    acceleratorConfig:
+      count: 2
+      type: NVIDIA_TESLA_T4
+  # Makes AI Platform naming compatibile with Tensorflow naming
+  useChiefInTfConfig: True
