@@ -146,7 +146,6 @@ def f0_summary(f0_hz, f0_hz_predict, step, name='f0_midi'):
     ax1.set_title('predicted')
 
     # Format and save plot to image
-    name = name + '_' if name else ''
     tag = f'f0_midi/{name}_{i + 1}'
     fig_summary(tag, fig, step)
 
