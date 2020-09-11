@@ -11,6 +11,9 @@ RUN apt-get update && \
 RUN pip install --upgrade pip && \
     pip install --upgrade tensorflow tensorflow-probability
 
+# Installs cloudml-hypertune package needed for hyperparameter tuning
+RUN pip install cloudml-hypertune
+
 WORKDIR /root
 # Installs Magenta DDSP from Github.
 RUN wget https://github.com//magenta/ddsp/archive/master.zip && \
