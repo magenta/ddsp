@@ -135,34 +135,29 @@ tensorboard dev delete --experiment_id EXPERIMENT_ID
 
 ### User Interaction Script:
 
-Another way to build the image and submit the training on AI Platform is to use user_interaction.py.
-To use it as a script, first add the path to where you have downloaded it and assign the execution permissions:
+Another way to build the image and submit the training on AI Platform is to use ddsp_a_platform.py.
+The pip install installs a `ddsp_ai_platform` script that can be called directly.
 
-```bash
-export PATH=<path_to_user_interaction.py>:$PATH
-chmod +x user_interaction.py
-```
-
-Then just run `./user_interaction.py` from the directory you have it saved in and follow the instructions prompted.
-
+Or you can run `python ddsp_ai_platform.py` from the directory you have it saved in and follow the instructions prompted.
 The script will allow you to input the paths to the GCS Bucket where you have stored the preprocessed dataset and where you want to save the trained model and also choose parameters for the training job.
 After submitting the training job, the script also enables TensorBoard visualisation on your local machine and uploads the logs to TensorBoard.dev for easily sharing the results of your ML experiment.
 
+You can input a part of the following parameters as flags to 'ddsp_ai_platform' an then the script will only request the missing ones:
+
 #### Paths
-* `data_path` - Path to where the preprocessed dataset is saved.
-* `save_dir` - Path to where checkpoints and summary events will be saved.
-* `restore_dir` - Path from which checkpoints will be restored if you want to resume a training. Can be skipped and defaults to `save_dir`.
+* `--data_path` - Path to where the preprocessed dataset is saved.
+* `--save_dir` - Path to where checkpoints and summary events will be saved.
+* `--restore_dir` - Path from which checkpoints will be restored if you want to resume a training. Can be skipped and defaults to `save_dir`.
 
 #### AI Platform parameters
-* `config_path` - Path to a configuration file for training on AI Platform.
-* `image_URI` - URI of the Docker image that will be built and submitted to Container Registry.
-* `job_name` - Name for the training job that has to be unique in the GCP Project.
-* `region`- Region where job is run.
+* `--config_path` - Path to a configuration file for training on AI Platform.
+* `--project_id` - Can be inferred from gcloud configuration if it is set, otherwise it has to be inputted manually.
+* `--region`- Region where job is run. Can be inferred from gcloud configuration if it is set, otherwise it has to be inputted manually.
 
 #### Training parameters - all have default values that will be used if skipped at input
-* `batch_size` - The batch size the training code will use (Default: 64).
-* `learning_rate` - The learning rate the training code will use (Default: 0.0001).
-* `no_of_steps` - Number of steps to execute before training stops (Default: 10000).
-* `steps_per_save` - Number of steps after a snapshot is saved (Default: 300).
-* `steps_per_summary` - Number of steps after a summary is saved (Default: 300).
-* `early_stop_loss_value` - The training will be stopped before it finishes the number of steps if the loss value reaches this (Default: 5).
+* `--batch_size` - The batch size the training code will use (Default: 64).
+* `--learning_rate` - The learning rate the training code will use (Default: 0.0001).
+* `--no_of_steps` - Number of steps to execute before training stops (Default: 10000).
+* `--steps_per_save` - Number of steps after a snapshot is saved (Default: 300).
+* `--steps_per_summary` - Number of steps after a summary is saved (Default: 300).
+* `--early_stop_loss_value` - The training will be stopped before it finishes the number of steps if the loss value reaches this (Default: 5).
