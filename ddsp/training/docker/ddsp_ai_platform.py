@@ -68,233 +68,198 @@ flags.DEFINE_string('early_stop_loss_value', '',
                    'Early stopping. When the total_loss reaches below this '
                    'value training stops.')
 
-def prompt(default, message, skip=False, arg='', local=False):
-  input_prompt = 'Insert '
-  if default == 'path':
-    input_prompt += 'the path to where the '
-    input_prompt += message
-    if not local:
-      input_prompt += '. This must be a GCS Bucket'
-    if skip:
-      input_prompt += '. Skip for the default one'
-    input_prompt += ':\n'
-  if default == 'value':
-    input_prompt += message
-    if skip:
-      input_prompt += ' or skip for the default value (' + arg + ')'
-    input_prompt += ':'
-  return input_prompt
+def prompt_gs_path(message, required=False):
+  if required:
+    message += ' (Required): '
+  else:
+    message += ': '
+  path = input(message)
+  if required or path:
+    path = check_bucket(path, message)
+  return path
+
+def prompt_local_path(message):
+  path = input(message)
+  if path:
+    path = check_local_file(path, message)
+  else:
+    path = './config_multiple_vms.yaml'
+  return path
+
+def prompt_value(message, arg):
+  message += ' (Default: ' + arg + '): '
+  value = input(message)
+  if not value:
+    value = arg
+  return value
+
+def check_local_file(file_path, message):
+  while not os.path.isfile(file_path):
+    print('File doesn\'t exist.')
+    file_path = input(message)
+  return file_path
 
 def check_bucket(bucket_name, message):
   while not bucket_name.startswith('gs://'):
-    print('Path not a bucket.')
+    print(f'Path {bucket_name} is not a valid GCS bucket. '
+          'Bucket paths must start with gs://.')
     bucket_name = input(message)
   while True:
     try:
-      name = bucket_name[5:]
+      name = bucket_name.split('gs://')[1]
       if '/' in name:
         name = name.split('/')[0]
       storage.Client().get_bucket(name)
       break
     except:
-      print('Not a valid bucket.')
+      print('Bucket doesn\'t exist or can\'t be accessed.')
       bucket_name = input(message)
   return bucket_name
 
+def check_project_id(project_id):
+  check_command = 'gcloud projects describe ' + project_id
+  while not subprocess.getoutput(check_command).startswith('createTime'):
+    print('Project ID not valid.')
+    project_id = input('Project ID: ')
+    check_command = 'gcloud projects describe ' + project_id
+  return project_id
+
+def get_project_id():
+  project_id = subprocess.getoutput('gcloud config get-value project')
+  if project_id == '(unset)':
+    project_id = input('Project ID: ')
+    project_id = check_project_id(project_id)
+  return project_id
+
+def get_region():
+  region = subprocess.getoutput('gcloud config get-value compute/region')
+  if region == '(unset)':
+    region = prompt_value('Region for training the model', 'europe-west4')
+  return region
+
 def get_input():
   """Gathers input from user"""
-  # Determining path for data retrieval
-  input_dict = dict()
   if FLAGS.data_path:
-    data_path = FLAGS.data_path
+    FLAGS.data_path = check_bucket(FLAGS.data_path,
+                                   'Path to training dataset directory: ')
   else:
-    data_path = input(prompt('path', 'dataset for training is stored'))
-  data_path = check_bucket(data_path,
-                           prompt('path', 'dataset for training is stored'))
-  input_dict['data_path'] = data_path
+    FLAGS.data_path = prompt_gs_path('Path to training dataset directory',
+                                     required=True)
 
-  # Determining path for storing model, snapshots and summaries
   if FLAGS.save_dir:
-    save_dir = FLAGS.save_dir
+    FLAGS.save_dir = check_bucket(FLAGS.save_dir,
+                                  'Path for saving model, snapshots '
+                                  'and summaries: ')
   else:
-    save_dir = input(prompt('path', 'model, '
-                            'snapshots and summaries will be saved'))
-  save_dir = check_bucket(save_dir, prompt('path', 'model, snapshots '
-                                           'and summaries will be saved'))
-  input_dict['save_dir'] = save_dir
+    FLAGS.save_dir = prompt_gs_path('Path for saving model, snapshots '
+                                    'and summaries', required=True)
 
-  # Determining path for restoring the model
-  if FLAGS.restore_dir:
-    restore_dir = FLAGS.restore_dir
-  else:
-    if FLAGS.save_dir:
-      restore_dir = FLAGS.save_dir
-    else:
-      restore_dir = input(prompt('path', 'checkpoints will be restored '
-                                 'from before training', skip=True))
-      if restore_dir == '':
-        restore_dir = save_dir
-  restore_dir = check_bucket(restore_dir, prompt('path', 'checkpoints will be '
-                                                 'restored from before '
-                                                 'training', skip=True))
-  input_dict['restore_dir'] = restore_dir
+  if not FLAGS.restore_dir:
+    FLAGS.restore_dir = prompt_gs_path('Path for restoring checkpoints '
+                                       'before training')
+    if not FLAGS.restore_dir:
+      FLAGS.restore_dir = FLAGS.save_dir
 
   if FLAGS.config_path:
-    config_path = FLAGS.config_path
+    FLAGS.config_path = check_local_file(FLAGS.config_path,
+                                         'Path to configuration file: ')
   else:
-    config_path = input(prompt('path', 'configuration file is stored',\
-                               skip=True, local=True))
-    if config_path == '':
-      config_path = './config_multiple_vms.yaml'
-  input_dict['config_path'] = config_path
+    FLAGS.config_path = prompt_local_path('Path to configuration file: ')
 
-  if FLAGS.project_id:
-    project_id = FLAGS.project_id
-  else:
-    project_id = subprocess.getoutput('gcloud config get-value project')
-    if project_id == '(unset)':
-      project_id = input(prompt('value', 'your project ID'))
-    check_project_id = 'gcloud projects describe ' + project_id
-    while not subprocess.getoutput(check_project_id).startswith('createTime'):
-      print('Project ID not valid.')
-      project_id = input(prompt('value', 'your project ID'))
-      check_project_id = 'gcloud projects describe ' + project_id
+  if not FLAGS.project_id:
+    FLAGS.project_id = get_project_id()
 
-  image_uri = 'gcr.io/' + project_id + '/ddsp_training:train_job'
-  input_dict['image_uri'] = image_uri
+  image_uri = 'gcr.io/' + FLAGS.project_id + '/ddsp_training:train_job'
 
   job_name = 'training_job_' + str(int((datetime.datetime.now()\
              - datetime.datetime(1970,1,1)).total_seconds()))
-  input_dict['job_name'] = job_name
 
-  if FLAGS.region:
-    region = FLAGS.region
-  else:
-    region = subprocess.getoutput('gcloud config get-value compute/region')
-    if region == '(unset)':
-      region = input('\nInsert the region you want to train '
-                      'your model in or skip for the default '
-                      'value (europe-west4): ')
-      if region == '':
-        region = 'europe-west4'
-  input_dict['region'] = region
+  if not FLAGS.region:
+    FLAGS.region = get_region()
 
-  if FLAGS.batch_size:
-    batch_size = FLAGS.batch_size
-  else:
-    batch_size = input(prompt('value', 'batch size', skip=True, arg='128'))
-    if batch_size == '':
-      batch_size = '128'
-  input_dict['batch_size'] = batch_size
+  if not FLAGS.batch_size:
+    FLAGS.batch_size = prompt_value('Batch size', '128')
 
-  if FLAGS.learning_rate:
-    learning_rate = FLAGS.learning_rate
-  else:
-    learning_rate = input(prompt('value', 'the learning rate',\
-                                 skip=True, arg='0.001'))
-    if learning_rate == '':
-      learning_rate = '0.001'
-  input_dict['learning_rate'] = learning_rate
+  if not FLAGS.learning_rate:
+    FLAGS.learning_rate = prompt_value('Learning rate', '0.001')
 
-  if FLAGS.num_steps:
-    num_steps = FLAGS.num_steps
-  else:
-    num_steps = input(prompt('value', 'the number of steps for training',\
-                             skip=True, arg='15000'))
-    if num_steps == '':
-      num_steps = '15000'
-  input_dict['num_steps'] = num_steps
+  if not FLAGS.num_steps:
+    FLAGS.num_steps = prompt_value('Number of steps', '15000')
 
-  if FLAGS.steps_per_save:
-    steps_per_save = FLAGS.steps_per_save
-  else:
-    steps_per_save = input(prompt('value', 'the number of steps per save',\
-                                  skip=True, arg='300'))
-    if steps_per_save == '':
-      steps_per_save = '300'
-  input_dict['steps_per_save'] = steps_per_save
+  if not FLAGS.steps_per_save:
+    FLAGS.steps_per_save = prompt_value('Steps per save', '300')
 
-  if FLAGS.steps_per_summary:
-    steps_per_summary = FLAGS.steps_per_summary
-  else:
-    steps_per_summary = input(prompt('value', 'the number of steps per'
-                                     'summary', skip=True, arg='300'))
-    if steps_per_summary == '':
-      steps_per_summary = '300'
-  input_dict['steps_per_summary'] = steps_per_summary
+  if not FLAGS.steps_per_summary:
+    FLAGS.steps_per_summary = prompt_value('Steps per summary', '300')
 
-  if FLAGS.early_stop_loss_value:
-    early_stop_loss_value = FLAGS.early_stop_loss_value
-  else:
-    early_stop_loss_value = input(prompt('value', 'the early stop loss value',\
-                                         skip=True, arg='5'))
-    if early_stop_loss_value == '':
-      early_stop_loss_value = '5'
-  input_dict['early_stop_loss_value'] = early_stop_loss_value
+  if not FLAGS.early_stop_loss_value:
+    FLAGS.early_stop_loss_value = prompt_value('Early stop loss value', '5')
 
-  return input_dict
+  return image_uri, job_name
 
-def build_image(input_dict):
+def build_image(image_uri):
   """Builds the docker image"""
   build_command = 'docker build -f Dockerfile -t '\
-                  + input_dict['image_uri'] + ' ./'
+                  + image_uri + ' ./'
   os.system(build_command)
 
-def push_image(input_dict):
+def push_image(image_uri):
   """Pushes the docker image on Google Cloud Registry"""
-  pushing_image = 'docker push ' + input_dict['image_uri']
+  pushing_image = 'docker push ' + image_uri
   os.system(pushing_image)
 
-def submit_job(input_dict):
+def submit_job(image_uri, job_name):
   """Submits the job on AI Platform"""
   os.system('export PATH=/usr/local/google/home/$USER/.local/bin:$PATH')
 
-  submitting_job = 'gcloud beta ai-platform jobs submit training '\
-  + input_dict['job_name'] + ' --region ' + input_dict['region']\
-  + ' --master-image-uri ' + input_dict['image_uri']\
-  + ' --config ' + input_dict['config_path']\
-  + ' -- --save_dir=' + input_dict['save_dir']\
-  + ' --restore_dir=' + input_dict['restore_dir']\
-  + ' --file_pattern=' + input_dict['data_path'] + '/train.tfrecord*'\
-  + ' --batch_size=' + input_dict['batch_size']\
-  + ' --learning_rate=' + input_dict['learning_rate']\
-  + ' --num_steps=' + input_dict['num_steps']\
-  + ' --steps_per_summary=' + input_dict['steps_per_summary']\
-  + ' --steps_per_save=' + input_dict['steps_per_save']\
-  + ' --early_stop_loss_value=' + input_dict['early_stop_loss_value']
+  submitting_job = (
+    'gcloud ai-platform jobs submit training' +
+    f' {job_name}' +
+    f' --region={FLAGS.region}' +
+    f' --master-image-uri={image_uri}' +
+    f' --config={FLAGS.config_path}' +
+    f' -- --save_dir={FLAGS.save_dir}' +
+    f' --restore_dir={FLAGS.restore_dir}' +
+    f' --file_pattern={FLAGS.data_path}/train.tfrecord*' +
+    f' --batch_size={FLAGS.batch_size}' +
+    f' --learning_rate={FLAGS.learning_rate}'+
+    f' --num_steps={FLAGS.num_steps}' +
+    f' --steps_per_summary={FLAGS.steps_per_summary}' +
+    f' --steps_per_save={FLAGS.steps_per_save}' +
+    f' --early_stop_loss_value={FLAGS.early_stop_loss_value}')
+
   os.system(submitting_job)
 
-def enable_tensorboard(input_dict):
+def enable_tensorboard():
   """Enables Tensorboard"""
   os.system('gcloud auth login')
-  tensorboard_command = 'tensorboard --logdir='\
-                        + input_dict['save_dir'] + ' --port=8082 &'
+  tensorboard_command = f'tensorboard --logdir={FLAGS.save_dir} --port=6006 &'
   os.system(tensorboard_command)
 
-def upload_logs(input_dict):
+def upload_logs(job_name):
   """Uploads logs to TensorBoard.dev"""
-  tensorboard_dev_command = 'tensorboard dev upload --logdir '\
-                            + input_dict['save_dir']\
-  + ' --name \"' + input_dict['job_name'] + '\"'
+  tensorboard_dev_command = ('tensorboard dev upload ' +
+                             f'--logdir={FLAGS.save_dir}' +
+                             f' --name \"{job_name}\"')
   os.system(tensorboard_dev_command)
 
 def main(unused_argv):
   """Gathers input, submits job and enables TensorBoard"""
-  input_dict = get_input()
+  (image_uri, job_name) = get_input()
 
-  build_image(input_dict)
+  build_image(image_uri)
   print('Docker image built')
 
-  push_image(input_dict)
+  push_image(image_uri)
   print('Image pushed to Google Cloud Registry')
 
-  submit_job(input_dict)
+  submit_job(image_uri, job_name)
   print('Job submitted to AI Platform')
 
-  enable_tensorboard(input_dict)
+  enable_tensorboard()
   print('Tensorboard enabled')
 
-  upload_logs(input_dict)
+  upload_logs(job_name)
   print('Logs uploaded to TensorBoard.dev')
 
 def console_entry_point():
