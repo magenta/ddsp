@@ -116,9 +116,12 @@ def evaluate_or_sample(data_provider,
           audio_gen = None
           model_output, losses = model(batch, return_losses=True, training=True)
 
+          # Parse the model's output to see if has or is audio
           if not isinstance(model_output, dict):
-            # TODO(emanilow): Assume if it's not a dict it's generated audio.
+            # Assume if it's not a dict it's generated audio.
             audio_gen = model_output
+          elif 'audio' in model_output.keys():
+            audio_gen = model_output['audio']
 
           outputs = model.get_controls(batch, training=True)
 
@@ -180,7 +183,8 @@ def evaluate_or_sample(data_provider,
             logging.info('Writing summmaries for batch %d', batch_idx)
 
             if audio_gen is not None:
-              audio_gen = np.array(model_output)
+              audio_gen = np.array(audio_gen)
+
               # Add audio.
               summaries.audio_summary(
                   audio_gen, step, sample_rate, name='audio_generated')
