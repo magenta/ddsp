@@ -135,14 +135,14 @@ tensorboard dev delete --experiment_id EXPERIMENT_ID
 
 ### User Interaction Script:
 
-Another way to build the image and submit the training on AI Platform is to use ddsp_a_platform.py.
+Another way to build the image and submit the training on AI Platform is to use `ddsp_ai_platform.py`.
 The pip install installs a `ddsp_ai_platform` script that can be called directly.
 
 Or you can run `python ddsp_ai_platform.py` from the directory you have it saved in and follow the instructions prompted.
 The script will allow you to input the paths to the GCS Bucket where you have stored the preprocessed dataset and where you want to save the trained model and also choose parameters for the training job.
 After submitting the training job, the script also enables TensorBoard visualisation on your local machine and uploads the logs to TensorBoard.dev for easily sharing the results of your ML experiment.
 
-You can input a part of the following parameters as flags to 'ddsp_ai_platform' an then the script will only request the missing ones:
+You can input a part of the following parameters as flags to 'ddsp_ai_platform' and then the script will only request the missing ones:
 
 #### Paths
 * `--data_path` - Path to where the preprocessed dataset is saved.
