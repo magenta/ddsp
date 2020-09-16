@@ -155,9 +155,9 @@ You can input a part of the following parameters as flags to 'ddsp_ai_platform' 
 * `--region`- Region where job is run. Can be inferred from gcloud configuration if it is set, otherwise it has to be inputted manually.
 
 #### Training parameters - all have default values that will be used if skipped at input
-* `--batch_size` - The batch size the training code will use (Default: 64).
-* `--learning_rate` - The learning rate the training code will use (Default: 0.0001).
-* `--no_of_steps` - Number of steps to execute before training stops (Default: 10000).
+* `--batch_size` - The batch size the training code will use (Default: 128).
+* `--learning_rate` - The learning rate the training code will use (Default: 0.001).
+* `--no_of_steps` - Number of steps to execute before training stops (Default: 15000).
 * `--steps_per_save` - Number of steps after a snapshot is saved (Default: 300).
 * `--steps_per_summary` - Number of steps after a summary is saved (Default: 300).
 * `--early_stop_loss_value` - The training will be stopped before it finishes the number of steps if the loss value reaches this (Default: 5).
