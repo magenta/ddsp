@@ -1,0 +1,22 @@
+trainingInput:
+  scaleTier: CUSTOM
+  masterType: n1-highmem-64
+  masterConfig:
+     acceleratorConfig:
+       count: 4
+       type: NVIDIA_TESLA_T4
+  useChiefInTfConfig: True
+  hyperparameters:
+    goal: MINIMIZE
+    hyperparameterMetricTag: "Loss"
+    maxTrials: 4
+    maxParallelTrials: 4
+    enableTrialEarlyStopping: True
+    params:
+    - parameterName: learning_rate
+      type: DISCRETE
+      discreteValues:
+      - 0.0001
+      - 3e-4
+      - 0.001
+      - 0.01
