@@ -69,10 +69,8 @@ flags.DEFINE_string('early_stop_loss_value', '',
                    'value training stops.')
 
 def prompt_gs_path(message, required=False):
-  if required:
-    message += ' (Required): '
-  else:
-    message += ': '
+  required_msg = ' (Required): ' if required else ': '
+  message = f'{message}{required_msg}'
   path = input(message)
   if required or path:
     path = check_bucket(path, message)
@@ -83,19 +81,19 @@ def prompt_local_path(message):
   if path:
     path = check_local_file(path, message)
   else:
-    path = './config_multiple_vms.yaml'
+    path = './config_single_vm.yaml'
   return path
 
-def prompt_value(message, arg):
-  message += ' (Default: ' + arg + '): '
+def prompt_value(message, default_value):
+  message = f'{message} (Default: {default_value}): '
   value = input(message)
   if not value:
-    value = arg
+    value = default_value
   return value
 
 def check_local_file(file_path, message):
   while not os.path.isfile(file_path):
-    print('File doesn\'t exist.')
+    print(f'File {file_path} doesn\'t exist.')
     file_path = input(message)
   return file_path
 
@@ -112,14 +110,14 @@ def check_bucket(bucket_name, message):
       storage.Client().get_bucket(name)
       break
     except:
-      print('Bucket doesn\'t exist or can\'t be accessed.')
+      print(f'Bucket {bucket_name} doesn\'t exist or can\'t be accessed.')
       bucket_name = input(message)
   return bucket_name
 
 def check_project_id(project_id):
   check_command = 'gcloud projects describe ' + project_id
   while not subprocess.getoutput(check_command).startswith('createTime'):
-    print('Project ID not valid.')
+    print(f'Project {project_id} doesn\'t exist or can\'t be accessed.')
     project_id = input('Project ID: ')
     check_command = 'gcloud projects describe ' + project_id
   return project_id
@@ -139,127 +137,155 @@ def get_region():
 
 def get_input():
   """Gathers input from user"""
+  msg = 'Path to training dataset directory'
   if FLAGS.data_path:
-    FLAGS.data_path = check_bucket(FLAGS.data_path,
-                                   'Path to training dataset directory: ')
+    data_path = check_bucket(FLAGS.data_path, msg)
   else:
-    FLAGS.data_path = prompt_gs_path('Path to training dataset directory',
-                                     required=True)
+    data_path = prompt_gs_path(msg, required=True)
 
+  msg = 'Path for saving model, snapshots and summaries'
   if FLAGS.save_dir:
-    FLAGS.save_dir = check_bucket(FLAGS.save_dir,
-                                  'Path for saving model, snapshots '
-                                  'and summaries: ')
+    save_dir = check_bucket(FLAGS.save_dir, msg)
   else:
-    FLAGS.save_dir = prompt_gs_path('Path for saving model, snapshots '
-                                    'and summaries', required=True)
+    save_dir = prompt_gs_path(msg, required=True)
 
+  msg = 'Path for restoring checkpoints before training'
   if not FLAGS.restore_dir:
-    FLAGS.restore_dir = prompt_gs_path('Path for restoring checkpoints '
-                                       'before training')
-    if not FLAGS.restore_dir:
-      FLAGS.restore_dir = FLAGS.save_dir
+    restore_dir = prompt_gs_path(msg)
+    if not restore_dir:
+      restore_dir = save_dir
 
+  msg = 'Path to configuration file: '
   if FLAGS.config_path:
-    FLAGS.config_path = check_local_file(FLAGS.config_path,
-                                         'Path to configuration file: ')
+    config_path = check_local_file(FLAGS.config_path, msg)
   else:
-    FLAGS.config_path = prompt_local_path('Path to configuration file: ')
+    config_path = prompt_local_path(msg)
 
-  if not FLAGS.project_id:
-    FLAGS.project_id = get_project_id()
+  if FLAGS.project_id:
+    project_id = check_project_id(FLAGS.project_id)
+  else:
+    project_id = get_project_id()
 
-  image_uri = 'gcr.io/' + FLAGS.project_id + '/ddsp_training:train_job'
+  image_uri = 'gcr.io/' + project_id + '/ddsp_training:train_job'
 
   job_name = 'training_job_' + str(int((datetime.datetime.now()\
              - datetime.datetime(1970,1,1)).total_seconds()))
 
   if not FLAGS.region:
-    FLAGS.region = get_region()
+    region = get_region()
 
-  if not FLAGS.batch_size:
-    FLAGS.batch_size = prompt_value('Batch size', '128')
+  msg = 'Batch size'
+  if FLAGS.batch_size:
+    batch_size = FLAGS.batch_size
+  else:
+    batch_size = prompt_value(msg, '16')
 
-  if not FLAGS.learning_rate:
-    FLAGS.learning_rate = prompt_value('Learning rate', '0.001')
+  msg = 'Learning rate'
+  if FLAGS.learning_rate:
+    learning_rate = FLAGS.learning_rate
+  else:
+    learning_rate = prompt_value(msg, '0.0001')
 
-  if not FLAGS.num_steps:
-    FLAGS.num_steps = prompt_value('Number of steps', '15000')
+  msg = 'Number of steps'
+  if FLAGS.num_steps:
+    num_steps = FLAGS.num_steps
+  else:
+    num_steps = prompt_value(msg, '40000')
 
-  if not FLAGS.steps_per_save:
-    FLAGS.steps_per_save = prompt_value('Steps per save', '300')
+  msg = 'Steps per save'
+  if FLAGS.steps_per_save:
+    steps_per_save = FLAGS.steps_per_save
+  else:
+    steps_per_save = prompt_value(msg, '300')
 
-  if not FLAGS.steps_per_summary:
-    FLAGS.steps_per_summary = prompt_value('Steps per summary', '300')
+  msg = 'Steps per summary'
+  if FLAGS.steps_per_summary:
+    steps_per_summary = FLAGS.steps_per_summary
+  else:
+    steps_per_summary = prompt_value(msg, '300')
 
-  if not FLAGS.early_stop_loss_value:
-    FLAGS.early_stop_loss_value = prompt_value('Early stop loss value', '5')
+  msg = 'Early stop loss value'
+  if FLAGS.early_stop_loss_value:
+    early_stop_loss_value = FLAGS.early_stop_loss_value
+  else:
+    early_stop_loss_value = prompt_value(msg, '5')
 
-  return image_uri, job_name
+  args = {'data_path':data_path,
+          'save_dir':save_dir,
+          'restore_dir':restore_dir,
+          'config_path':config_path,
+          'image_uri':image_uri,
+          'job_name':job_name,
+          'region':region,
+          'batch_size':batch_size,
+          'learning_rate':learning_rate,
+          'num_steps':num_steps,
+          'steps_per_save':steps_per_save,
+          'steps_per_summary':steps_per_summary,
+          'early_stop_loss_value':early_stop_loss_value}
+  return args
 
-def build_image(image_uri):
+def build_image(args):
   """Builds the docker image"""
-  build_command = 'docker build -f Dockerfile -t '\
-                  + image_uri + ' ./'
+  build_command = f'docker build -f Dockerfile -t {args["image_uri"]} ./'
   os.system(build_command)
 
-def push_image(image_uri):
+def push_image(args):
   """Pushes the docker image on Google Cloud Registry"""
-  pushing_image = 'docker push ' + image_uri
+  pushing_image = f'docker push {args["image_uri"]}'
   os.system(pushing_image)
 
-def submit_job(image_uri, job_name):
+def submit_job(args):
   """Submits the job on AI Platform"""
-  os.system('export PATH=/usr/local/google/home/$USER/.local/bin:$PATH')
 
   submitting_job = (
-    'gcloud ai-platform jobs submit training' +
-    f' {job_name}' +
-    f' --region={FLAGS.region}' +
-    f' --master-image-uri={image_uri}' +
-    f' --config={FLAGS.config_path}' +
-    f' -- --save_dir={FLAGS.save_dir}' +
-    f' --restore_dir={FLAGS.restore_dir}' +
-    f' --file_pattern={FLAGS.data_path}/train.tfrecord*' +
-    f' --batch_size={FLAGS.batch_size}' +
-    f' --learning_rate={FLAGS.learning_rate}'+
-    f' --num_steps={FLAGS.num_steps}' +
-    f' --steps_per_summary={FLAGS.steps_per_summary}' +
-    f' --steps_per_save={FLAGS.steps_per_save}' +
-    f' --early_stop_loss_value={FLAGS.early_stop_loss_value}')
+    'gcloud ai-platform jobs submit training'
+    f' {args["job_name"]}'
+    f' --region={args["region"]}'
+    f' --master-image-uri={args["image_uri"]}'
+    f' --config={args["config_path"]}'
+    f' -- --save_dir={args["save_dir"]}'
+    f' --restore_dir={args["restore_dir"]}'
+    f' --file_pattern={args["data_path"]}/train.tfrecord*'
+    f' --batch_size={args["batch_size"]}'
+    f' --learning_rate={args["learning_rate"]}'
+    f' --num_steps={args["num_steps"]}'
+    f' --steps_per_summary={args["steps_per_summary"]}'
+    f' --steps_per_save={args["steps_per_save"]}'
+    f' --early_stop_loss_value={args["early_stop_loss_value"]}')
 
   os.system(submitting_job)
 
-def enable_tensorboard():
+def enable_tensorboard(args):
   """Enables Tensorboard"""
   os.system('gcloud auth login')
-  tensorboard_command = f'tensorboard --logdir={FLAGS.save_dir} --port=6006 &'
+  tensorboard_command = f'tensorboard --logdir={args["save_dir"]} --port=6006 &'
   os.system(tensorboard_command)
 
-def upload_logs(job_name):
+def upload_logs(args):
   """Uploads logs to TensorBoard.dev"""
   tensorboard_dev_command = ('tensorboard dev upload ' +
-                             f'--logdir={FLAGS.save_dir}' +
-                             f' --name \"{job_name}\"')
+                             f'--logdir={args["save_dir"]}' +
+                             f' --name \"{args["job_name"]}\"')
   os.system(tensorboard_dev_command)
 
 def main(unused_argv):
   """Gathers input, submits job and enables TensorBoard"""
-  (image_uri, job_name) = get_input()
+  args = get_input()
 
-  build_image(image_uri)
+  build_image(args)
   print('Docker image built')
 
-  push_image(image_uri)
+  push_image(args)
   print('Image pushed to Google Cloud Registry')
 
-  submit_job(image_uri, job_name)
+  submit_job(args)
   print('Job submitted to AI Platform')
 
-  enable_tensorboard()
+  enable_tensorboard(args)
   print('Tensorboard enabled')
 
-  upload_logs(job_name)
+  upload_logs(args)
   print('Logs uploaded to TensorBoard.dev')
 
 def console_entry_point():

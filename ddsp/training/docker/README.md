@@ -10,6 +10,7 @@ Make sure that you have completed the following steps:
 * Install [Docker](https://docs.docker.com/engine/install/) locally
 * [Configure Docker for Cloud Container Registry](https://cloud.google.com/container-registry/docs/pushing-and-pulling)
 * [Upload the training data](https://cloud.google.com/storage/docs/uploading-objects) in the [TFRecord](https://www.tensorflow.org/tutorials/load_data/tfrecord) format to the GCS bucket. You can preprocess your audio files into this format using the `ddsp_prepare_tfrecord` tool as described in [Making a TFRecord dataset from your own sounds](https://github.com/magenta/ddsp/tree/master/ddsp/training/data_preparation).
+* Install TensorBoard: `pip install -U tensorboard` and add the executable to your PATH: `export PATH=/usr/local/google/home/$USER/.local/bin:$PATH`
 
 ### Quickstart:
 
@@ -100,9 +101,10 @@ You can use the existing one in `docker/utils/hypertune_configurations/config_hy
 
 ### Enabling Tensorboard visualization
 
-To enable Tensorboard you have to authenticate to `gcloud` and run the following command:
+To enable Tensorboard you have to install the pip package, authenticate to `gcloud` and run the following command:
 
 ```bash
+pip install tensorboard
 gcloud auth login
 tensorboard --logdir=<path_to_save_dir> --port=8080
 ```
@@ -155,9 +157,9 @@ You can input a part of the following parameters as flags to 'ddsp_ai_platform' 
 * `--region`- Region where job is run. Can be inferred from gcloud configuration if it is set, otherwise it has to be inputted manually.
 
 #### Training parameters - all have default values that will be used if skipped at input
-* `--batch_size` - The batch size the training code will use (Default: 128).
-* `--learning_rate` - The learning rate the training code will use (Default: 0.001).
-* `--no_of_steps` - Number of steps to execute before training stops (Default: 15000).
+* `--batch_size` - The batch size the training code will use (Default: 16).
+* `--learning_rate` - The learning rate the training code will use (Default: 0.0001).
+* `--num_steps` - Number of steps to execute before training stops (Default: 40000).
 * `--steps_per_save` - Number of steps after a snapshot is saved (Default: 300).
 * `--steps_per_summary` - Number of steps after a summary is saved (Default: 300).
 * `--early_stop_loss_value` - The training will be stopped before it finishes the number of steps if the loss value reaches this (Default: 5).
