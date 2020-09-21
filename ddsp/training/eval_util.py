@@ -113,15 +113,7 @@ def evaluate_or_sample(data_provider,
 
           # TODO(jesseengel): Find a way to add losses with training=False.
           audio = batch['audio']
-          audio_gen = None
-          model_output, losses = model(batch, return_losses=True, training=True)
-
-          # Parse the model's output to see if has or is audio
-          if not isinstance(model_output, dict):
-            # Assume if it's not a dict it's generated audio.
-            audio_gen = model_output
-          elif 'audio' in model_output.keys():
-            audio_gen = model_output['audio']
+          audio_gen, losses = model(batch, return_losses=True, training=True)
 
           outputs = model.get_controls(batch, training=True)
 
@@ -136,7 +128,6 @@ def evaluate_or_sample(data_provider,
 
             f0_twm_metrics = metrics.F0Metrics(
                 sample_rate=sample_rate, frame_rate=frame_rate, name='f0_twm')
-
 
             avg_losses = {
                 name: tf.keras.metrics.Mean(name=name, dtype=tf.float32)
