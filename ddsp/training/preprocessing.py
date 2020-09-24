@@ -80,7 +80,7 @@ class DefaultPreprocessor(Preprocessor):
   @staticmethod
   def invert_preprocessing(f0_scaled, ld_scaled):
     """Takes in scaled f0 and loudness, and puts them back to hz & db scales."""
-    f0_hz = F0_RANGE * ddsp.core.midi_to_hz(f0_scaled)
+    f0_hz = ddsp.core.midi_to_hz(F0_RANGE * f0_scaled)
     loudness_db = (ld_scaled - 1.0) * LD_RANGE
     return f0_hz, loudness_db
 
