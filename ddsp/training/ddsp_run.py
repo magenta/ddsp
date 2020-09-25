@@ -24,7 +24,7 @@ The pip install installs a `ddsp_run` script that can be called directly.
 ddsp_run \
 --mode=train \
 --alsologtostderr \
---save_dir=~/tmp/$USER-ddsp-0 \
+--save_dir=/tmp/$USER-ddsp-0 \
 --gin_file=models/ae.gin \
 --gin_file=datasets/nsynth.gin \
 --gin_param=batch_size=16
@@ -36,13 +36,13 @@ For evaluation and sampling, only the dataset file is required.
 ddsp_run \
 --mode=eval \
 --alsologtostderr \
---save_dir=~/tmp/$USER-ddsp-0 \
+--save_dir=/tmp/$USER-ddsp-0 \
 --gin_file=datasets/nsynth.gin
 
 ddsp_run \
 --mode=sample \
 --alsologtostderr \
---save_dir=~/tmp/$USER-ddsp-0 \
+--save_dir=/tmp/$USER-ddsp-0 \
 --gin_file=datasets/nsynth.gin
 
 
@@ -53,7 +53,7 @@ datasets used for a paper's experiments, so only require one gin file to train.
 ddsp_run \
 --mode=train \
 --alsologtostderr \
---save_dir=~/tmp/$USER-ddsp-0 \
+--save_dir=/tmp/$USER-ddsp-0 \
 --gin_file=papers/iclr2020/nsynth_ae.gin
 
 
@@ -80,7 +80,7 @@ FLAGS = flags.FLAGS
 # Program flags.
 flags.DEFINE_enum('mode', 'train', ['train', 'eval', 'sample'],
                   'Whether to train, evaluate, or sample from the model.')
-flags.DEFINE_string('save_dir', '~/tmp/ddsp',
+flags.DEFINE_string('save_dir', '/tmp/ddsp',
                     'Path where checkpoints and summary events will be saved '
                     'during training and evaluation.')
 flags.DEFINE_string('restore_dir', '',

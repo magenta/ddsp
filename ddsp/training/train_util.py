@@ -152,8 +152,8 @@ def train(data_provider,
           num_steps=1000000,
           steps_per_summary=300,
           steps_per_save=300,
-          save_dir='~/tmp/ddsp',
-          restore_dir='~/tmp/ddsp',
+          save_dir='/tmp/ddsp',
+          restore_dir='/tmp/ddsp',
           early_stop_loss_value=None,
           report_loss_to_hypertune=False):
   """Main training loop.
