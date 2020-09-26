@@ -124,7 +124,7 @@ def audio_summary(audio, step, sample_rate=16000, name='audio'):
       name, audio, sample_rate, step, max_outputs=batch_size, encoding='wav')
 
 
-def f0_summary(f0_hz, f0_hz_predict, step, name='f0_midi'):
+def f0_summary(f0_hz, f0_hz_predict, step, name='f0_midi', tag='f0_midi'):
   """Creates a plot comparison of ground truth f0_hz and predicted values."""
   batch_size = int(f0_hz.shape[0])
 
@@ -146,7 +146,7 @@ def f0_summary(f0_hz, f0_hz_predict, step, name='f0_midi'):
     ax1.set_title('predicted')
 
     # Format and save plot to image
-    tag = f'f0_midi/{name}_{i + 1}'
+    tag = f'{tag}/{name}_{i + 1}'
     fig_summary(tag, fig, step)
 
 
