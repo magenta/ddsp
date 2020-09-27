@@ -21,6 +21,27 @@ import tensorflow.compat.v2 as tf
 tfkl = tf.keras.layers
 
 
+# ------------------------ Shapes ----------------------------------------------
+def ensure_4d(x):
+  """Add extra dimensions to make sure tensor has height and width."""
+  if len(x.shape) == 2:
+    return x[:, tf.newaxis, tf.newaxis, :]
+  elif len(x.shape) == 3:
+    return x[:, :, tf.newaxis, :]
+  else:
+    return x
+
+
+def inv_ensure_4d(x, n_dims):
+  """Remove excess dims, inverse of ensure_4d() function."""
+  if n_dims == 2:
+    return x[:, 0, 0, :]
+  if n_dims == 3:
+    return x[:, :, 0, :]
+  else:
+    return x
+
+
 # ------------------ Normalization ---------------------------------------------
 def normalize_op(x, norm_type='layer', eps=1e-5):
   """Apply either Group, Instance, or Layer normalization, or None."""
@@ -55,8 +76,11 @@ class Normalize(tfkl.Layer):
         initializer=tf.zeros_initializer)
 
   def call(self, x):
+    n_dims = len(x.shape)
+    x = ensure_4d(x)
     x = normalize_op(x, self.norm_type)
-    return (x * self.scale) + self.shift
+    x = (x * self.scale) + self.shift
+    return inv_ensure_4d(x, n_dims)
 
 
 # ------------------ ResNet ----------------------------------------------------
