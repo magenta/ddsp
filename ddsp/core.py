@@ -112,7 +112,7 @@ def safe_log(x, eps=1e-5):
   return tf.math.log(safe_x)
 
 
-def logb(x, base=2.0, safe=False):
+def logb(x, base=2.0, safe=True):
   """Logarithm with base as an argument."""
   if safe:
     return safe_divide(safe_log(x), safe_log(base))
