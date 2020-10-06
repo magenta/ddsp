@@ -125,8 +125,7 @@ class SpectralLoss(tfkl.Layer):
       spectrogram_op = functools.partial(spectral_ops.compute_mag, size=size)
       self.spectrogram_ops.append(spectrogram_op)
 
-  def call(self, target_audio, audio):
-
+  def call(self, target_audio, audio, weights=None):
     loss = 0.0
 
     diff = spectral_ops.diff
@@ -139,41 +138,41 @@ class SpectralLoss(tfkl.Layer):
 
       # Add magnitude loss.
       if self.mag_weight > 0:
-        loss += self.mag_weight * mean_difference(target_mag, value_mag,
-                                                  self.loss_type)
+        loss += self.mag_weight * mean_difference(
+            target_mag, value_mag, self.loss_type, weights=weights)
 
       if self.delta_time_weight > 0:
         target = diff(target_mag, axis=1)
         value = diff(value_mag, axis=1)
         loss += self.delta_time_weight * mean_difference(
-            target, value, self.loss_type)
+            target, value, self.loss_type, weights=weights)
 
       if self.delta_freq_weight > 0:
         target = diff(target_mag, axis=2)
         value = diff(value_mag, axis=2)
         loss += self.delta_freq_weight * mean_difference(
-            target, value, self.loss_type)
+            target, value, self.loss_type, weights=weights)
 
       # TODO(kyriacos) normalize cumulative spectrogram
       if self.cumsum_freq_weight > 0:
         target = cumsum(target_mag, axis=2)
         value = cumsum(value_mag, axis=2)
         loss += self.cumsum_freq_weight * mean_difference(
-            target, value, self.loss_type)
+            target, value, self.loss_type, weights=weights)
 
       # Add logmagnitude loss, reusing spectrogram.
       if self.logmag_weight > 0:
         target = spectral_ops.safe_log(target_mag)
         value = spectral_ops.safe_log(value_mag)
-        loss += self.logmag_weight * mean_difference(target, value,
-                                                     self.loss_type)
+        loss += self.logmag_weight * mean_difference(
+            target, value, self.loss_type, weights=weights)
 
     if self.loudness_weight > 0:
       target = spectral_ops.compute_loudness(target_audio, n_fft=2048,
                                              use_tf=True)
       value = spectral_ops.compute_loudness(audio, n_fft=2048, use_tf=True)
-      loss += self.loudness_weight * mean_difference(target, value,
-                                                     self.loss_type)
+      loss += self.loudness_weight * mean_difference(
+          target, value, self.loss_type, weights=weights)
 
     return loss
 
