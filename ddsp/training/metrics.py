@@ -187,7 +187,13 @@ class LoudnessMetrics(BaseMetrics):
       batch: Dictionary of input features.
       audio_gen: Batch of generated audio.
     """
-    loudness_original = batch['loudness_db']
+    if 'loudness_db' in batch:
+      loudness_original = batch['loudness_db']
+    else:
+      loudness_original = ddsp.spectral_ops.compute_loudness(
+          batch['audio'],
+          sample_rate=self._sample_rate, frame_rate=self._frame_rate)
+
     # Compute loudness across entire batch
     loudness_gen = ddsp.spectral_ops.compute_loudness(
         audio_gen, sample_rate=self._sample_rate, frame_rate=self._frame_rate)
@@ -236,8 +242,16 @@ class F0CrepeMetrics(BaseMetrics):
           sample_rate=self._sample_rate,
           frame_rate=self._frame_rate,
           viterbi=True)
-      f0_hz_gt = batch['f0_hz'][i]
-      f0_conf_gt = batch['f0_confidence'][i]
+      if 'f0_hz' and 'f0_confidence' in batch:
+        f0_hz_gt = batch['f0_hz'][i]
+        f0_conf_gt = batch['f0_confidence'][i]
+      else:
+        # Missing f0 in ground truth, extract it.
+        f0_hz_gt, f0_conf_gt = ddsp.spectral_ops.compute_f0(
+            batch['audio'][i],
+            sample_rate=self._sample_rate,
+            frame_rate=self._frame_rate,
+            viterbi=True)
 
       if is_outlier(f0_conf_gt):
         # Ground truth f0 was unreliable to begin with. Discard.
