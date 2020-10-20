@@ -21,10 +21,16 @@ from ddsp.training import models
 import gin
 import numpy as np
 import pkg_resources
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 
-GIN_PATH = pkg_resources.resource_filename(__name__, 'gin')
+GIN_PATH = pkg_resources.resource_filename(__name__, '../gin')
 gin.add_config_file_search_path(GIN_PATH)
+
+print('!!!!!!!!!!!!!')
+print(models.__name__)
+print(models.Autoencoder.__name__)
+print(models.get_model.__name__)
+print('!!!!!!!!!!!!!')
 
 
 class AutoencoderTest(parameterized.TestCase, tf.test.TestCase):
