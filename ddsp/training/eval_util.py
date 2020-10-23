@@ -108,9 +108,6 @@ def evaluate_or_sample(data_provider,
             batch['loudness_db'] = ddsp.spectral_ops.compute_loudness(
                 batch['audio'])
 
-          elif isinstance(data_provider, data.ZippedProvider):
-            batch, unused_ss_batch = model.parse_zipped_features(batch)
-
           # TODO(jesseengel): Find a way to add losses with training=False.
           audio = batch['audio']
           audio_gen, losses = model(batch, return_losses=True, training=True)
