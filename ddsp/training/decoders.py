@@ -68,14 +68,14 @@ class RnnFcDecoder(Decoder):
                output_splits=(('amps', 1), ('harmonic_distribution', 40)),
                name=None):
     super().__init__(output_splits=output_splits, name=name)
-    stack = lambda: nn.fc_stack(ch, layers_per_stack)
+    stack = lambda: nn.FcStack(ch, layers_per_stack)
     self.input_keys = input_keys
 
     # Layers.
     self.input_stacks = [stack() for k in self.input_keys]
-    self.rnn = nn.rnn(rnn_channels, rnn_type)
+    self.rnn = nn.Rnn(rnn_channels, rnn_type)
     self.out_stack = stack()
-    self.dense_out = nn.dense(self.n_out)
+    self.dense_out = tfkl.Dense(self.n_out)
 
     # Backwards compatability.
     self.f_stack = self.input_stacks[0] if len(self.input_stacks) >= 1 else None

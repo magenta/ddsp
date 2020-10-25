@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Tests for ddsp.training.nn."""
+"""Tests for ddsp.training.models.autoencoder."""
 
 from absl.testing import parameterized
 from ddsp.core import tf_float32
@@ -25,12 +25,6 @@ import tensorflow as tf
 
 GIN_PATH = pkg_resources.resource_filename(__name__, '../gin')
 gin.add_config_file_search_path(GIN_PATH)
-
-print('!!!!!!!!!!!!!')
-print(models.__name__)
-print(models.Autoencoder.__name__)
-print(models.get_model.__name__)
-print('!!!!!!!!!!!!!')
 
 
 class AutoencoderTest(parameterized.TestCase, tf.test.TestCase):

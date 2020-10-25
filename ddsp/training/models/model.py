@@ -25,8 +25,8 @@ import tensorflow as tf
 class Model(tf.keras.Model):
   """Wrap the model function for dependency injection with gin."""
 
-  def __init__(self, name='model'):
-    super().__init__(name=name)
+  def __init__(self, **kwargs):
+    super().__init__(**kwargs)
     self._losses_dict = {}
 
   def __call__(self, *args, return_losses=False, **kwargs):

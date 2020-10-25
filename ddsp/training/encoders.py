@@ -112,8 +112,8 @@ class MfccTimeDistributedRnnEncoder(Encoder):
 
     # Layers.
     self.z_norm = nn.Normalize('instance')
-    self.rnn = nn.rnn(rnn_channels, rnn_type)
-    self.dense_out = nn.dense(z_dims)
+    self.rnn = nn.Rnn(rnn_channels, rnn_type)
+    self.dense_out = tfkl.Dense(z_dims)
 
   def compute_z(self, conditioning):
     mfccs = spectral_ops.compute_mfcc(
@@ -173,8 +173,8 @@ class ResnetF0Encoder(F0Encoder):
     self.spectral_fn = spectral_fn
 
     # Layers.
-    self.resnet = nn.resnet(size=size)
-    self.dense_out = nn.dense(f0_bins)
+    self.resnet = nn.ResNet(size=size)
+    self.dense_out = tfkl.Dense(f0_bins)
 
   def compute_f0(self, conditioning):
     """Compute fundamental frequency."""
@@ -222,8 +222,8 @@ class ResnetSinusoidalEncoder(tfkl.Layer):
     self.spectral_fn = spectral_fn
 
     # Layers.
-    self.resnet = nn.resnet(size=size)
-    self.dense_outs = [nn.dense(v[1]) for v in output_splits]
+    self.resnet = nn.ResNet(size=size)
+    self.dense_outs = [tfkl.Dense(v[1]) for v in output_splits]
 
   def call(self, features):
     """Updates conditioning with z and (optionally) f0."""
@@ -276,13 +276,13 @@ class SinusoidalToHarmonicEncoder(tfkl.Layer):
     self.sample_rate = sample_rate
 
     # Layers.
-    self.pre_rnn = nn.fc_stack(fc_stack_ch, fc_stack_layers)
-    self.rnn = nn.rnn(rnn_ch, rnn_type)
-    self.post_rnn = nn.fc_stack(fc_stack_ch, fc_stack_layers)
+    self.pre_rnn = nn.FcStack(fc_stack_ch, fc_stack_layers)
+    self.rnn = nn.Rnn(rnn_ch, rnn_type)
+    self.post_rnn = nn.FcStack(fc_stack_ch, fc_stack_layers)
 
-    self.amp_out = nn.dense(1)
-    self.hd_out = nn.dense(n_harmonics)
-    self.f0_out = nn.dense(f0_depth)
+    self.amp_out = tfkl.Dense(1)
+    self.hd_out = tfkl.Dense(n_harmonics)
+    self.f0_out = tfkl.Dense(f0_depth)
 
   def call(self, sin_freqs, sin_amps):
     """Converts (sin_freqs, sin_amps) to (f0, amp, hd).
