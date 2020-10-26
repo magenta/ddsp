@@ -160,13 +160,18 @@ def diff(x, axis=-1):
 
 
 def amplitude_to_db(amplitude, use_tf=False):
-  """Converts amplitude to dB."""
+  """Converts amplitude to decibels."""
   lib = tf if use_tf else np
   log10 = (lambda x: tf.math.log(x) / tf.math.log(10.0)) if use_tf else np.log10
   amin = 1e-20  # Avoid log(0) instabilities.
   db = log10(lib.maximum(amin, amplitude))
   db *= 20.0
   return db
+
+
+def db_to_amplitude(db):
+  """Converts decibels to amplitude."""
+  return 10.0**(db / 20.0)
 
 
 @gin.register
