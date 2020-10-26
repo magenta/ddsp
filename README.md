@@ -17,7 +17,11 @@ synthesizers, waveshapers, and filters). This allows these
 interpretable elements to be used as part of an deep learning model, especially
 as the output layers for audio generation.
 
+
+
+
 ## Getting Started
+
 
 First, follow the steps in the [**Installation**](#Installation) section
 to install the DDSP package and its dependencies. DDSP modules can be used to
@@ -38,29 +42,28 @@ audio = additive(outputs['amplitudes'],
                  outputs['f0_hz'])
 ```
 
-### More resources
+### Links
 
 * [Check out the blog post 💻](https://magenta.tensorflow.org/ddsp)
 * [Read the original paper 📄](https://arxiv.org/abs/2001.04643)
 * [Listen to some examples 🔈](https://goo.gl/magenta/ddsp-examples)
-* [Try out the timbre transfer demo 🎤->🎻](./ddsp/colab/demos/timbre_transfer.ipynb)
+* <a href="https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/demos/timbre_transfer.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> [Try out the timbre transfer demo 🎤->🎻](https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/demos/timbre_transfer.ipynb)
 
 
 <a id='Tutorials'></a>
 ### Tutorials
-
-The best place to start is the step-by-step tutorials for all the major library components that can be found in
+To introduce the main concepts of the library, we have step-by-step colab tutorials for all the major library components
 [`ddsp/colab/tutorials`](./ddsp/colab/tutorials).
 
-*   [0_processor](./ddsp/colab/tutorials/0_processor.ipynb):
+*  [0_processor](https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/tutorials/0_processor.ipynb):
     Introduction to the Processor class.
-*   [1_synths_and_effects](./ddsp/colab/tutorials/1_synths_and_effects.ipynb):
+* [1_synths_and_effects](https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/tutorials/1_synths_and_effects.ipynb):
     Example usage of processors.
-*   [2_processor_group](./ddsp/colab/tutorials/2_processor_group.ipynb):
+*   [2_processor_group](https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/tutorials/2_processor_group.ipynb):
     Stringing processors together in a ProcessorGroup.
-*   [3_training](./ddsp/colab/tutorials/3_training.ipynb):
+* [3_training](https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/tutorials/3_training.ipynb):
     Example of training on a single sound.
-*   [4_core_functions](./ddsp/colab/tutorials/4_core_functions.ipynb):
+*   [4_core_functions](https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/tutorials/4_core_functions.ipynb):
     Extensive examples for most of the core DDSP functions.
 
 
