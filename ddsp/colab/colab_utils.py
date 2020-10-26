@@ -18,12 +18,10 @@
 import base64
 import io
 import pickle
-import tempfile
 
 import ddsp
 import ddsp.training
 from IPython import display
-import librosa
 import numpy as np
 from pydub import AudioSegment
 from scipy import stats
@@ -156,16 +154,24 @@ def audio_bytes_to_np(wav_data,
     An array of the recorded audio at sample_rate.
   """
   # Parse and normalize the audio.
-  audio = AudioSegment.from_file(io.BytesIO(wav_data))
-  audio.remove_dc_offset()
+  aseg = AudioSegment.from_file(io.BytesIO(wav_data))
+  aseg.remove_dc_offset()
   if normalize_db is not None:
-    audio.normalize(headroom=normalize_db)
-  # Save to tempfile and load with librosa.
-  with tempfile.NamedTemporaryFile(suffix='.wav') as temp_wav_file:
-    fname = temp_wav_file.name
-    audio.export(fname, format='wav')
-    audio_np, unused_sr = librosa.load(fname, sr=sample_rate)
-  return audio_np.astype(np.float32)
+    aseg.normalize(headroom=normalize_db)
+  aseg = aseg.set_frame_rate(sample_rate)
+
+  # Convert to numpy array.
+  channel_asegs = aseg.split_to_mono()
+  samples = [s.get_array_of_samples() for s in channel_asegs]
+  fp_arr = np.array(samples).T.astype(np.float32)
+  fp_arr /= np.iinfo(samples[0].typecode).max
+
+  # Switch output shape to be similar to librosa.load's output shape.
+  fp_arr = fp_arr.T
+  if fp_arr.shape[0] == 1:
+    fp_arr = fp_arr[0]
+
+  return fp_arr
 
 
 def upload(sample_rate=DEFAULT_SAMPLE_RATE, normalize_db=None):
