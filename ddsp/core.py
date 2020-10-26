@@ -118,7 +118,7 @@ def safe_divide(numerator, denominator, eps=1e-7):
 
 def safe_log(x, eps=1e-5):
   """Avoid taking the log of a non-positive number."""
-  safe_x = tf.where(x <= 0.0, eps, x)
+  safe_x = tf.where(x <= eps, eps, x)
   return tf.math.log(safe_x)
 
 
