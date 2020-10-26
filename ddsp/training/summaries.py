@@ -90,6 +90,8 @@ def spectrogram_summary(audio, audio_gen, step, name='', tag='spectrogram'):
   spectrograms_gen = specgram(audio_gen)
 
   batch_size = int(audio.shape[0])
+  name = name + '_' if name else ''
+
   for i in range(batch_size):
     # Manually specify exact size of fig for tensorboard
     fig, axs = plt.subplots(2, 1, figsize=(8, 8))
@@ -109,9 +111,8 @@ def spectrogram_summary(audio, audio_gen, step, name='', tag='spectrogram'):
     ax.set_yticks([])
 
     # Format and save plot to image
-    name = name + '_' if name else ''
-    tag = f'{tag}/{name}_{i+1}'
-    fig_summary(tag, fig, step)
+    tag_i = f'{tag}/{name}{i+1}'
+    fig_summary(tag_i, fig, step)
 
 
 def audio_summary(audio, step, sample_rate=16000, name='audio'):
