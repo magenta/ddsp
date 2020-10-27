@@ -18,7 +18,8 @@
 import gin
 import tensorflow.compat.v2 as tf
 
-tfkl = tf.keras.layers
+tfk = tf.keras
+tfkl = tfk.layers
 
 
 # ------------------------ Shapes ----------------------------------------------
