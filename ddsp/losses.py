@@ -32,6 +32,16 @@ tfd = tfp.distributions
 tfkl = tf.keras.layers
 
 
+# ---------------------- Base Class --------------------------------------------
+class Loss(tfkl.Layer):
+  """Base class. Duck typing: Losses just must implement get_losses_dict()."""
+
+  def get_losses_dict(self, *args, **kwargs):
+    """Returns a dictionary of losses for the model."""
+    loss = self(*args, **kwargs)
+    return {self.name: loss}
+
+
 # ---------------------- Losses ------------------------------------------------
 def mean_difference(target, value, loss_type='L1', weights=None):
   """Common loss functions.
@@ -63,7 +73,7 @@ def mean_difference(target, value, loss_type='L1', weights=None):
 
 
 @gin.register
-class SpectralLoss(tfkl.Layer):
+class SpectralLoss(Loss):
   """Multi-scale spectrogram loss.
 
   This loss is the bread-and-butter of comparing two audio signals. It offers
@@ -181,7 +191,7 @@ class SpectralLoss(tfkl.Layer):
 # Peceptual Losses
 # ------------------------------------------------------------------------------
 @gin.register
-class EmbeddingLoss(tfkl.Layer):
+class EmbeddingLoss(Loss):
   """Embedding loss for a given pretrained model.
 
   Using these "perceptual" loss functions will help encourage better matching
@@ -345,7 +355,7 @@ def freq_loss(f_hz, f_hz_target, loss_type='L1', weights=None):
 
 
 @gin.register
-class FilteredNoiseConsistencyLoss(tfkl.Layer):
+class FilteredNoiseConsistencyLoss(Loss):
   """Consistency loss for synthesizer controls.
 
   EXPERIMENTAL
@@ -362,7 +372,7 @@ class FilteredNoiseConsistencyLoss(tfkl.Layer):
 
 
 @gin.register
-class HarmonicConsistencyLoss(tfkl.Layer):
+class HarmonicConsistencyLoss(Loss):
   """Consistency loss for synthesizer controls.
 
   EXPERIMENTAL
@@ -413,7 +423,7 @@ class HarmonicConsistencyLoss(tfkl.Layer):
 # Sinusoidal Consistency Losses
 # ------------------------------------------------------------------------------
 @gin.register
-class WassersteinConsistencyLoss(tfkl.Layer):
+class WassersteinConsistencyLoss(Loss):
   """Compare similarity of two traces of sinusoids using wasserstein distance.
 
   EXPERIMENTAL
@@ -518,7 +528,7 @@ def wasserstein_distance(u_values, v_values, u_weights, v_weights, p=1.0):
 
 
 @gin.register
-class KDEConsistencyLoss(tfkl.Layer):
+class KDEConsistencyLoss(Loss):
   """Compare similarity of two traces of sinusoids using kernels.
 
   EXPERIMENTAL
@@ -648,7 +658,7 @@ class KDEConsistencyLoss(tfkl.Layer):
 # Differentiable Two-way Mismatch Loss
 # ------------------------------------------------------------------------------
 @gin.register
-class TWMLoss(tfkl.Layer):
+class TWMLoss(Loss):
   """Two-way Mismatch, encourages sinusoids to be harmonics best f0 candidate.
 
   EXPERIMENTAL

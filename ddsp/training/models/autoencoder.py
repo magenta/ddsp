@@ -57,9 +57,7 @@ class Autoencoder(Model):
     conditioning = self.encode(features, training=training)
     audio_gen = self.decode(conditioning, training=training)
     if training:
-      for loss_obj in self.loss_objs:
-        loss = loss_obj(features['audio'], audio_gen)
-        self._losses_dict[loss_obj.name] = loss
+      self.update_losses_dict(self.loss_objs, features['audio'], audio_gen)
     return audio_gen
 
   def get_controls(self, features, keys=None, training=False):

@@ -18,6 +18,7 @@
 import time
 
 from absl import logging
+import ddsp
 from ddsp.training import train_util
 import tensorflow as tf
 
@@ -68,4 +69,9 @@ class Model(tf.keras.Model):
     """Base method for getting controls. Not implemented."""
     raise NotImplementedError('`get_controls` not implemented in base class!')
 
-
+  def update_losses_dict(self, loss_objs, *args, **kwargs):
+    """Run loss objects on inputs and adds to model losses."""
+    for loss_obj in ddsp.core.make_iterable(loss_objs):
+      if hasattr(loss_obj, 'get_losses_dict'):
+        losses_dict = loss_obj.get_losses_dict(*args, **kwargs)
+        self._losses_dict.update(losses_dict)
