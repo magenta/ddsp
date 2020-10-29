@@ -59,10 +59,11 @@ class AutoencoderTest(parameterized.TestCase, tf.test.TestCase):
       gin.parse_config_file(gin_file)
 
     model = models.Autoencoder()
-    controls = model.get_controls(self.inputs)
-    self.assertIsInstance(controls, dict)
+    outputs = model(self.inputs)
+    self.assertIsInstance(outputs, dict)
     # Confirm that model generates correctly sized audio.
-    audio_gen_shape = controls['processor_group']['signal'].shape.as_list()
+    audio_gen = model.get_audio_from_outputs(outputs)
+    audio_gen_shape = audio_gen.shape.as_list()
     self.assertEqual(audio_gen_shape, list(self.inputs['audio'].shape))
 
 if __name__ == '__main__':

@@ -40,17 +40,26 @@ class Model(tf.keras.Model):
       **kwargs: Keyword arguments passed on to call().
 
     Returns:
-      Function results if return_losses=False, else the function results
-        and a dictionary of losses, {loss_name: loss_value}.
+      outputs: A dictionary of model outputs generated in call().
+        {output_name: output_tensor or dict}.
+      losses: If return_losses=True, also returns a dictionary of losses,
+        {loss_name: loss_value}.
     """
     self._losses_dict = {}
-    results = super().__call__(*args, **kwargs)
+    outputs = super().__call__(*args, **kwargs)
     if not return_losses:
-      return results
+      return outputs
     else:
       self._losses_dict['total_loss'] = tf.reduce_sum(
           list(self._losses_dict.values()))
-      return results, self._losses_dict
+      return outputs, self._losses_dict
+
+  def _update_losses_dict(self, loss_objs, *args, **kwargs):
+    """Helper function to run loss objects on args and add to model losses."""
+    for loss_obj in ddsp.core.make_iterable(loss_objs):
+      if hasattr(loss_obj, 'get_losses_dict'):
+        losses_dict = loss_obj.get_losses_dict(*args, **kwargs)
+        self._losses_dict.update(losses_dict)
 
   def restore(self, checkpoint_path):
     """Restore model and optimizer from a checkpoint."""
@@ -65,13 +74,22 @@ class Model(tf.keras.Model):
       logging.info('Could not find checkpoint to load at %s, skipping.',
                    checkpoint_path)
 
-  def get_controls(self, features, keys=None, training=False):
-    """Base method for getting controls. Not implemented."""
-    raise NotImplementedError('`get_controls` not implemented in base class!')
+  def get_audio_from_outputs(self, outputs):
+    """Extract audio output tensor from outputs dict of call()."""
+    raise NotImplementedError('Must implement `self.get_audio_from_outputs()`.')
 
-  def update_losses_dict(self, loss_objs, *args, **kwargs):
-    """Run loss objects on inputs and adds to model losses."""
-    for loss_obj in ddsp.core.make_iterable(loss_objs):
-      if hasattr(loss_obj, 'get_losses_dict'):
-        losses_dict = loss_obj.get_losses_dict(*args, **kwargs)
-        self._losses_dict.update(losses_dict)
+  def call(self, *args, training=False, **kwargs):
+    """Run the forward pass, add losses, and create a dictionary of outputs.
+
+    This function must run the forward pass, add losses to self._losses_dict and
+    return a dictionary of all the relevant output tensors.
+
+    Args:
+      *args: Args for forward pass.
+      training: Required `training` kwarg passed in by keras.
+      **kwargs: kwargs for forward pass.
+
+    Returns:
+      Dictionary of all relevant tensors.
+    """
+    raise NotImplementedError('Must implement a `self.call()` method.')

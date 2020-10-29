@@ -83,7 +83,7 @@ class StreamingF0Ld(models.Autoencoder):
   @tf.function
   def call(self, input_dict):
     """Convert f0 and loudness to synthesizer parameters."""
-    controls = super().get_controls(input_dict, training=False)
+    controls = super().__call__(input_dict, training=False)
     amps = controls['additive']['controls']['amplitudes']
     hd = controls['additive']['controls']['harmonic_distribution']
     return amps, hd

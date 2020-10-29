@@ -117,29 +117,6 @@ class TranscribingAutoencoder(Model):
 
     self.processor_group = ddsp.processors.ProcessorGroup(dag=dag)
 
-  def get_controls(self, features, keys=None, training=False):
-    """Returns specific processor_group controls."""
-    # For now just use the real data.
-    if isinstance(features, (list, tuple)):
-      features, unused_ss_features = self.parse_zipped_features(features)
-
-    # Encode the data from audio to sinusoids.
-    pg_in = self.sinusoidal_encoder(features, training=training)
-
-    # Manually apply the scaling nonlinearities.
-    pg_in['frequencies'] = self.freq_scale_fn(pg_in['frequencies'])
-    pg_in['amplitudes'] = self.amps_scale_fn(pg_in['amplitudes'])
-    pg_in['noise_magnitudes'] = self.amps_scale_fn(pg_in['noise_magnitudes'])
-    controls = self.processor_group.get_controls(pg_in)
-
-    # Append normal training procedure outputs.
-    outputs = self.forward(features, training)
-    controls.update(outputs)
-
-    self.built = True
-    # If wrapped in tf.function, only calculates keys of interest.
-    return controls if keys is None else {k: controls[k] for k in keys}
-
   def generate_synthetic_audio(self, features):
     """Convert synthetic controls into audio."""
     return self.processor_group({
@@ -163,6 +140,12 @@ class TranscribingAutoencoder(Model):
     s_idx = int(not ss_idx)
     return features[s_idx], features[ss_idx]
 
+  def get_audio_from_outputs(self, outputs):
+    """Extract audio output tensor from outputs dict of call()."""
+    audio_out = (outputs['sin_audio'] if self.harmonic_encoder is None else
+                 outputs['harm_audio'])
+    return audio_out
+
   def call(self, features, training=True):
     """Run the core of the network, get predictions and loss."""
     if isinstance(features, (list, tuple)):
@@ -182,8 +165,10 @@ class TranscribingAutoencoder(Model):
       all_outputs = self.forward(inputs, training)
 
       # Split outputs.
-      outputs = {k: v[:batch_size] for k, v in all_outputs.items()}
-      ss_outputs = {k: v[batch_size:] for k, v in all_outputs.items()}
+      outputs = {k: v[:batch_size] for k, v in all_outputs.items()
+                 if not isinstance(v, dict)}
+      ss_outputs = {k: v[batch_size:] for k, v in all_outputs.items()
+                    if not isinstance(v, dict)}
 
       # Compute losses.
       self.append_losses(outputs)
@@ -202,10 +187,80 @@ class TranscribingAutoencoder(Model):
       outputs = self.forward(features, training)
       self.append_losses(outputs)
 
-    if self.harmonic_encoder is not None:
-      return outputs['harm_audio']
+    return outputs
+
+  def append_losses(self, outputs, self_supervised_features=None):
+    """Compute losses from outputs and append to self._losses_dict."""
+    # Aliases.
+    o = outputs
+    f = self_supervised_features
+
+    # Unsupervised losses.
+    if f is None:
+      # Sinusoidal autoencoder loss.
+      for loss_obj in self.audio_loss_objs:
+        name = 'sin_{}'.format(loss_obj.name)
+        self._losses_dict[name] = loss_obj(o['audio'], o['sin_audio'])
+
+      if self.harmonic_encoder is not None:
+        # Add prior regularization on harmonic distribution.
+        self._update_losses_dict(
+            self.harmonic_distribution_prior, o['harm_dist'])
+
+        # Harmonic autoencoder loss.
+        for loss_obj in self.audio_loss_objs:
+          name = 'harm_{}'.format(loss_obj.name)
+          self._losses_dict[name] = loss_obj(o['audio'], o['harm_audio'])
+
+        # Sinusoidal<->Harmonic consistency loss.
+        if self.sinusoidal_consistency_losses:
+          sin_amps = o['sin_amps']
+          sin_freqs = o['sin_freqs']
+          if self.stop_gradient:
+            # Don't propagate harmonic errors to sinusoidal predictions.
+            sin_amps = tf.stop_gradient(sin_amps)
+            sin_freqs = tf.stop_gradient(sin_freqs)
+          self._update_losses_dict(
+              self.sinusoidal_consistency_losses,
+              sin_amps, sin_freqs, o['harm_amps'], o['harm_freqs'])
+
+      # Two-way mismatch loss between sinusoids and harmonics.
+      if self.twm_loss is not None:
+        f0_c = o['sin_freqs'] if self.harmonic_encoder is None else o['f0_hz']
+        self._update_losses_dict(self.twm_loss,
+                                 f0_c, o['sin_freqs'], o['sin_amps'])
+
+    # Self-supervised Losses.
     else:
-      return outputs['sin_audio']
+      # Sinusoidal self-supervision.
+      if self.sinusoidal_consistency_losses:
+        for loss_obj in self.sinusoidal_consistency_losses:
+          name = 'ss_' + loss_obj.name
+          self._losses_dict[name] = loss_obj(
+              o['sin_amps'], o['sin_freqs'], f['sin_amps'], f['sin_freqs'])
+
+      # Filtered noise self-supervision.
+      fncl = self.filtered_noise_consistency_loss
+      if fncl is not None:
+        name = 'ss_' + fncl.name
+        self._losses_dict[name] = fncl(o['noise_magnitudes'],
+                                       f['noise_magnitudes'])
+
+      # Harmonic self-supervision.
+      if self.harmonic_consistency_losses:
+        for loss_obj in self.harmonic_consistency_losses:
+          if isinstance(loss_obj, ddsp.losses.HarmonicConsistencyLoss):
+            # L1 loss of harmonic synth controls.
+            losses = loss_obj(o['harm_amp'], f['harm_amp'],
+                              o['harm_dist'], f['harm_dist'],
+                              o['f0_hz'], f['f0_hz'])
+            losses = {'ss_' + k: v for k, v in losses.items()}
+            self._losses_dict.update(losses)
+          else:
+            # Same consistency loss as sinusoidal models.
+            name = 'ss_harm_' + loss_obj.name
+            self._losses_dict[name] = loss_obj(
+                o['harm_amp'], o['f0_hz'], f['harm_amp'], f['f0_hz'])
 
   def forward(self, features, training=True):
     """Run forward pass of model (no losses) on a dictionary of features."""
@@ -224,7 +279,8 @@ class TranscribingAutoencoder(Model):
     pg_in['noise_magnitudes'] = noise_magnitudes
 
     # Reconstruct sinusoidal audio.
-    sin_audio = self.processor_group(pg_in)
+    controls = self.processor_group.get_controls(pg_in)
+    sin_audio = self.processor_group.get_signal(controls)
 
     outputs = {
         # Input signal.
@@ -236,6 +292,7 @@ class TranscribingAutoencoder(Model):
         'sin_amps': sin_amps,
         'sin_freqs': sin_freqs,
     }
+    outputs.update(controls)
 
     # Sinusoids -> Harmonics ---------------------------------------------------
     # Encode the sinusoids into a harmonics.
@@ -271,80 +328,6 @@ class TranscribingAutoencoder(Model):
 
     return outputs
 
-  def append_losses(self, outputs, self_supervised_features=None):
-    """Compute losses from outputs and append to self._losses_dict."""
-    # Aliases.
-    o = outputs
-    f = self_supervised_features
 
-    # Unsupervised losses.
-    if f is None:
-      # Sinusoidal autoencoder loss.
-      for loss_obj in self.audio_loss_objs:
-        name = 'sin_{}'.format(loss_obj.name)
-        self._losses_dict[name] = loss_obj(o['audio'], o['sin_audio'])
-
-      if self.harmonic_encoder is not None:
-        # Add prior regularization on harmonic distribution.
-        hdp = self.harmonic_distribution_prior
-        if hdp is not None:
-          self._losses_dict.update({hdp.name: hdp(o['harm_dist'])})
-
-        # Harmonic autoencoder loss.
-        for loss_obj in self.audio_loss_objs:
-          name = 'harm_{}'.format(loss_obj.name)
-          self._losses_dict[name] = loss_obj(o['audio'], o['harm_audio'])
-
-        # Sinusoidal<->Harmonic consistency loss.
-        if self.sinusoidal_consistency_losses:
-          sin_amps = o['sin_amps']
-          sin_freqs = o['sin_freqs']
-          if self.stop_gradient:
-            # Don't propagate harmonic errors to sinusoidal predictions.
-            sin_amps = tf.stop_gradient(sin_amps)
-            sin_freqs = tf.stop_gradient(sin_freqs)
-          for loss_obj in self.sinusoidal_consistency_losses:
-            self._losses_dict[loss_obj.name] = loss_obj(
-                sin_amps, sin_freqs, o['harm_amps'], o['harm_freqs'])
-
-      # Two-way mismatch loss between sinusoids and harmonics.
-      if self.twm_loss is not None:
-        if self.harmonic_encoder is not None:
-          loss = self.twm_loss(o['f0_hz'], o['sin_freqs'], o['sin_amps'])
-        else:
-          loss = self.twm_loss(o['sin_freqs'], o['sin_freqs'], o['sin_amps'])
-        self._losses_dict[self.twm_loss.name] = loss
-
-    # Self-supervised Losses.
-    else:
-      # Sinusoidal self-supervision.
-      if self.sinusoidal_consistency_losses:
-        for loss_obj in self.sinusoidal_consistency_losses:
-          name = 'ss_' + loss_obj.name
-          self._losses_dict[name] = loss_obj(
-              o['sin_amps'], o['sin_freqs'], f['sin_amps'], f['sin_freqs'])
-
-      # Filtered noise self-supervision.
-      fncl = self.filtered_noise_consistency_loss
-      if fncl is not None:
-        name = 'ss_' + fncl.name
-        self._losses_dict[name] = fncl(o['noise_magnitudes'],
-                                       f['noise_magnitudes'])
-
-      # Harmonic self-supervision.
-      if self.harmonic_consistency_losses:
-        for loss_obj in self.harmonic_consistency_losses:
-          if isinstance(loss_obj, ddsp.losses.HarmonicConsistencyLoss):
-            # L1 loss of harmonic synth controls.
-            losses = loss_obj(o['harm_amp'], f['harm_amp'],
-                              o['harm_dist'], f['harm_dist'],
-                              o['f0_hz'], f['f0_hz'])
-            losses = {'ss_' + k: v for k, v in losses.items()}
-            self._losses_dict.update(losses)
-          else:
-            # Same consistency loss as sinusoidal models.
-            name = 'ss_harm_' + loss_obj.name
-            self._losses_dict[name] = loss_obj(
-                o['harm_amp'], o['f0_hz'], f['harm_amp'], f['f0_hz'])
 
 

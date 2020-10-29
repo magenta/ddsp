@@ -110,9 +110,8 @@ def evaluate_or_sample(data_provider,
 
           # TODO(jesseengel): Find a way to add losses with training=False.
           audio = batch['audio']
-          audio_gen, losses = model(batch, return_losses=True, training=True)
-
-          outputs = model.get_controls(batch, training=True)
+          outputs, losses = model(batch, return_losses=True, training=True)
+          audio_gen = model.get_audio_from_outputs(outputs)
 
           # Create metrics on first batch.
           if mode == 'eval' and batch_idx == 1:

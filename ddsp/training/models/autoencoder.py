@@ -28,16 +28,13 @@ class Autoencoder(Model):
                decoder=None,
                processor_group=None,
                losses=None,
-               name='autoencoder'):
-    super().__init__(name=name)
+               **kwargs):
+    super().__init__(**kwargs)
     self.preprocessor = preprocessor
     self.encoder = encoder
     self.decoder = decoder
     self.processor_group = processor_group
     self.loss_objs = ddsp.core.make_iterable(losses)
-
-  def controls_to_audio(self, controls):
-    return controls[self.processor_group.name]['signal']
 
   def encode(self, features, training=True):
     """Get conditioning by preprocessing then encoding."""
@@ -52,20 +49,18 @@ class Autoencoder(Model):
     processor_inputs = self.decoder(conditioning, training=training)
     return self.processor_group(processor_inputs)
 
+  def get_audio_from_outputs(self, outputs):
+    """Extract audio output tensor from outputs dict of call()."""
+    return self.processor_group.get_signal(outputs)
+
   def call(self, features, training=True):
     """Run the core of the network, get predictions and loss."""
     conditioning = self.encode(features, training=training)
-    audio_gen = self.decode(conditioning, training=training)
+    processor_inputs = self.decoder(conditioning, training=training)
+    outputs = self.processor_group.get_controls(processor_inputs)
+    outputs['audio_synth'] = self.processor_group.get_signal(outputs)
     if training:
-      self.update_losses_dict(self.loss_objs, features['audio'], audio_gen)
-    return audio_gen
+      self._update_losses_dict(
+          self.loss_objs, features['audio'], outputs['audio_synth'])
+    return outputs
 
-  def get_controls(self, features, keys=None, training=False):
-    """Returns specific processor_group controls."""
-    conditioning = self.encode(features, training=training)
-    processor_inputs = self.decoder(conditioning)
-    controls = self.processor_group.get_controls(processor_inputs)
-    # Also build on get_controls(), instead of just __call__().
-    self.built = True
-    # If wrapped in tf.function, only calculates keys of interest.
-    return controls if keys is None else {k: controls[k] for k in keys}
