@@ -20,6 +20,7 @@ from ddsp.training import data
 from ddsp.training import decoders
 from ddsp.training import encoders
 from ddsp.training import eval_util
+from ddsp.training import evaluators
 from ddsp.training import inference
 from ddsp.training import metrics
 from ddsp.training import models

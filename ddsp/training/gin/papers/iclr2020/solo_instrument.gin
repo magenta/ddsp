@@ -4,3 +4,4 @@
 
 include 'models/solo_instrument.gin'
 include 'datasets/tfrecord.gin'
+include 'eval/basic_f0_ld.gin'

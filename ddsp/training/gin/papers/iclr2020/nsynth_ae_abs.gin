@@ -1,3 +1,4 @@
 # -*-Python-*-
 include 'models/ae_abs.gin'
 include 'datasets/nsynth.gin'
+include 'eval/basic_f0_ld.gin'

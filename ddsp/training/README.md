@@ -45,6 +45,8 @@ The main training file is `ddsp_run.py` and its helper libraries:
     Training step defined by helper objects that bind the strategy, optimizer, and model.
 *   [eval_util](./eval_util.py):
     Evaluation and sampling loop.
+*   [evaluators](./evaluators.py):
+    Evaluator objects responsible for computing metrics and summaries.
 *   [metrics](./metrics.py):
     Metrics for evaluation.
 *   [summaries](./summaries.py):
@@ -58,9 +60,9 @@ with `tf.compat.v1` or `tf.compat.v2` this directory only uses `tf.compat.v2`.
 The [pip installation](../../README.md#installation) includes several scripts that can be called directly from
 the command line.
 
-Hyperparameters are configured via gin, and `ddsp_run.py` must be given two
-`--gin_file` flags, one from `gin/models` and one from `gin/datasets`. The
-files in `gin/papers` include both the dataset and model files for reproducing experiments from a specific paper.
+Hyperparameters are configured via gin, and `ddsp_run.py` must be given three
+`--gin_file` flags, one from `gin/models`, one from `gin/datasets`, and one from `gin/eval`. The
+files in `gin/papers` include both the dataset, model, and evaluation files for reproducing experiments from a specific paper.
 
 By default, the program searches for gin files in the installed `ddsp/training/gin` location, but additional search paths can be added with `--gin_search_path`
 flags. Individual parameters can also be set with multiple `--gin_param` flags.
@@ -86,6 +88,7 @@ ddsp_run \
   --mode=eval \
   --save_dir=/tmp/$USER-ddsp-0 \
   --gin_file=dataset/nsynth.gin \
+  --gin_file=eval/basic_f0_ld.gin \
   --alsologtostderr
 ```
 
@@ -95,6 +98,7 @@ ddsp_run \
   --mode=sample \
   --save_dir=/tmp/$USER-ddsp-0 \
   --gin_file=dataset/nsynth.gin \
+  --gin_file=eval/basic_f0_ld.gin \
   --alsologtostderr
 ```
 
@@ -144,7 +148,8 @@ ddsp_run \
   --save_dir=/tmp/$USER-ddsp-0 \
   --gin_file=models/solo_instrument.gin \
   --gin_file=datasets/tfrecord.gin \
-  --gin_param="TFRecordProvider.file_pattern='/path/to/dataset_name*.tfrecord'" \
+  --gin_file=eval/basic_f0_ld.gin
+  --gin_param="TFRecordProvider.file_pattern='/path/to/dataset_name.tfrecord*'" \
   --gin_param="batch_size=16" \
   --alsologtostderr
 ```

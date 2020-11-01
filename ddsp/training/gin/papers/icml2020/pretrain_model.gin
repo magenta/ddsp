@@ -3,6 +3,8 @@
 import ddsp
 import ddsp.training
 
+include 'eval/basic_f0_ld_twm.gin'
+
 # =====
 # Model
 # =====

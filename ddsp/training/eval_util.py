@@ -21,16 +21,14 @@ import time
 from absl import logging
 import ddsp
 from ddsp.training import data
-from ddsp.training import metrics
-from ddsp.training import summaries
 import gin
-import numpy as np
 import tensorflow.compat.v2 as tf
 
 
 # ---------------------- Evaluation --------------------------------------------
 def evaluate_or_sample(data_provider,
                        model,
+                       evaluator_classes,
                        mode='eval',
                        save_dir='/tmp/ddsp/training',
                        restore_dir='',
@@ -44,6 +42,7 @@ def evaluate_or_sample(data_provider,
   Args:
     data_provider: DataProvider instance.
     model: Model instance.
+    evaluator_classes: List of BaseEvaluators subclasses (not instances).
     mode: Whether to 'eval' with metrics or create 'sample' s.
     save_dir: Path to directory to save summary events.
     restore_dir: Path to directory with checkpoints, defaults to save_dir.
@@ -81,6 +80,12 @@ def evaluate_or_sample(data_provider,
 
   latest_losses = None
 
+  # Initialize evaluators.
+  evaluators = [
+      evaluator_class(sample_rate, frame_rate)
+      for evaluator_class in evaluator_classes
+  ]
+
   with summary_writer.as_default():
     for checkpoint_path in checkpoints_iterator:
       step = int(checkpoint_path.split('-')[-1])
@@ -96,10 +101,8 @@ def evaluate_or_sample(data_provider,
 
       for batch_idx in range(1, num_batches + 1):
         try:
-          start_time = time.time()
           logging.info('Predicting batch %d of size %d', batch_idx, batch_size)
-
-          # Predict a batch of audio.
+          start_time = time.time()
           batch = next(dataset_iter)
 
           if isinstance(data_provider, data.SyntheticNotes):
@@ -109,108 +112,15 @@ def evaluate_or_sample(data_provider,
                 batch['audio'])
 
           # TODO(jesseengel): Find a way to add losses with training=False.
-          audio = batch['audio']
           outputs, losses = model(batch, return_losses=True, training=True)
-          audio_gen = model.get_audio_from_outputs(outputs)
-
-          # Create metrics on first batch.
-          if mode == 'eval' and batch_idx == 1:
-            loudness_metrics = metrics.LoudnessMetrics(
-                sample_rate=sample_rate, frame_rate=frame_rate)
-            f0_metrics = metrics.F0Metrics(
-                sample_rate=sample_rate, frame_rate=frame_rate, name='f0_harm')
-            f0_crepe_metrics = metrics.F0CrepeMetrics(
-                sample_rate=sample_rate, frame_rate=frame_rate)
-
-            f0_twm_metrics = metrics.F0Metrics(
-                sample_rate=sample_rate, frame_rate=frame_rate, name='f0_twm')
-
-            avg_losses = {
-                name: tf.keras.metrics.Mean(name=name, dtype=tf.float32)
-                for name in list(losses.keys())}
-
-          processor_group = getattr(model, 'processor_group', None)
-          if processor_group is not None:
-            for processor in processor_group.processors:
-              # If using a sinusoidal model, infer f0 with two-way mismatch.
-              if isinstance(processor, ddsp.synths.Sinusoidal):
-                # Run on CPU to avoid running out of memory (not expensive).
-                with tf.device('CPU'):
-                  processor_controls = outputs[processor.name]['controls']
-                  amps = processor_controls['amplitudes']
-                  freqs = processor_controls['frequencies']
-                  twm = ddsp.losses.TWMLoss()
-                  # Treat all freqs as candidate f0s.
-                  outputs['f0_hz_twm'] = twm.predict_f0(freqs, freqs, amps)
-                  logging.info('Added f0 estimate from sinusoids.')
-                  break
-
-              # If using a noisy sinusoidal model, infer f0 w/ two-way mismatch.
-              elif isinstance(processor, ddsp.synths.NoisySinusoidal):
-                # Run on CPU to avoid running out of memory (not expensive).
-                with tf.device('CPU'):
-                  processor_controls = outputs[processor.name]['controls']
-                  amps = processor_controls['amplitudes']
-                  freqs = processor_controls['frequencies']
-                  noise_ratios = processor_controls['noise_ratios']
-                  amps = amps * (1.0 - noise_ratios)
-                  twm = ddsp.losses.TWMLoss()
-                  # Treat all freqs as candidate f0s.
-                  outputs['f0_hz_twm'] = twm.predict_f0(freqs, freqs, amps)
-                  logging.info('Added f0 estimate from sinusoids.')
-                  break
-
-          has_f0_twm = ('f0_hz_twm' in outputs and 'f0_hz' in batch)
-          has_f0 = ('f0_hz' in outputs and 'f0_hz' in batch)
-
-          logging.info('Prediction took %.1f seconds', time.time() - start_time)
-
-          if mode == 'sample':
-            start_time = time.time()
-            logging.info('Writing summmaries for batch %d', batch_idx)
-
-            if audio_gen is not None:
-              audio_gen = np.array(audio_gen)
-
-              # Add audio.
-              summaries.audio_summary(
-                  audio_gen, step, sample_rate, name='audio_generated')
-              summaries.audio_summary(
-                  audio, step, sample_rate, name='audio_original')
-
-              # Add plots.
-              summaries.waveform_summary(audio, audio_gen, step)
-              summaries.spectrogram_summary(audio, audio_gen, step)
-
-            if has_f0:
-              summaries.f0_summary(batch['f0_hz'], outputs['f0_hz'], step,
-                                   name='f0_harmonic')
-            if has_f0_twm:
-              summaries.f0_summary(batch['f0_hz'], outputs['f0_hz_twm'], step,
-                                   name='f0_twm')
-
-            logging.info('Writing batch %i with size %i took %.1f seconds',
-                         batch_idx, batch_size, time.time() - start_time)
-
-          elif mode == 'eval':
-            start_time = time.time()
-            logging.info('Calculating metrics for batch %d', batch_idx)
-
-            if audio_gen is not None:
-              loudness_metrics.update_state(batch, audio_gen)
-              if has_f0:
-                f0_metrics.update_state(batch, outputs['f0_hz'])
-              else:
-                f0_crepe_metrics.update_state(batch, audio_gen)
-
-            if has_f0_twm:
-              f0_twm_metrics.update_state(batch, outputs['f0_hz_twm'])
-            # Loss.
-            for k, v in losses.items():
-              avg_losses[k].update_state(v)
-
-            logging.info('Metrics for batch %i with size %i took %.1f seconds',
-                         batch_idx, batch_size, time.time() - start_time)
+          outputs['audio_gen'] = model.get_audio_from_outputs(outputs)
+          for evaluator in evaluators:
+            if mode == 'eval':
+              evaluator.evaluate(batch, outputs, losses)
+            if mode == 'sample':
+              evaluator.sample(batch, outputs, step)
+          logging.info('Metrics for batch %i with size %i took %.1f seconds',
+                       batch_idx, batch_size, time.time() - start_time)
 
         except tf.errors.OutOfRangeError:
           logging.info('End of dataset.')
@@ -220,18 +130,8 @@ def evaluate_or_sample(data_provider,
                    num_batches, time.time() - checkpoint_start_time)
 
       if mode == 'eval':
-        loudness_metrics.flush(step)
-        if has_f0:
-          f0_metrics.flush(step)
-        else:
-          f0_crepe_metrics.flush(step)
-        if has_f0_twm:
-          f0_twm_metrics.flush(step)
-        latest_losses = {}
-        for k, metric in avg_losses.items():
-          latest_losses[k] = metric.result()
-          tf.summary.scalar('losses/{}'.format(k), metric.result(), step=step)
-          metric.reset_states()
+        for evaluator in evaluators:
+          evaluator.flush(step)
 
       summary_writer.flush()
 
@@ -249,6 +149,7 @@ def evaluate_or_sample(data_provider,
 @gin.configurable
 def evaluate(data_provider,
              model,
+             evaluator_classes,
              save_dir='/tmp/ddsp/training',
              restore_dir='',
              batch_size=32,
@@ -261,6 +162,7 @@ def evaluate(data_provider,
   Args:
     data_provider: DataProvider instance.
     model: Model instance.
+    evaluator_classes: List of BaseEvaluators subclasses (not instances).
     save_dir: Path to directory to save summary events.
     restore_dir: Path to directory with checkpoints, defaults to save_dir.
     batch_size: Size of each eval/sample batch.
@@ -277,6 +179,7 @@ def evaluate(data_provider,
   return evaluate_or_sample(
       data_provider=data_provider,
       model=model,
+      evaluator_classes=evaluator_classes,
       mode='eval',
       save_dir=save_dir,
       restore_dir=restore_dir,
@@ -290,6 +193,7 @@ def evaluate(data_provider,
 @gin.configurable
 def sample(data_provider,
            model,
+           evaluator_classes,
            save_dir='/tmp/ddsp/training',
            restore_dir='',
            batch_size=16,
@@ -302,6 +206,7 @@ def sample(data_provider,
   Args:
     data_provider: DataProvider instance.
     model: Model instance.
+    evaluator_classes: List of BaseEvaluators subclasses (not instances).
     save_dir: Path to directory to save summary events.
     restore_dir: Path to directory with checkpoints, defaults to save_dir.
     batch_size: Size of each eval/sample batch.
@@ -314,6 +219,7 @@ def sample(data_provider,
   evaluate_or_sample(
       data_provider=data_provider,
       model=model,
+      evaluator_classes=evaluator_classes,
       mode='sample',
       save_dir=save_dir,
       restore_dir=restore_dir,
@@ -322,3 +228,5 @@ def sample(data_provider,
       ckpt_delay_secs=ckpt_delay_secs,
       run_once=run_once,
       run_until_step=run_until_step)
+
+

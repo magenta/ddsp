@@ -1,0 +1,8 @@
+evaluators = [
+    @BasicEvaluator,
+    @F0LdEvaluator,
+    @TWMEvaluator
+]
+
+evaluate.evaluator_classes =  %evaluators
+sample.evaluator_classes = %evaluators
