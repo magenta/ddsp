@@ -14,6 +14,7 @@
 
 # Lint as: python3
 """Library of functions to help loading data."""
+import os  # pylint: disable=unused-import
 
 from absl import logging
 import gin
