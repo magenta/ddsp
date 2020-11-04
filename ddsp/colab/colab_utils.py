@@ -22,14 +22,15 @@ import pickle
 import ddsp
 import ddsp.training
 from IPython import display
+import note_seq
 import numpy as np
-from pydub import AudioSegment
 from scipy import stats
 from scipy.io import wavfile
 import tensorflow.compat.v2 as tf
 
 from google.colab import files
 from google.colab import output
+
 download = files.download
 
 DEFAULT_SAMPLE_RATE = ddsp.spectral_ops.CREPE_SAMPLE_RATE
@@ -141,9 +142,8 @@ def record(seconds=3, sample_rate=DEFAULT_SAMPLE_RATE, normalize_db=0.1):
 def audio_bytes_to_np(wav_data,
                       sample_rate=DEFAULT_SAMPLE_RATE,
                       normalize_db=0.1):
-  """Convert audio file data (in bytes) into a numpy array.
+  """Convert audio file data (in bytes) into a numpy array using Pydub.
 
-  Saves to a tempfile and loads with librosa.
   Args:
     wav_data: A byte stream of audio data.
     sample_rate: Resample recorded audio to this sample rate.
@@ -153,25 +153,8 @@ def audio_bytes_to_np(wav_data,
   Returns:
     An array of the recorded audio at sample_rate.
   """
-  # Parse and normalize the audio.
-  aseg = AudioSegment.from_file(io.BytesIO(wav_data))
-  aseg.remove_dc_offset()
-  if normalize_db is not None:
-    aseg.normalize(headroom=normalize_db)
-  aseg = aseg.set_frame_rate(sample_rate)
-
-  # Convert to numpy array.
-  channel_asegs = aseg.split_to_mono()
-  samples = [s.get_array_of_samples() for s in channel_asegs]
-  fp_arr = np.array(samples).T.astype(np.float32)
-  fp_arr /= np.iinfo(samples[0].typecode).max
-
-  # Switch output shape to be similar to librosa.load's output shape.
-  fp_arr = fp_arr.T
-  if fp_arr.shape[0] == 1:
-    fp_arr = fp_arr[0]
-
-  return fp_arr
+  return note_seq.audio_io.wav_data_to_samples_pydub(
+      wav_data=wav_data, sample_rate=sample_rate, normalize_db=normalize_db)
 
 
 def upload(sample_rate=DEFAULT_SAMPLE_RATE, normalize_db=None):
