@@ -33,7 +33,7 @@ class AutoencoderTest(parameterized.TestCase, tf.test.TestCase):
     """Create some dummy input data for the chain."""
     super().setUp()
     # Create inputs.
-    self.n_batch = 4
+    self.n_batch = 1
     self.n_frames = 1001
     self.n_samples = 64000
     inputs = {

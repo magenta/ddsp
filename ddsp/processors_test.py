@@ -70,7 +70,7 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
         'add/signal',
         'reverb/signal',
         'reverb/controls/ir',
-        'processor_group/signal',
+        'out/signal',
     ]
 
   def _check_tensor_outputs(self, strings_to_check, outputs):

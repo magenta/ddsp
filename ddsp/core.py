@@ -18,7 +18,7 @@
 
 import collections
 import copy
-from typing import Any, Dict, Text, TypeVar
+from typing import Any, Dict, Sequence, Text, TypeVar
 
 import gin
 import numpy as np
@@ -42,17 +42,24 @@ def make_iterable(x):
   if x is None:
     return []
   elif isinstance(x, (np.ndarray, tf.Tensor)):
+    # Wrap in list so you don't iterate over the batch.
     return [x]
   else:
     return x if isinstance(x, collections.Iterable) else [x]
 
 
-def to_dict(x):
-  """Converts list to a dictionary with enumerated keys."""
+def to_dict(x, keys):
+  """Converts list to a dictionary with supplied keys."""
   if isinstance(x, dict):
+    # No-op for dict.
     return x
   else:
-    return {str(i): o for i, o in enumerate(make_iterable(x))}
+    # Wrap individual tensors in a list so we don't iterate over batch..
+    x = make_iterable(x)
+    if len(keys) != len(x):
+      raise ValueError(f'Keys: {keys} must be the same length as {x}')
+    # Use keys to create an output dictionary.
+    return dict(zip(keys, x))
 
 
 def copy_if_tf_function(x):
@@ -67,6 +74,33 @@ def copy_if_tf_function(x):
     A shallow copy of x if inside a tf.function.
   """
   return copy.copy(x) if not tf.executing_eagerly() else x
+
+
+def nested_keys(nested_dict: Dict[Text, Any],
+                delimiter: Text = '/',
+                prefix: Text = '') -> Sequence[Text]:
+  """Returns a flattend list of nested key strings of a nested dict.
+
+  Args:
+    nested_dict: Nested dictionary.
+    delimiter: String that splits the nested keys.
+    prefix: Top-level key used for recursion, usually leave blank.
+
+  Returns:
+    List of nested key strings.
+  """
+  keys = []
+
+  for k, v in nested_dict.items():
+    key = k if not prefix else f'{prefix}{delimiter}{k}'
+
+    if not isinstance(v, dict):
+      keys.append(key)
+    else:
+      dict_keys = nested_keys(v, prefix=key)
+      keys += dict_keys
+
+  return keys
 
 
 def nested_lookup(nested_key: Text,
@@ -87,7 +121,12 @@ def nested_lookup(nested_key: Text,
   # Return the nested value.
   value = nested_dict
   for key in keys:
-    value = value[key]
+    try:
+      value = value[key]
+    except KeyError:
+      raise KeyError(f'Key \'{key}\' as a part of \'{nested_key}\' not found '
+                     'during nested dictionary lookup, out of available keys: '
+                     f'{nested_keys(nested_dict)}')
   return value
 
 

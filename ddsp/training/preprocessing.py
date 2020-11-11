@@ -17,11 +17,13 @@
 
 import ddsp
 import gin
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 
 hz_to_midi = ddsp.core.hz_to_midi
 F0_RANGE = ddsp.spectral_ops.F0_RANGE
 LD_RANGE = ddsp.spectral_ops.LD_RANGE
+
+tfkl = tf.keras.layers
 
 
 # ---------------------- Preprocess Helpers ------------------------------------
@@ -34,19 +36,16 @@ def at_least_3d(x):
 
 
 # ---------------------- Preprocess objects ------------------------------------
-class Preprocessor(object):
+class Preprocessor(tfkl.Layer):
   """Base class for chaining a series of preprocessing functions."""
 
-  def __init__(self):
-    pass
-
-  def __call__(self, features, training=True):
+  def call(self, features, **kwargs):
     """Get outputs after preprocessing functions.
 
     Copy inputs if in graph mode to preserve pure function (no side-effects).
     Args:
       features: dict of feature key and tensors
-      training: boolean for controlling training-specfic preprocessing behavior
+      **kwargs: Keras specific kwargs.
 
     Returns:
       Dictionary of transformed features
@@ -58,12 +57,12 @@ class Preprocessor(object):
 class DefaultPreprocessor(Preprocessor):
   """Default class that resamples features and adds `f0_hz` key."""
 
-  def __init__(self, time_steps=1000):
-    super().__init__()
+  def __init__(self, time_steps=1000, **kwargs):
+    super().__init__(**kwargs)
     self.time_steps = time_steps
 
-  def __call__(self, features, training=True):
-    features = super().__call__(features, training)
+  def call(self, features, **kwargs):
+    features = super().call(features, **kwargs)
     return self._default_processing(features)
 
   def _default_processing(self, features):
