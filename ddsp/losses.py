@@ -31,6 +31,8 @@ import tensorflow_probability as tfp
 tfd = tfp.distributions
 tfkl = tf.keras.layers
 
+is_loss = lambda v: hasattr(v, 'get_losses_dict')
+
 
 # ---------------------- Base Class --------------------------------------------
 class Loss(tfkl.Layer):
@@ -40,6 +42,55 @@ class Loss(tfkl.Layer):
     """Returns a dictionary of losses for the model."""
     loss = self(*args, **kwargs)
     return {self.name: loss}
+
+
+# ---------------------- Utility Classes ---------------------------------------
+class LossGroup:
+  """Defines a collection of losses."""
+
+  def __init__(self, losses_list):
+    self.losses_dict = self.format_losses(losses_list)
+
+  @staticmethod
+  def is_loss(loss):
+    return isinstance(loss, Loss)
+
+  def format_losses(self, losses):
+    """Preps the input loss list."""
+    losses_dict = {}
+
+    losses = list(losses)
+    for node in losses:
+      node = list(node)
+      loss = node[0]
+
+      if self.is_loss(loss):
+        input_keys = node[1]  # inputs to loss
+        losses_dict[loss.name] = {
+            'loss_obj': loss,
+            'input_keys': input_keys,
+        }
+
+    return losses_dict
+
+  def get_output_losses(self, model_output, targets):
+    """Calls all of the losses in the group and returns a dict w/ all values."""
+    loss_dict = {}
+    for meta_dict in self.losses_dict.values():
+      args = []
+
+      for arg in meta_dict['input_keys']:
+        if arg in model_output and arg in targets:
+          raise ValueError(f'Ambiguous arg ({arg}) is in both model output and'
+                           'targets dicts!')
+        elif arg in model_output:
+          args.append(model_output[arg])
+        elif arg in targets:
+          args.append(targets[arg])
+
+      loss_obj = meta_dict['loss_obj']
+      loss_dict.update(loss_obj.get_losses_dict(*args))
+    return loss_dict
 
 
 # ---------------------- Losses ------------------------------------------------

@@ -41,7 +41,6 @@ filter_by_value = lambda d, cond: dict(filter(lambda e: cond(e[1]), d.items()))
 is_module = lambda v: isinstance(v, tf.Module)
 
 # Duck typing.
-is_loss = lambda v: hasattr(v, 'get_losses_dict')
 is_processor = lambda v: hasattr(v, 'get_signal') and hasattr(v, 'get_controls')
 
 

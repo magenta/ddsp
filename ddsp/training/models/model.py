@@ -19,6 +19,7 @@ import time
 
 from absl import logging
 import ddsp
+from ddsp.losses import LossGroup
 from ddsp.training import train_util
 import tensorflow as tf
 
@@ -26,8 +27,9 @@ import tensorflow as tf
 class Model(tf.keras.Model):
   """Wrap the model function for dependency injection with gin."""
 
-  def __init__(self, **kwargs):
+  def __init__(self, loss_group=None, **kwargs):
     super().__init__(**kwargs)
+    self._loss_group = None if loss_group is None else LossGroup(loss_group)
     self._losses_dict = {}
 
   def __call__(self, *args, return_losses=False, **kwargs):
@@ -47,6 +49,11 @@ class Model(tf.keras.Model):
     """
     self._losses_dict = {}
     outputs = super().__call__(*args, **kwargs)
+
+    if self._loss_group is not None:
+      self._losses_dict.update(self._loss_group.get_output_losses(outputs,
+                                                                  kwargs))
+
     if not return_losses:
       return outputs
     else:
