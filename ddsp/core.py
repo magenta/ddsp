@@ -667,7 +667,10 @@ def harmonic_to_sinusoidal(harm_amp, harm_dist, f0_hz, sample_rate=16000):
   n_harmonics = int(harm_dist.shape[-1])
   freqs = get_harmonic_frequencies(f0_hz, n_harmonics)
   # Double check to remove anything above Nyquist.
-  harm_dist = remove_above_nyquist(f0_hz, harm_dist, sample_rate)
+  harm_dist = remove_above_nyquist(freqs, harm_dist, sample_rate)
+  # Renormalize after removing above nyquist.
+  harm_dist_sum = tf.reduce_sum(harm_dist, axis=-1, keepdims=True)
+  harm_dist = safe_divide(harm_dist, harm_dist_sum)
   amps = harm_amp * harm_dist
   return amps, freqs
 
