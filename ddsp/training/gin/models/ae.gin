@@ -69,4 +69,4 @@ FilteredNoise.window_size = 0
 FilteredNoise.scale_fn = @core.exp_sigmoid
 
 # Add
-Add.name = 'add'
+processors.Add.name = 'add'

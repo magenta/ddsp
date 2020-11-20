@@ -21,7 +21,7 @@ import gin
 import tensorflow as tf
 
 # Make dense layers configurable for this test.
-gin.external_configurable(tf.keras.layers.Dense)
+gin.external_configurable(tf.keras.layers.Dense, 'tf.keras.layers.Dense')
 
 # Make dag_layers configurable for this test.
 gin.enter_interactive_mode()

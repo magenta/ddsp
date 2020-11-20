@@ -45,7 +45,6 @@ class AutoencoderTest(parameterized.TestCase, tf.test.TestCase):
 
   @parameterized.named_parameters(
       ('nsynth_ae', 'papers/iclr2020/nsynth_ae.gin'),
-      ('nsynth_ae_abs', 'papers/iclr2020/nsynth_ae_abs.gin'),
       ('solo_instrument', 'papers/iclr2020/solo_instrument.gin'),
   )
   def test_build_model(self, gin_file):

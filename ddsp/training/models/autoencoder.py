@@ -42,7 +42,10 @@ class Autoencoder(Model):
       conditioning = self.preprocessor(features, training=training)
     else:
       conditioning = features
-    return conditioning if self.encoder is None else self.encoder(conditioning)
+    if self.encoder is not None:
+      z_dict = self.encoder(conditioning)
+      conditioning.update(z_dict)
+    return conditioning
 
   def decode(self, conditioning, training=True):
     """Get generated audio by decoding than processing."""

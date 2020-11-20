@@ -31,6 +31,7 @@ f0_spectral/compute_logmel.pad_end = True
 
 # Harmonic Encoder
 TranscribingAutoencoder.harmonic_encoder = @encoders.SinusoidalToHarmonicEncoder()
+SinusoidalToHarmonicEncoder.net = @nn.RnnSandwich()
 
 
 # Audio Losses

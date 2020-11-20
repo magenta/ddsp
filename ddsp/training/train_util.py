@@ -15,6 +15,7 @@
 # Lint as: python3
 """Library of training functions."""
 
+import inspect
 import json
 import os
 import time
@@ -98,6 +99,7 @@ def get_latest_chekpoint(checkpoint_path):
     return tf.train.latest_checkpoint(checkpoint_path)
 
 
+# ---------------------------------- Gin ---------------------------------------
 def get_latest_operative_config(restore_dir):
   """Finds the most recently saved operative_config in a directory."""
   file_paths = tf.io.gfile.glob(os.path.join(restore_dir, 'operative_config*'))
@@ -142,6 +144,18 @@ def write_gin_config(summary_writer, save_dir, step):
     text_tensor = tf.convert_to_tensor(md_config_str)
     tf.summary.text(name='gin/' + base_name, data=text_tensor, step=step)
     summary_writer.flush()
+
+
+def gin_register_keras_layers():
+  """Registers all keras layers and Sequential to be referenceable in gin."""
+  # Register sequential model.
+  gin.external_configurable(tf.keras.Sequential, 'tf.keras.Sequential')
+
+  # Register all the layers.
+  for k, v in inspect.getmembers(tf.keras.layers):
+    # Duck typing for tf.keras.layers.Layer since keras uses metaclasses.
+    if hasattr(v, 'variables'):
+      gin.external_configurable(v, f'tf.keras.layers.{k}')
 
 
 # ------------------------ Training Loop ---------------------------------------

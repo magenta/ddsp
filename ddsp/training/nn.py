@@ -15,11 +15,106 @@
 # Lint as: python3
 """Library of neural network functions."""
 
+import inspect
+
+from ddsp import core
 import gin
 import tensorflow.compat.v2 as tf
 
 tfk = tf.keras
 tfkl = tfk.layers
+
+
+class DictLayer(tfkl.Layer):
+  """Wrap a Keras Layer to take dictionary inputs and outputs."""
+
+  def __init__(self, input_keys=None, output_keys=None, **kwargs):
+    """Constructor, define input and output keys.
+
+    Args:
+      input_keys: A list of keys to read out of a dictionary passed to call().
+        If no input_keys are provided to the constructor, they are inferred from
+        the argument names in call(). Input_keys are ignored if call() recieves
+        tensors as arguments instead of a dict.
+      output_keys: A list of keys to name the outputs returned from call(), and
+        construct an outputs dictionary. If call() returns a dictionary, these
+        keys are ignored. If no output_keys are provided to the constructor,
+        they are inferred from return annotation of call() (a list of strings).
+      **kwargs: Other keras layer kwargs such as name.
+    """
+    super().__init__(**kwargs)
+    self.input_keys = input_keys or self.get_argument_names('call')
+    self.output_keys = output_keys or self.get_return_annotations('call')
+
+  def __call__(self, *inputs, **kwargs):
+    """Wrap the layer's __call__() with dictionary inputs and outputs.
+
+    IMPORTANT: If no input_keys are provided to the constructor, they are
+    inferred from the argument names in call(). If no output_keys are provided
+    to the constructor, they are inferred from return annotation of call()
+    (a list of strings).
+
+    Example:
+    ```
+    def call(self, f0_hz, loudness) -> ['amps', 'frequencies']:
+      ...
+      return amps, frequencies
+    ```
+    Will infer `self.input_keys = ['f0_hz', 'loudness']` and
+    `self.output_keys = ['amps', 'frequencies']`. If input_keys, or output_keys
+    are provided to the constructor they will override these inferred values.
+
+    Example Usage:
+    The the example above works with both tensor inputs `layer(f0_hz, loudness)`
+    or a dictionary of tensors `layer({'f0_hz':..., 'loudness':...})`, and in
+    both cases will return a dictionary of tensors
+    `{'amps':..., 'frequencies':...}`.
+
+    Args:
+      *inputs: Arguments passed on to call(). If any arguments are dicts, they
+        will be merged and self.input_keys will be read out of them and passed
+        to call() while other args will be ignored.
+      **kwargs: Keyword arguments passed on to call().
+
+    Returns:
+      outputs: A dictionary of layer outputs from call(). If the layer call()
+        returns a dictionary it will be returned directly, otherwise the output
+        tensors will be wrapped in a dictionary {output_key: output_tensor}.
+    """
+    # Merge all dictionaries provided in inputs.
+    input_dict = {}
+    for v in inputs:
+      if isinstance(v, dict):
+        input_dict.update(v)
+
+    # If any dicts provided, lookup input tensors from those dicts.
+    # Otherwise, just use inputs list as input tensors.
+    if input_dict:
+      inputs = [core.nested_lookup(key, input_dict) for key in self.input_keys]
+
+    # Run input tensors through the model.
+    outputs = super().__call__(*inputs, **kwargs)
+
+    # Return dict if call() returns it.
+    if isinstance(outputs, dict):
+      return outputs
+    # Otherwise make a dict from output_keys.
+    else:
+      outputs = core.make_iterable(outputs)
+      if len(self.output_keys) != len(outputs):
+        raise ValueError(f'Output keys ({self.output_keys}) must have the same'
+                         f'length as outputs ({outputs})')
+      return dict(zip(self.output_keys, outputs))
+
+  def get_argument_names(self, method):
+    """Get list of strings for names of arguments to method."""
+    spec = inspect.getfullargspec(getattr(self, method))
+    return spec.args[1:]
+
+  def get_return_annotations(self, method):
+    """Get list of strings of return annotations of method."""
+    spec = inspect.getfullargspec(getattr(self, method))
+    return core.make_iterable(spec.annotations['return'])
 
 
 # ------------------------ Shapes ----------------------------------------------
@@ -219,5 +314,23 @@ class Rnn(tfkl.Layer):
 
   def call(self, x):
     return self.rnn(x)
+
+
+@gin.register
+class RnnSandwich(tf.keras.Sequential):
+  """RNN Sandwiched by two FC Stacks."""
+
+  def __init__(self,
+               fc_stack_ch=256,
+               fc_stack_layers=2,
+               rnn_ch=512,
+               rnn_type='gru',
+               **kwargs):
+    layers = [
+        FcStack(fc_stack_ch, fc_stack_layers),
+        Rnn(rnn_ch, rnn_type),
+        FcStack(fc_stack_ch, fc_stack_layers),
+    ]
+    super().__init__(layers, **kwargs)
 
 

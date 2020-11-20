@@ -32,8 +32,13 @@ LD_RANGE = 120.0  # dB
 
 def stft(audio, frame_size=2048, overlap=0.75, pad_end=True):
   """Differentiable stft in tensorflow, computed in batch."""
-  audio = tf_float32(audio)
   assert frame_size * overlap % 2.0 == 0.0
+
+  # Remove channel dim if present.
+  audio = tf_float32(audio)
+  if len(audio.shape) == 3:
+    audio = tf.squeeze(audio, axis=-1)
+
   s = tf.signal.stft(
       signals=audio,
       frame_length=int(frame_size),

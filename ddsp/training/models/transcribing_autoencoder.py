@@ -302,7 +302,9 @@ class TranscribingAutoencoder(Model):
       noise_magnitudes = tf.stop_gradient(noise_magnitudes)
 
     if self.harmonic_encoder is not None:
-      harm_amp, harm_dist, f0_hz = self.harmonic_encoder(sin_freqs, sin_amps)
+      h_out = self.harmonic_encoder(sin_freqs, sin_amps)
+      harm_amp, harm_dist, f0_hz = [h_out[k]
+                                    for k in ['harm_amp', 'harm_dist', 'f0_hz']]
 
       # Decode harmonics back to sinusoids.
       n_harmonics = int(harm_dist.shape[-1])

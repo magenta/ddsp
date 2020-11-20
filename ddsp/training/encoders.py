@@ -19,40 +19,32 @@ import ddsp
 from ddsp import spectral_ops
 from ddsp.training import nn
 import gin
-import numpy as np
 import tensorflow.compat.v2 as tf
 
 tfkl = tf.keras.layers
 
 
 # ------------------ Encoders --------------------------------------------------
-class Encoder(tfkl.Layer):
-  """Base class to implement any encoder.
+class ZEncoder(nn.DictLayer):
+  """Base class to implement an encoder that creates a latent z vector.
 
   Users should override compute_z() to define the actual encoder structure.
-  Optionally, set infer_f0 to True and override compute_f0.
-  Hyper-parameters will be passed through the constructor.
+  Input_keys from compute_z() instead of call(), output_keys are always ['z'].
   """
 
-  def __init__(self, f0_encoder=None, name='encoder'):
-    super().__init__(name=name)
-    self.f0_encoder = f0_encoder
+  def __init__(self, input_keys=None, **kwargs):
+    """Constructor."""
+    input_keys = input_keys or self.get_argument_names('compute_z')
+    # TODO(jesseengel): remove dependence on arbitrary key.
+    input_keys.append('f0_scaled')  # Input to get n_timesteps dynamically.
+    super().__init__(input_keys, output_keys=['z'], **kwargs)
 
-  def call(self, conditioning):
-    """Updates conditioning with z and (optionally) f0."""
-    if self.f0_encoder:
-      # Use frequency conditioning created by the f0_encoder, not the dataset.
-      # Overwrite `f0_scaled` and `f0_hz`. 'f0_scaled' is a value in [0, 1]
-      # corresponding to midi values [0..127]
-      conditioning['f0_scaled'] = self.f0_encoder(conditioning)
-      conditioning['f0_hz'] = ddsp.core.midi_to_hz(
-          conditioning['f0_scaled'] * 127.0)
-
-    z = self.compute_z(conditioning)
-    time_steps = int(conditioning['f0_scaled'].shape[1])
-    conditioning['z'] = self.expand_z(z, time_steps)
-
-    return conditioning
+  def call(self, *args, **unused_kwargs):
+    """Takes in input tensors and returns a latent tensor z."""
+    time_steps = int(args[-1].shape[1])
+    inputs = args[:-1]  # Last input just used for time_steps.
+    z = self.compute_z(*inputs)
+    return self.expand_z(z, time_steps)
 
   def expand_z(self, z, time_steps):
     """Make sure z has same temporal resolution as other conditioning."""
@@ -65,13 +57,13 @@ class Encoder(tfkl.Layer):
       z = ddsp.core.resample(z, time_steps)
     return z
 
-  def compute_z(self, conditioning):
-    """Takes in conditioning dictionary, returns a latent tensor z."""
+  def compute_z(self, *inputs):
+    """Takes in input tensors and returns a latent tensor z."""
     raise NotImplementedError
 
 
 @gin.register
-class MfccTimeDistributedRnnEncoder(Encoder):
+class MfccTimeDistributedRnnEncoder(ZEncoder):
   """Use MFCCs as latent variables, distribute across timesteps."""
 
   def __init__(self,
@@ -79,9 +71,8 @@ class MfccTimeDistributedRnnEncoder(Encoder):
                rnn_type='gru',
                z_dims=32,
                z_time_steps=250,
-               f0_encoder=None,
-               name='mfcc_time_distrbuted_rnn_encoder'):
-    super().__init__(f0_encoder=f0_encoder, name=name)
+               **kwargs):
+    super().__init__(**kwargs)
     if z_time_steps not in [63, 125, 250, 500, 1000]:
       raise ValueError(
           '`z_time_steps` currently limited to 63,125,250,500 and 1000')
@@ -115,9 +106,9 @@ class MfccTimeDistributedRnnEncoder(Encoder):
     self.rnn = nn.Rnn(rnn_channels, rnn_type)
     self.dense_out = tfkl.Dense(z_dims)
 
-  def compute_z(self, conditioning):
+  def compute_z(self, audio):
     mfccs = spectral_ops.compute_mfcc(
-        conditioning['audio'],
+        audio,
         lo_hz=20.0,
         hi_hz=8000.0,
         fft_size=self.fft_size,
@@ -135,74 +126,9 @@ class MfccTimeDistributedRnnEncoder(Encoder):
     return z
 
 
-class F0Encoder(tfkl.Layer):
-  """Mixin for F0 encoders."""
-
-  def call(self, conditioning):
-    return self.compute_f0(conditioning)
-
-  def compute_f0(self, conditioning):
-    """Takes in conditioning dictionary, returns fundamental frequency."""
-    raise NotImplementedError
-
-  def _compute_unit_midi(self, probs):
-    """Computes the midi from a distribution over the unit interval."""
-    # probs: [B, T, D]
-    depth = int(probs.shape[-1])
-
-    unit_midi_bins = tf.constant(
-        1.0 * np.arange(depth).reshape((1, 1, -1)) / depth,
-        dtype=tf.float32)  # [1, 1, D]
-
-    f0_unit_midi = tf.reduce_sum(
-        unit_midi_bins * probs, axis=-1, keepdims=True)  # [B, T, 1]
-    return f0_unit_midi
-
-
-@gin.register
-class ResnetF0Encoder(F0Encoder):
-  """Embeddings from resnet on spectrograms."""
-
-  def __init__(self,
-               size='large',
-               f0_bins=128,
-               spectral_fn=lambda x: spectral_ops.compute_mag(x, size=1024),
-               name='resnet_f0_encoder'):
-    super().__init__(name=name)
-    self.f0_bins = f0_bins
-    self.spectral_fn = spectral_fn
-
-    # Layers.
-    self.resnet = nn.ResNet(size=size)
-    self.dense_out = tfkl.Dense(f0_bins)
-
-  def compute_f0(self, conditioning):
-    """Compute fundamental frequency."""
-    mag = self.spectral_fn(conditioning['audio'])
-    mag = mag[:, :, :, tf.newaxis]
-    x = self.resnet(mag)
-
-    # Collapse the frequency dimension
-    x_shape = x.shape.as_list()
-    y = tf.reshape(x, [x_shape[0], x_shape[1], -1])
-    # Project to f0_bins
-    y = self.dense_out(y)
-
-    # treat the NN output as probability over midi values.
-    # probs = tf.nn.softmax(y)  # softmax leads to NaNs
-    probs = tf.nn.softplus(y) + 1e-3
-    probs = probs / tf.reduce_sum(probs, axis=-1, keepdims=True)
-    f0 = self._compute_unit_midi(probs)
-
-    # Make same time resolution as original CREPE f0.
-    n_timesteps = int(conditioning['f0_scaled'].shape[1])
-    f0 = ddsp.core.resample(f0, n_timesteps)
-    return f0
-
-
 # Transcribing Autoencoder Encoders --------------------------------------------
 @gin.register
-class ResnetSinusoidalEncoder(tfkl.Layer):
+class ResnetSinusoidalEncoder(nn.DictLayer):
   """This encoder maps directly from audio to synthesizer parameters.
 
   EXPERIMENTAL
@@ -216,8 +142,8 @@ class ResnetSinusoidalEncoder(tfkl.Layer):
                               ('noise_magnitudes', 60)),
                spectral_fn=spectral_ops.compute_logmel,
                size='tiny',
-               name='resnet_sinusoidal_encoder'):
-    super().__init__(name=name)
+               **kwargs):
+    super().__init__(output_keys=[key for key, dim in output_splits], **kwargs)
     self.output_splits = output_splits
     self.spectral_fn = spectral_fn
 
@@ -225,12 +151,12 @@ class ResnetSinusoidalEncoder(tfkl.Layer):
     self.resnet = nn.ResNet(size=size)
     self.dense_outs = [tfkl.Dense(v[1]) for v in output_splits]
 
-  def call(self, features):
+  def call(self, audio):
     """Updates conditioning with z and (optionally) f0."""
     outputs = {}
 
     # [batch, 64000, 1]
-    mag = self.spectral_fn(features['audio'])
+    mag = self.spectral_fn(audio)
 
     # [batch, 125, 229]
     mag = mag[:, :, :, tf.newaxis]
@@ -241,50 +167,44 @@ class ResnetSinusoidalEncoder(tfkl.Layer):
     x = tf.reshape(x, [int(x.shape[0]), int(x.shape[1]), -1])
 
     # [batch, 125, 8192]
-    for layer, (key, _) in zip(self.dense_outs, self.output_splits):
+    for layer, key in zip(self.dense_outs, self.output_keys):
       outputs[key] = layer(x)
 
     return outputs
 
 
 @gin.register
-class SinusoidalToHarmonicEncoder(tfkl.Layer):
+class SinusoidalToHarmonicEncoder(nn.DictLayer):
   """Predicts harmonic controls from sinusoidal controls.
 
   EXPERIMENTAL
   """
 
   def __init__(self,
-               fc_stack_layers=2,
-               fc_stack_ch=256,
-               rnn_ch=512,
-               rnn_type='gru',
+               net=None,
                n_harmonics=100,
-               amp_scale_fn=ddsp.core.exp_sigmoid,
                f0_depth=64,
-               hz_min=20.0,
-               hz_max=1200.0,
+               amp_scale_fn=ddsp.core.exp_sigmoid,
+               # pylint: disable=g-long-lambda
+               freq_scale_fn=lambda x: ddsp.core.frequencies_softmax(
+                   x, depth=64, hz_min=20.0, hz_max=1200.0),
+               # pylint: enable=g-long-lambda
                sample_rate=16000,
-               name='sinusoidal_to_harmonic_encoder'):
+               **kwargs):
     """Constructor."""
-    super().__init__(name=name)
+    super().__init__(**kwargs)
     self.n_harmonics = n_harmonics
     self.amp_scale_fn = amp_scale_fn
-    self.f0_depth = f0_depth
-    self.hz_min = hz_min
-    self.hz_max = hz_max
+    self.freq_scale_fn = freq_scale_fn
     self.sample_rate = sample_rate
 
     # Layers.
-    self.pre_rnn = nn.FcStack(fc_stack_ch, fc_stack_layers)
-    self.rnn = nn.Rnn(rnn_ch, rnn_type)
-    self.post_rnn = nn.FcStack(fc_stack_ch, fc_stack_layers)
-
+    self.net = net
     self.amp_out = tfkl.Dense(1)
     self.hd_out = tfkl.Dense(n_harmonics)
     self.f0_out = tfkl.Dense(f0_depth)
 
-  def call(self, sin_freqs, sin_amps):
+  def call(self, sin_freqs, sin_amps) -> ['harm_amp', 'harm_dist', 'f0_hz']:
     """Converts (sin_freqs, sin_amps) to (f0, amp, hd).
 
     Args:
@@ -307,10 +227,10 @@ class SinusoidalToHarmonicEncoder(tfkl.Layer):
     x = tf.concat([sin_freqs_unit, sin_amps], axis=-1)
 
     # Run it through the network.
-    x = self.pre_rnn(x)
-    x = self.rnn(x)
-    x = self.post_rnn(x)
+    x = self.net(x)
+    x = x['out'] if isinstance(x, dict) else x
 
+    # Output layers.
     harm_amp = self.amp_out(x)
     harm_dist = self.hd_out(x)
     f0 = self.f0_out(x)
@@ -318,8 +238,7 @@ class SinusoidalToHarmonicEncoder(tfkl.Layer):
     # Output scaling.
     harm_amp = self.amp_scale_fn(harm_amp)
     harm_dist = self.amp_scale_fn(harm_dist)
-    f0_hz = ddsp.core.frequencies_softmax(
-        f0, depth=self.f0_depth, hz_min=self.hz_min, hz_max=self.hz_max)
+    f0_hz = self.freq_scale_fn(f0)
 
     # Filter harmonic distribution for nyquist.
     harm_freqs = ddsp.core.get_harmonic_frequencies(f0_hz, self.n_harmonics)
