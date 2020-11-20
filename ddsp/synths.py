@@ -21,6 +21,38 @@ import gin
 import tensorflow.compat.v2 as tf
 
 
+@gin.register
+class TensorToAudio(processors.Processor):
+  """Identity "synth" returning input samples with channel dimension removed."""
+
+  def __init__(self, name='tensor_to_audio'):
+    super().__init__(name=name)
+
+  def get_controls(self, samples):
+    """Convert network output tensors into a dictionary of synthesizer controls.
+
+    Args:
+      samples: 3-D Tensor of "controls" (really just samples), of shape
+        [batch, time, 1].
+
+    Returns:
+      Dictionary of tensors of synthesizer controls.
+    """
+    return {'samples': samples}
+
+  def get_signal(self, samples):
+    """"Synthesize" audio by removing channel dimension from input samples.
+
+    Args:
+      samples: 3-D Tensor of "controls" (really just samples), of shape
+        [batch, time, 1].
+
+    Returns:
+      A tensor of audio with shape [batch, time].
+    """
+    return tf.squeeze(samples, 2)
+
+
 # TODO(jesseengel): Rename Additive to Harmonic.
 @gin.register
 class Additive(processors.Processor):
