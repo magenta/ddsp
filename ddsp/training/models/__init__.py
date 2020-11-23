@@ -16,14 +16,14 @@
 """Module with all the global configurable models for training."""
 
 from ddsp.training.models.autoencoder import Autoencoder
+from ddsp.training.models.inverse_synthesis import InverseSynthesis
 from ddsp.training.models.model import Model
-from ddsp.training.models.transcribing_autoencoder import TranscribingAutoencoder
 import gin
 
 _configurable = lambda cls: gin.configurable(cls, module=__name__)
 
 Autoencoder = _configurable(Autoencoder)
-TranscribingAutoencoder = _configurable(TranscribingAutoencoder)
+InverseSynthesis = _configurable(InverseSynthesis)
 
 
 @gin.configurable

@@ -22,7 +22,7 @@ from ddsp.training.models.model import Model
 import tensorflow as tf
 
 
-class TranscribingAutoencoder(Model):
+class InverseSynthesis(Model):
   """Inverse synthesis model (ddsp-inv).
 
   EXPERIMENTAL
@@ -52,9 +52,9 @@ class TranscribingAutoencoder(Model):
                sample_rate=16000,
                # Training.
                stop_gradient=True,
-               name='multi_level_transcribing_autoencoder'):
+               **kwargs):
     """Constructor."""
-    super().__init__(name=name)
+    super().__init__(**kwargs)
     # Network objects.
     self.sinusoidal_encoder = sinusoidal_encoder
     self.harmonic_encoder = harmonic_encoder
@@ -329,7 +329,3 @@ class TranscribingAutoencoder(Model):
       })
 
     return outputs
-
-
-
-

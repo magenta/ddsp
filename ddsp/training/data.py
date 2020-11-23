@@ -316,7 +316,7 @@ class ZippedProvider(DataProvider):
 
 
 # ------------------------------------------------------------------------------
-# Synthetic Data for TranscribingAutoencoder
+# Synthetic Data for InverseSynthesis
 # ------------------------------------------------------------------------------
 @gin.register
 class SyntheticNotes(TFRecordProvider):
