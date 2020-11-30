@@ -41,7 +41,7 @@ class Autoencoder(Model):
     if self.preprocessor is not None:
       conditioning = self.preprocessor(features, training=training)
     else:
-      conditioning = features
+      conditioning = ddsp.core.copy_if_tf_function(features)
     if self.encoder is not None:
       z_dict = self.encoder(conditioning)
       conditioning.update(z_dict)
