@@ -47,20 +47,20 @@ SpectralLoss.logmag_weight = 1.0
 Autoencoder.processor_group = @processors.ProcessorGroup()
 
 ProcessorGroup.dag = [
-  (@synths.Additive(),
+  (@synths.Harmonic(),
     ['amps', 'harmonic_distribution', 'f0_hz']),
   (@synths.FilteredNoise(),
     ['noise_magnitudes']),
   (@processors.Add(),
-    ['filtered_noise/signal', 'additive/signal']),
+    ['filtered_noise/signal', 'harmonic/signal']),
 ]
 
-# Additive Synthesizer
-Additive.name = 'additive'
-Additive.n_samples = 64000
-Additive.sample_rate = 16000
-Additive.normalize_below_nyquist = True
-Additive.scale_fn = @core.exp_sigmoid
+# Harmonic Synthesizer
+Harmonic.name = 'harmonic'
+Harmonic.n_samples = 64000
+Harmonic.sample_rate = 16000
+Harmonic.normalize_below_nyquist = True
+Harmonic.scale_fn = @core.exp_sigmoid
 
 # Filtered Noise Synthesizer
 FilteredNoise.name = 'filtered_noise'

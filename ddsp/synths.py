@@ -53,9 +53,8 @@ class TensorToAudio(processors.Processor):
     return tf.squeeze(samples, 2)
 
 
-# TODO(jesseengel): Rename Additive to Harmonic.
 @gin.register
-class Additive(processors.Processor):
+class Harmonic(processors.Processor):
   """Synthesize audio with a bank of harmonic sinusoidal oscillators."""
 
   def __init__(self,
@@ -63,7 +62,7 @@ class Additive(processors.Processor):
                sample_rate=16000,
                scale_fn=core.exp_sigmoid,
                normalize_below_nyquist=True,
-               name='additive'):
+               name='harmonic'):
     super().__init__(name=name)
     self.n_samples = n_samples
     self.sample_rate = sample_rate
@@ -110,7 +109,7 @@ class Additive(processors.Processor):
             'f0_hz': f0_hz}
 
   def get_signal(self, amplitudes, harmonic_distribution, f0_hz):
-    """Synthesize audio with additive synthesizer from controls.
+    """Synthesize audio with harmonic synthesizer from controls.
 
     Args:
       amplitudes: Amplitude tensor of shape [batch, n_frames, 1]. Expects
@@ -223,7 +222,7 @@ class Wavetable(processors.Processor):
              'f0_hz': f0_hz}
 
   def get_signal(self, amplitudes, wavetables, f0_hz):
-    """Synthesize audio with additive synthesizer from controls.
+    """Synthesize audio with wavetable synthesizer from controls.
 
     Args:
       amplitudes: Amplitude tensor of shape [batch, n_frames, 1]. Expects

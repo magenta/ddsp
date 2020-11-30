@@ -55,19 +55,19 @@ class StreamingF0Ld(models.Autoencoder):
       # Set streaming specific params.
       # Remove reverb processor.
       pg_string = """ProcessorGroup.dag = [
-      (@synths.Additive(),
+      (@synths.Harmonic(),
         ['amps', 'harmonic_distribution', 'f0_hz']),
       (@synths.FilteredNoise(),
         ['noise_magnitudes']),
       (@processors.Add(),
-        ['filtered_noise/signal', 'additive/signal']),
+        ['filtered_noise/signal', 'harmonic/signal']),
       ]"""
       time_steps = gin.query_parameter('DefaultPreprocessor.time_steps')
-      n_samples = gin.query_parameter('Additive.n_samples')
+      n_samples = gin.query_parameter('Harmonic.n_samples')
       samples_per_frame = int(n_samples / time_steps)
       gin.parse_config([
           'DefaultPreprocessor.time_steps=1',
-          f'Additive.n_samples={samples_per_frame}',
+          f'Harmonic.n_samples={samples_per_frame}',
           f'FilteredNoise.n_samples={samples_per_frame}',
           pg_string,
       ])
@@ -84,8 +84,8 @@ class StreamingF0Ld(models.Autoencoder):
   def call(self, input_dict):
     """Convert f0 and loudness to synthesizer parameters."""
     controls = super().__call__(input_dict, training=False)
-    amps = controls['additive']['controls']['amplitudes']
-    hd = controls['additive']['controls']['harmonic_distribution']
+    amps = controls['harmonic']['controls']['amplitudes']
+    hd = controls['harmonic']['controls']['harmonic_distribution']
     return amps, hd
 
 

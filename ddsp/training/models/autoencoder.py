@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Model that outputs coefficeints of an additive synthesizer."""
+"""Model that encodes audio features and decodes with a ddsp processor group."""
 
 import ddsp
 from ddsp.training.models.model import Model

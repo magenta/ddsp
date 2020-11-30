@@ -34,10 +34,10 @@ import ddsp
 outputs = network(inputs)
 
 # Initialize signal processors.
-additive = ddsp.synths.Additive()
+harmonic = ddsp.synths.Harmonic()
 
-# Generates audio from additive synthesizer.
-audio = additive(outputs['amplitudes'],
+# Generates audio from harmonic synthesizer.
+audio = harmonic(outputs['amplitudes'],
                  outputs['harmonic_distribution'],
                  outputs['f0_hz'])
 ```
@@ -117,7 +117,7 @@ Where:
 * `controls` is a dictionary of tensors scaled and constrained specifically for the processor.
 * `signal` is an output tensor (usually audio or control signal for another processor).
 
-For example, here are of some inputs to an `Additive()` synthesizer:
+For example, here are of some inputs to an `Harmonic()` synthesizer:
 
 <div align="center">
 <img src="https://storage.googleapis.com/ddsp/github_images/example_inputs.png" width="800px" alt="logo"></img>
@@ -147,17 +147,17 @@ import ddsp
 outputs = network(audio_input)
 
 # Initialize signal processors.
-additive = ddsp.synths.Additive()
+harmonic = ddsp.synths.Harmonic()
 filtered_noise = ddsp.synths.FilteredNoise()
 reverb = ddsp.effects.TrainableReverb()
 spectral_loss = ddsp.losses.SpectralLoss()
 
 # Generate audio.
-audio_additive = additive(outputs['amplitudes'],
+audio_harmonic = harmonic(outputs['amplitudes'],
                           outputs['harmonic_distribution'],
                           outputs['f0_hz'])
 audio_noise = filtered_noise(outputs['magnitudes'])
-audio = audio_additive + audio_noise
+audio = audio_harmonic + audio_noise
 audio = reverb(audio)
 
 # Multi-scale spectrogram reconstruction loss.
@@ -181,7 +181,7 @@ import gin
 outputs = network(audio_input)
 
 # Initialize signal processors.
-additive = ddsp.synths.Additive()
+harmonic = ddsp.synths.Harmonic()
 filtered_noise = ddsp.synths.FilteredNoise()
 add = ddsp.processors.Add()
 reverb = ddsp.effects.TrainableReverb()
@@ -189,12 +189,12 @@ spectral_loss = ddsp.losses.SpectralLoss()
 
 # Processor group DAG
 dag = [
-  (additive,
+  (harmonic,
    ['amps', 'harmonic_distribution', 'f0_hz']),
   (filtered_noise,
    ['magnitudes']),
   (add,
-   ['additive/signal', 'filtered_noise/signal']),
+   ['harmonic/signal', 'filtered_noise/signal']),
   (reverb,
    ['add/signal'])
 ]
@@ -222,12 +222,12 @@ gin_config = """
 import ddsp
 
 processors.ProcessorGroup.dag = [
-  (@ddsp.synths.Additive(),
+  (@ddsp.synths.Harmonic(),
    ['amplitudes', 'harmonic_distribution', 'f0_hz']),
   (@ddsp.synths.FilteredNoise(),
    ['magnitudes']),
   (@ddsp.processors.Add(),
-   ['filtered_noise/signal', 'additive/signal']),
+   ['filtered_noise/signal', 'harmonic/signal']),
   (@ddsp.effects.TrainableReverb(),
    ['add/signal'])
 ]

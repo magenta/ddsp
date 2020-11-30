@@ -409,7 +409,7 @@ def create_wave_np(batch_size, frequencies, amplitudes, seconds, n_samples):
   return wave_np
 
 
-class AdditiveSynthTest(parameterized.TestCase, tf.test.TestCase):
+class HarmonicSynthTest(parameterized.TestCase, tf.test.TestCase):
 
   def setUp(self):
     """Creates some common default values for the tests."""
