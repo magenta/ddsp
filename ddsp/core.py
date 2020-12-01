@@ -124,9 +124,9 @@ def nested_lookup(nested_key: Text,
     try:
       value = value[key]
     except KeyError:
-      raise KeyError(f'Key \'{key}\' as a part of \'{nested_key}\' not found '
-                     'during nested dictionary lookup, out of available keys: '
-                     f'{nested_keys(nested_dict)}')
+      raise KeyError(f'Key \'{key}\' as a part of nested key \'{nested_key}\' '
+                     'not found during nested dictionary lookup, out of '
+                     f'available keys: {nested_keys(nested_dict)}')
   return value
 
 

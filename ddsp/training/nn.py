@@ -117,6 +117,58 @@ class DictLayer(tfkl.Layer):
     return core.make_iterable(spec.annotations['return'])
 
 
+class OutputSplitsLayer(DictLayer):
+  """A DictLayer that splits an output tensor into a dictionary of tensors."""
+
+  def __init__(self,
+               input_keys=None,
+               output_splits=(('amps', 1), ('harmonic_distribution', 40)),
+               **kwargs):
+    """Layer constructor.
+
+    A common architecture is to have a homogenous network with a final dense
+    layer for each output type, for instance, for each parameter of a
+    synthesizer. This base layer wraps this process by just requiring that
+    `compute_output()` return a single tensor, which is then run through a dense
+    layer and split into a dict according to `output_splits`.
+
+    Args:
+      input_keys: A list of keys to read out of a dictionary passed to call().
+        If no input_keys are provided to the constructor, they are inferred from
+        the argument names in compute_outputs().
+      output_splits: A list of tuples (output_key, n_channels). Output keys are
+        extracted from the list and the output tensor from compute_output(), is
+        split into a dictionary of tensors, each with its matching n_channels.
+      **kwargs: Other tf.keras.layer kwargs, such as name.
+    """
+    self.output_splits = output_splits
+    self.n_out = sum([v[1] for v in output_splits])
+    self.dense_out = tfkl.Dense(self.n_out)
+    input_keys = input_keys or self.get_argument_names('compute_output')
+    output_keys = [v[0] for v in output_splits]
+    super().__init__(input_keys=input_keys, output_keys=output_keys, **kwargs)
+
+  def call(self, *inputs, **unused_kwargs):
+    """Run compute_output(), dense output layer, then split to a dictionary."""
+    output = self.compute_output(*inputs)
+    return split_to_dict(self.dense_out(output), self.output_splits)
+
+  def compute_output(self, *inputs):
+    """Takes tensors as input, runs network, and outputs a single tensor.
+
+    Args:
+      *inputs: A variable number of tensor inputs. Automatically infers
+        self.input_keys from the name of each argmument in the function
+        signature.
+
+    Returns:
+      A single tensor (usually [batch, time, channels]). The tensor can have any
+      number of channels, because the base layer will run through a final dense
+      layer to compress to appropriate number of channels for output_splits.
+    """
+    raise NotImplementedError
+
+
 # ------------------------ Shapes ----------------------------------------------
 def ensure_4d(x):
   """Add extra dimensions to make sure tensor has height and width."""

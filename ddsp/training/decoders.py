@@ -13,50 +13,18 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Library of encoder objects."""
+"""Library of decoder layers."""
 
-from ddsp import core
 from ddsp.training import nn
 import gin
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 
 tfkl = tf.keras.layers
 
 
 # ------------------ Decoders --------------------------------------------------
-class Decoder(tfkl.Layer):
-  """Base class to implement any decoder.
-
-  Users should override decode() to define the actual encoder structure.
-  Hyper-parameters will be passed through the constructor.
-  """
-
-  def __init__(self,
-               output_splits=(('amps', 1), ('harmonic_distribution', 40)),
-               name=None):
-    super().__init__(name=name)
-    self.output_splits = output_splits
-    self.n_out = sum([v[1] for v in output_splits])
-
-  def call(self, conditioning):
-    """Updates conditioning with dictionary of decoder outputs."""
-    conditioning = core.copy_if_tf_function(conditioning)
-    x = self.decode(conditioning)
-    outputs = nn.split_to_dict(x, self.output_splits)
-
-    if isinstance(outputs, dict):
-      conditioning.update(outputs)
-    else:
-      raise ValueError('Decoder must output a dictionary of signals.')
-    return conditioning
-
-  def decode(self, conditioning):
-    """Takes in conditioning dictionary, returns dictionary of signals."""
-    raise NotImplementedError
-
-
 @gin.register
-class RnnFcDecoder(Decoder):
+class RnnFcDecoder(nn.OutputSplitsLayer):
   """RNN and FC stacks for f0 and loudness."""
 
   def __init__(self,
@@ -66,25 +34,18 @@ class RnnFcDecoder(Decoder):
                layers_per_stack=3,
                input_keys=('ld_scaled', 'f0_scaled', 'z'),
                output_splits=(('amps', 1), ('harmonic_distribution', 40)),
-               name=None):
-    super().__init__(output_splits=output_splits, name=name)
+               **kwargs):
+    super().__init__(
+        input_keys=input_keys, output_splits=output_splits, **kwargs)
     stack = lambda: nn.FcStack(ch, layers_per_stack)
-    self.input_keys = input_keys
 
     # Layers.
     self.input_stacks = [stack() for k in self.input_keys]
     self.rnn = nn.Rnn(rnn_channels, rnn_type)
     self.out_stack = stack()
-    self.dense_out = tfkl.Dense(self.n_out)
 
-    # Backwards compatability.
-    self.f_stack = self.input_stacks[0] if len(self.input_stacks) >= 1 else None
-    self.l_stack = self.input_stacks[1] if len(self.input_stacks) >= 2 else None
-    self.z_stack = self.input_stacks[2] if len(self.input_stacks) >= 3 else None
-
-  def decode(self, conditioning):
+  def compute_output(self, *inputs):
     # Initial processing.
-    inputs = [conditioning[k] for k in self.input_keys]
     inputs = [stack(x) for stack, x in zip(self.input_stacks, inputs)]
 
     # Run an RNN over the latents.
@@ -93,7 +54,6 @@ class RnnFcDecoder(Decoder):
     x = tf.concat(inputs + [x], axis=-1)
 
     # Final processing.
-    x = self.out_stack(x)
-    return self.dense_out(x)
+    return self.out_stack(x)
 
 
