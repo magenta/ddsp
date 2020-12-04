@@ -19,6 +19,7 @@ import time
 
 from absl import logging
 import ddsp
+from ddsp.core import copy_if_tf_function
 from ddsp.training import train_util
 import tensorflow as tf
 
@@ -45,8 +46,14 @@ class Model(tf.keras.Model):
       losses: If return_losses=True, also returns a dictionary of losses,
         {loss_name: loss_value}.
     """
+    # Copy mutable dicts if in graph mode to prevent side-effects (pure func).
+    args = [copy_if_tf_function(a) if isinstance(a, dict) else a for a in args]
+
+    # Run model.
     self._losses_dict = {}
     outputs = super().__call__(*args, **kwargs)
+
+    # Get total loss.
     if not return_losses:
       return outputs
     else:

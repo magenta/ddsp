@@ -11,8 +11,8 @@ import ddsp.training
 get_model.model = @models.Autoencoder()
 
 # Preprocessor
-Autoencoder.preprocessor = @preprocessing.DefaultPreprocessor()
-DefaultPreprocessor.time_steps = 1000
+Autoencoder.preprocessor = @preprocessing.F0LoudnessPreprocessor()
+F0LoudnessPreprocessor.time_steps = 1000
 
 # Encoder
 Autoencoder.encoder = @encoders.MfccTimeDistributedRnnEncoder()

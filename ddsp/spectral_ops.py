@@ -149,12 +149,13 @@ def diff(x, axis=-1):
     ValueError: Axis out of range for tensor.
   """
   shape = x.shape.as_list()
-  if axis >= len(shape):
+  ndim = len(shape)
+  if axis >= ndim:
     raise ValueError('Invalid axis index: %d for tensor with only %d axes.' %
-                     (axis, len(shape)))
+                     (axis, ndim))
 
-  begin_back = [0 for _ in range(len(shape))]
-  begin_front = [0 for _ in range(len(shape))]
+  begin_back = [0 for _ in range(ndim)]
+  begin_front = [0 for _ in range(ndim)]
   begin_front[axis] = 1
 
   shape[axis] -= 1
@@ -307,7 +308,8 @@ def compute_rms_energy(audio,
                        frame_rate=250,
                        frame_size=2048):
   """Compute root mean squared energy of audio."""
-  n_secs = len(audio) / float(sample_rate)  # `n_secs` can have milliseconds
+  n_samples = audio.shape[0] if len(audio.shape) == 1 else audio.shape[1]
+  n_secs = n_samples / float(sample_rate)  # `n_secs` can have milliseconds
   expected_len = int(n_secs * frame_rate)
 
   audio = tf_float32(audio)

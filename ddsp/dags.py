@@ -147,7 +147,6 @@ class DAGLayer(tfkl.Layer):
     Returns:
       A nested dictionary of all the output tensors.
     """
-    inputs = core.copy_if_tf_function(inputs)
     # Initialize the outputs with inputs to the dag.
     outputs = {'inputs': inputs}
     # TODO(jesseengel): Remove this cluttering of the base namespace. Only there

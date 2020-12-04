@@ -62,11 +62,11 @@ class StreamingF0Ld(models.Autoencoder):
       (@processors.Add(),
         ['filtered_noise/signal', 'harmonic/signal']),
       ]"""
-      time_steps = gin.query_parameter('DefaultPreprocessor.time_steps')
+      time_steps = gin.query_parameter('F0LoudnessPreprocessor.time_steps')
       n_samples = gin.query_parameter('Harmonic.n_samples')
       samples_per_frame = int(n_samples / time_steps)
       gin.parse_config([
-          'DefaultPreprocessor.time_steps=1',
+          'F0LoudnessPreprocessor.time_steps=1',
           f'Harmonic.n_samples={samples_per_frame}',
           f'FilteredNoise.n_samples={samples_per_frame}',
           pg_string,

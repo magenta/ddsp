@@ -16,6 +16,7 @@
 """Library of preprocess functions."""
 
 import ddsp
+from ddsp.training import nn
 import gin
 import tensorflow as tf
 
@@ -36,51 +37,70 @@ def at_least_3d(x):
 
 
 # ---------------------- Preprocess objects ------------------------------------
-class Preprocessor(tfkl.Layer):
-  """Base class for chaining a series of preprocessing functions."""
-
-  def call(self, features, **kwargs):
-    """Get outputs after preprocessing functions.
-
-    Copy inputs if in graph mode to preserve pure function (no side-effects).
-    Args:
-      features: dict of feature key and tensors
-      **kwargs: Keras specific kwargs.
-
-    Returns:
-      Dictionary of transformed features
-    """
-    return ddsp.core.copy_if_tf_function(features)
-
-
 @gin.register
-class DefaultPreprocessor(Preprocessor):
-  """Default class that resamples features and adds `f0_hz` key."""
+class F0LoudnessPreprocessor(nn.DictLayer):
+  """Resamples and scales 'f0_hz' and 'loudness_db' features."""
 
   def __init__(self, time_steps=1000, **kwargs):
     super().__init__(**kwargs)
     self.time_steps = time_steps
 
-  def call(self, features, **kwargs):
-    features = super().call(features, **kwargs)
-    return self._default_processing(features)
-
-  def _default_processing(self, features):
-    """Always resample to `time_steps` and scale 'loudness_db' and 'f0_hz'."""
-    for k in ['loudness_db', 'f0_hz']:
-      features[k] = at_least_3d(features[k])
-      features[k] = ddsp.core.resample(features[k], n_timesteps=self.time_steps)
+  def call(self, loudness_db, f0_hz, **unused_kwargs) -> [
+      'f0_hz', 'loudness_db', 'f0_scaled', 'ld_scaled']:
+    # Resample features to the frame_rate.
+    f0_hz = at_least_3d(f0_hz)
+    loudness_db = at_least_3d(loudness_db)
+    f0_resampled = ddsp.core.resample(f0_hz, self.time_steps)
+    ld_resampled = ddsp.core.resample(loudness_db, self.time_steps)
     # For NN training, scale frequency and loudness to the range [0, 1].
     # Log-scale f0 features. Loudness from [-1, 0] to [1, 0].
-    features['f0_scaled'] = hz_to_midi(features['f0_hz']) / F0_RANGE
-    features['ld_scaled'] = (features['loudness_db'] / LD_RANGE) + 1.0
-    return features
+    f0_scaled = hz_to_midi(f0_resampled) / F0_RANGE
+    ld_scaled = (ld_resampled / LD_RANGE) + 1.0
+    return f0_hz, loudness_db, f0_scaled, ld_scaled
 
   @staticmethod
-  def invert_preprocessing(f0_scaled, ld_scaled):
+  def invert_scaling(f0_scaled, ld_scaled):
     """Takes in scaled f0 and loudness, and puts them back to hz & db scales."""
     f0_hz = ddsp.core.midi_to_hz(F0_RANGE * f0_scaled)
     loudness_db = (ld_scaled - 1.0) * LD_RANGE
     return f0_hz, loudness_db
 
 
+@gin.register
+class F0PowerPreprocessor(F0LoudnessPreprocessor):
+  """Dynamically compute additional power_db feature."""
+
+  def __init__(self,
+               time_steps=1000,
+               frame_rate=250,
+               sample_rate=16000,
+               frame_size=64,
+               **kwargs):
+    super().__init__(time_steps, **kwargs)
+    self.frame_rate = frame_rate
+    self.sample_rate = sample_rate
+    self.frame_size = frame_size
+
+  def call(self, audio, loudness_db, f0_hz, **kwargs) -> [
+      'f0_hz', 'loudness_db', 'f0_scaled', 'ld_scaled', 'pw_scaled', 'pw_db']:
+    """Compute power on the fly."""
+    pw_db = ddsp.spectral_ops.compute_power(audio,
+                                            sample_rate=self.sample_rate,
+                                            frame_rate=self.frame_rate,
+                                            frame_size=self.frame_size)
+    if pw_db.shape[1] != self.time_steps:
+      raise ValueError(f'Preprocessor: Power time_steps {pw_db.shape[1]} '
+                       f'is not the same as self.time_steps {self.time_steps}.')
+
+    pw_scaled = (pw_db / LD_RANGE) + 1.0
+    f0_hz, loudness_db, f0_scaled, ld_scaled = super().call(
+        loudness_db, f0_hz, **kwargs)
+    return f0_hz, loudness_db, f0_scaled, ld_scaled, pw_scaled, pw_db
+
+  @staticmethod
+  def invert_scaling(f0_scaled, ld_scaled, pw_scaled):
+    """Puts scaled f0, loudness, and power back to hz & db scales."""
+    f0_hz = ddsp.core.midi_to_hz(F0_RANGE * f0_scaled)
+    loudness_db = (ld_scaled - 1.0) * LD_RANGE
+    power_db = (pw_scaled - 1.0) * LD_RANGE
+    return f0_hz, loudness_db, power_db
