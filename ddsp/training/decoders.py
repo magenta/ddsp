@@ -20,6 +20,8 @@ from ddsp.training import nn
 import gin
 import tensorflow.compat.v2 as tf
 
+ 
+
 tfkl = tf.keras.layers
 
 
@@ -95,5 +97,6 @@ class RnnFcDecoder(Decoder):
     # Final processing.
     x = self.out_stack(x)
     return self.dense_out(x)
+
 
 

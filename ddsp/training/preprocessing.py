@@ -18,6 +18,7 @@
 import ddsp
 import gin
 import tensorflow.compat.v2 as tf
+from kymatio.tensorflow import Scattering1D
 
 hz_to_midi = ddsp.core.hz_to_midi
 F0_RANGE = ddsp.spectral_ops.F0_RANGE
@@ -77,11 +78,37 @@ class DefaultPreprocessor(Preprocessor):
     features['ld_scaled'] = (features['loudness_db'] / LD_RANGE) + 1.0
     return features
 
-  @staticmethod
+  @staticmethod 
   def invert_preprocessing(f0_scaled, ld_scaled):
     """Takes in scaled f0 and loudness, and puts them back to hz & db scales."""
     f0_hz = ddsp.core.midi_to_hz(F0_RANGE * f0_scaled)
     loudness_db = (ld_scaled - 1.0) * LD_RANGE
     return f0_hz, loudness_db
+
+@gin.register
+class ScatteringPreprocessor(Preprocessor):
+  """Class that calculates scattering coefficients of a raw waveform"""
+
+  def __init__(self, scattering=None,eps=1e-3):
+    super().__init__() 
+    self.eps = eps
+    self.scattering = scattering
+    if not self.scattering: 
+      raise ValueError("scattering shouldn't be none")
+
+    #self.scatteirng =  Scattering1D(J=self.J,shape=self.shape,Q=self.Q,max_order=self.order)
+
+  def __call__(self, features, training=True):
+    features = super().__call__(features, training)
+    return self._scattering_processing(features)
+
+  def _scattering_processing(self, features):
+    """generate 1D scattering coefficients of input raw audio (features)"""  
+   
+    audio = features['raw_audio'] #but where does the audio come from?
+    features['scattering'] = self.scattering(audio)
+    features['scattering_scaled'] = tf.log1p(((features['scattering']>0)*features['scattering'])/self.eps)
+    return features
+
 
 

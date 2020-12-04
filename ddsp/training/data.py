@@ -69,6 +69,64 @@ class DataProvider(object):
     return dataset
 
 
+
+# ------------------------------------------------------------------------------
+# FTM Data for wav2shape
+# ------------------------------------------------------------------------------
+@gin.register
+class FTMProvider(DataProvider):
+  """
+  Read from customized FTM dataset
+  """
+  def __init__(self, split, data_dir, sample_rate, frame_rate):
+    """TfdsProvider constructor.
+
+    Args:
+      name: TFDS dataset name (with optional config and version).
+      split: Dataset split to use of the TFDS dataset.
+      data_dir: The directory to read TFDS datasets from. Defaults to
+        "~/tensorflow_datasets".
+      sample_rate: Sample rate of audio in the dataset.
+      frame_rate: Frame rate of features in the dataset.
+    """
+    self._name = name
+    self._split = split
+    self._data_dir = data_dir
+    super().__init__(sample_rate, frame_rate)
+
+
+  #generator
+  def ftm_generator(self,batchsize, idx):
+    #yield a batch of audio examples
+   
+    filenames = os.path.join(self._data_dir,self._split)
+
+    for i in range(batchsize):
+      y,sr = sf.load(filenames[idx[i]])
+      yield y
+
+  def get_dataset(self, shuffle=True):
+    """Read dataset.
+
+    Args:
+      shuffle: Whether to shuffle the input files.
+
+    Returns:
+      dataset: A tf.data.Dataset that reads from TFDS.
+    """
+    filenames = os.path.join(self._data_dir,self._split)
+    idx = np.arange(0,len(filenames),1)
+    if shuffle:
+      np.random.shuffle(idx)
+
+    return tf.data.Dataset.from_generator(ftm_generator)
+    #tf.data.Dataset.list_files(self.data_dir)
+
+     
+
+
+
+
 class TfdsProvider(DataProvider):
   """Base class for reading datasets from TensorFlow Datasets (TFDS)."""
 
@@ -95,7 +153,7 @@ class TfdsProvider(DataProvider):
       shuffle: Whether to shuffle the input files.
 
     Returns:
-      dataset: A tf.data.Dataset that reads from TFDS.
+      dataset: load from local directory
     """
     return tfds.load(
         self._name,
@@ -358,5 +416,6 @@ class SyntheticNotes(TFRecordProvider):
             tf.io.FixedLenFeature(
                 [self.n_timesteps, self.n_mags], dtype=tf.float32),
     }
+
 
 

@@ -1,0 +1,19 @@
+Metadata-Version: 2.1
+Name: ddsp
+Version: 0.13.1
+Summary: Differentiable Digital Signal Processing 
+Home-page: http://github.com/magenta/ddsp
+Author: Google Inc.
+Author-email: no-reply@google.com
+License: Apache 2.0
+Description: UNKNOWN
+Keywords: audio dsp signalprocessing machinelearning music
+Platform: UNKNOWN
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Provides-Extra: gcp
+Provides-Extra: data_preparation
+Provides-Extra: test

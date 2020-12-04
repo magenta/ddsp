@@ -22,6 +22,10 @@ import gin
 import numpy as np
 import tensorflow.compat.v2 as tf
 
+from tensorflow.keras.layers import Conv1D, AveragePooling1D, Conv2D, MaxPooling2D,ReLU
+from tensorflow.keras.layers import Dense, Dropout, Activation, Flatten, BatchNormalization
+
+
 tfkl = tf.keras.layers
 
 
@@ -330,5 +334,132 @@ class SinusoidalToHarmonicEncoder(tfkl.Layer):
         harm_dist, tf.reduce_sum(harm_dist, axis=-1, keepdims=True))
 
     return (harm_amp, harm_dist, f0_hz)
+
+
+
+@gin.register
+class wav2shapeEncoder(tfkl.Layer):
+  """Predicts shapes of drum theta from scattering transform.
+
+  EXPERIMENTAL
+  """
+
+  def __init__(self,
+               #J=8,
+               #Q=1,
+               #order=2,
+               k_size=8,
+               nchan_out=16,
+               #activation='linear',
+               input_keys=('scattering_scaled'),
+               output_splits=(('position_x',1),
+                              ('position_y',1),
+                              ('w_est', 1),
+                              ('tau_est', 1),
+                              ('p_est', 1),
+                              ('D_est',1),
+                              ('alpha',1)),
+               #output_splits = (('theta',5)),
+               name='wav2shape_decoder'):
+    """Constructor."""
+    super().__init__(name=name)
+
+    self.input_keys = input_keys
+    self.output_splits = output_splits
+    
+
+    #model parameters
+    #self.J = J #these might not be needed since it can see the input dimension?
+    #self.Q = Q
+    #self.order = order
+    self.k_size = k_size
+    self.nchan_out = nchan_out
+   
+    
+
+    #layers
+    self.batchnorm = BatchNormalization()
+    self.conv1d = Conv1D(self.nchan_out,self.k_size,padding="same")
+    self.activation = Activation("relu")
+    #self.avgpool1d = AveragePooling1D()
+    self.flatten = Flatten()
+    self.dense_mid = Dense(64,activation='relu')
+    #self.dense_out = nn.dense(5,activation=self.activation)
+    #this way makes 7 separate 1 element dense output for each parameter
+    #self.dense_outs = [nn.dense(v[1]) for v in output_splits]
+    self.dense_outs = []
+    for v in output_splits:
+      if v[0] in ['position_x','position_y','alpha']:
+        self.dense_outs.append(Dense(v[1],activation='sigmoid')) # alpha needs to be 1-sigmoid
+      else:
+        self.dense_outs.append(Dense(v[1],activation='relu')) #the rest of the parameters need to >0 anyways
+
+    
+
+
+
+  def call(self, features):
+    """Converts features to (w11,tau11,p,D,alpha).
+  
+    Args:
+      scattering features
+
+    Returns:
+      physical parameters
+      
+    """
+    inputs = features[self.input_keys[0]]  #take the scaled scattering coefficeints
+
+    #inputs = [conditioning[k] for k in self.input_keys]
+    #[batchsize, 128, 43]
+    
+    # make wav2shape layers
+    x = self.batchnorm(inputs)
+
+    x = self.conv1d(x[0])
+    x = self.activation(x)
+
+    if x[0].shape[1]>=4:
+        pool = 4
+    elif x[0].shape[1]==2:
+        pool = 2
+
+    x = AveragePooling1D(pool_size=(pool,))(x)
+
+    for i in range(3):
+
+        x = self.conv1d(x)  
+        x = self.batchnorm(x)
+        x = self.activation(x)
+       
+        if x.shape[1] >= 4:
+            x = AveragePooling1D(pool_size=(4,))(x)
+          
+        elif x.shape[1] == 2:
+            x = AveragePooling1D(pool_size=(2,))(x)
+
+    x = self.batchnorm(x) 
+    x = self.flatten(x)
+    x = self.dense_mid(x)
+
+    x = self.batchnorm(x)
+    #what activation should be chosen for last layer, for regression problem? should be a linear function
+    #x = Dense(5, activation=activation)(x)
+
+    #x = self.dense_out(x)
+    outputs = {}
+    #for key,_ in self.output_splits:
+    #  outputs[key] = x
+    # a customized layer that has different activation function for each neuron
+
+    for layer, (key, _) in zip(self.dense_outs, self.output_splits):
+      outputs[key] = layer(x)
+
+
+
+    #is there need to ouput a dictionary of 5 keys? or 1 key with theta (5-d vector) as value
+    return outputs
+
+
 
 
