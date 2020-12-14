@@ -15,6 +15,8 @@
 # Lint as: python3
 """Tests for ddsp.training.eval_util."""
 
+from unittest import mock
+
 from absl.testing import parameterized
 from ddsp.spectral_ops_test import gen_np_batched_sinusoids
 from ddsp.spectral_ops_test import gen_np_sinusoid
@@ -81,35 +83,38 @@ class ComputeAudioFeaturesTest(parameterized.TestCase, tf.test.TestCase):
 
 class MetricsObjectsTest(parameterized.TestCase, tf.test.TestCase):
 
-  def setUp(self):
+  @classmethod
+  def setUpClass(cls):
     """Create common default batch of noise and sinusoids."""
-    super().setUp()
-    self.frequency = 440
-    self.sample_rate = 16000
-    self.frame_rate = 250
-    self.batch_size = 2
-    self.audio_len_sec = 0.25  # To make tests with f0 CREPE run in shorter time
-    self.amp = 0.8
-    self.batch_of_noise = self.gen_batch_of_noise(self.amp)
-    self.batch_of_noise_feats = self.gen_batch_of_features(self.batch_of_noise)
-    self.batch_of_sin = gen_np_batched_sinusoids(self.frequency, self.amp * 0.5,
-                                                 self.sample_rate,
-                                                 self.audio_len_sec,
-                                                 self.batch_size)
-    self.batch_of_sin_feats = self.gen_batch_of_features(self.batch_of_sin)
+    super().setUpClass()
+    cls.frequency = 440
+    cls.sample_rate = 16000
+    cls.frame_rate = 250
+    cls.batch_size = 2
+    cls.audio_len_sec = 0.25  # To make tests with f0 CREPE run in shorter time
+    cls.amp = 0.8
+    cls.batch_of_noise = cls.gen_batch_of_noise(cls.amp)
+    cls.batch_of_noise_feats = cls.gen_batch_of_features(cls.batch_of_noise)
+    cls.batch_of_sin = gen_np_batched_sinusoids(cls.frequency, cls.amp * 0.5,
+                                                cls.sample_rate,
+                                                cls.audio_len_sec,
+                                                cls.batch_size)
+    cls.batch_of_sin_feats = cls.gen_batch_of_features(cls.batch_of_sin)
 
-  def gen_batch_of_noise(self, amp):
+  @classmethod
+  def gen_batch_of_noise(cls, amp):
     noise_audio = np.random.uniform(
         low=-amp,
         high=amp,
-        size=(1, int(self.sample_rate * self.audio_len_sec)))
-    return np.tile(noise_audio, [self.batch_size, 1])
+        size=(1, int(cls.sample_rate * cls.audio_len_sec)))
+    return np.tile(noise_audio, [cls.batch_size, 1])
 
-  def gen_batch_of_features(self, batch_of_audio):
+  @classmethod
+  def gen_batch_of_features(cls, batch_of_audio):
     batch_size = batch_of_audio.shape[0]
     audio = batch_of_audio[0]
     feats = ddsp_metrics.compute_audio_features(
-        audio, sample_rate=self.sample_rate, frame_rate=self.frame_rate)
+        audio, sample_rate=cls.sample_rate, frame_rate=cls.frame_rate)
     for k, v in feats.items():
       feats[k] = np.tile(v[np.newaxis, :], [batch_size, 1])
     return feats
@@ -128,25 +133,44 @@ class MetricsObjectsTest(parameterized.TestCase, tf.test.TestCase):
 
     loudness_metrics.flush(step=1)
 
-  def test_f0_crepe_metrics_has_expected_values(self):
+  @mock.patch('ddsp.spectral_ops.compute_f0')
+  def test_f0_crepe_metrics_has_expected_values(self, mock_compute_f0):
+    """Test F0CrepeMetrics.
+
+    F0CrepeMetrics makes an expensive call to compute_f0 (which in turn calls
+    CREPE) for every generated example during update_state. To avoid this, we
+    mock out compute_f0 and replace the return values (via side_effect) with
+    precomputed f0_hz and confidence values.
+
+    Args:
+      mock_compute_f0: The mock object for compute_f0, automatically injected
+        by mock.patch.
+    """
     f0_crepe_metrics = ddsp_metrics.F0CrepeMetrics(self.sample_rate,
                                                    self.frame_rate)
-    # Batch 1: known sin features vs. known sin audio
+    # Batch 1: correct f0
+    crepe_f0 = self.batch_of_sin_feats['f0_hz']
+    crepe_conf = np.ones_like(crepe_f0)
+    mock_compute_f0.side_effect = zip(crepe_f0, crepe_conf)
     f0_crepe_metrics.update_state(self.batch_of_sin_feats, self.batch_of_sin)
     self.assertAllClose(f0_crepe_metrics.metrics['f0_dist'].result(), 0)
     self.assertAllClose(
         f0_crepe_metrics.metrics['outlier_ratio'].result(), 0)
 
-    # Batch 2: known sin features vs. batch of sin audio at different f0
-    f0_crepe_metrics.update_state(
-        self.batch_of_sin_feats,
-        gen_np_batched_sinusoids(2 * self.frequency, self.amp, self.sample_rate,
-                                 self.audio_len_sec, self.batch_size))
+    # Batch 2: incorrect f0
+    crepe_f0 = self.batch_of_sin_feats['f0_hz'] * 2
+    crepe_conf = np.ones_like(crepe_f0)
+    mock_compute_f0.side_effect = zip(crepe_f0, crepe_conf)
+    f0_crepe_metrics.update_state(self.batch_of_sin_feats, self.batch_of_sin)
+
     self.assertGreater(f0_crepe_metrics.metrics['f0_dist'].result(), 0)
     self.assertAllClose(
         f0_crepe_metrics.metrics['outlier_ratio'].result(), 0)
 
-    # Batch 3: known sin features vs. batch of noise audio
+    # Batch 3: low crepe confidence
+    crepe_f0 = np.zeros_like(self.batch_of_sin_feats['f0_hz'])
+    crepe_conf = np.ones_like(crepe_f0)
+    mock_compute_f0.side_effect = zip(crepe_f0, crepe_conf)
     f0_crepe_metrics.update_state(self.batch_of_sin_feats, self.batch_of_noise)
     self.assertGreater(f0_crepe_metrics.metrics['f0_dist'].result(), 0)
     self.assertGreater(
