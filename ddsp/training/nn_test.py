@@ -61,6 +61,20 @@ class DictLayerTest(parameterized.TestCase, tf.test.TestCase):
 
     self.TestLayerAnnotated = TestLayerAnnotated  # pylint: disable=invalid-name
 
+    class TestLayerDefaults(nn.DictLayer):
+      """Uses args and return annotations, and default arg inputs."""
+
+      def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.dense = tfkl.Dense(n_out)
+
+      def call(self, x1, x2=None) -> ['y1', 'y2', 'y3']:
+        y1, y3 = self.dense(x1), self.dense(x1)
+        y2 = self.dense(x2) if x2 is not None else self.dense(x1)
+        return y1, y2, y3
+
+    self.TestLayerDefaults = TestLayerDefaults  # pylint: disable=invalid-name
+
   def assert_output_shapes_are_correct(self, dict_layer, outputs):
     """Check that the output is correct for a input."""
     self.assertListEqual(list(dict_layer.output_keys), list(outputs.keys()))
@@ -117,6 +131,7 @@ class DictLayerTest(parameterized.TestCase, tf.test.TestCase):
   @parameterized.named_parameters(
       ('explicit', 'TestLayer'),
       ('args_and_return_annotations', 'TestLayerAnnotated'),
+      ('default_args', 'TestLayerDefaults'),
   )
   def test_renaming_input_output_keys(self, layer_class):
     """Ensure input output keys are overwritten by constructor.
@@ -139,6 +154,25 @@ class DictLayerTest(parameterized.TestCase, tf.test.TestCase):
     # Make sure original input_keys no longer are correct.
     with self.assertRaises(KeyError):
       test_layer({'x1': self.x, 'x2': self.x})
+
+  def assertOutputsEqual(self, outputs_1, outputs_2):
+    """Make sure two output dictionaries are the same."""
+    self.assertSetEqual(set(outputs_1.keys()), set(outputs_2.keys()))
+    for key in outputs_1.keys():
+      self.assertAllClose(outputs_1[key], outputs_2[key])
+
+  def test_default_args_have_correct_outputs(self):
+    """Check correct result regardless of whether default arg is provided."""
+    test_layer = self.TestLayerDefaults()
+    # Arg inputs.
+    outputs_1 = test_layer(self.x, self.x)
+    outputs_2 = test_layer(self.x)
+    self.assertOutputsEqual(outputs_1, outputs_2)
+
+    # Dict inputs.
+    outputs_1 = test_layer({'x1': self.x, 'x2': self.x})
+    outputs_2 = test_layer({'x1': self.x})
+    self.assertOutputsEqual(outputs_1, outputs_2)
 
 
 class SplitToDictTest(tf.test.TestCase):

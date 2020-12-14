@@ -45,6 +45,7 @@ class DictLayer(tfkl.Layer):
     super().__init__(**kwargs)
     self.input_keys = input_keys or self.get_argument_names('call')
     self.output_keys = output_keys or self.get_return_annotations('call')
+    self.default_input_keys = self.get_default_argument_names('call')
 
   def __call__(self, *inputs, **kwargs):
     """Wrap the layer's __call__() with dictionary inputs and outputs.
@@ -55,20 +56,26 @@ class DictLayer(tfkl.Layer):
     (a list of strings).
 
     Example:
+    ========
     ```
-    def call(self, f0_hz, loudness) -> ['amps', 'frequencies']:
+    def call(self, f0_hz, loudness, power=None) -> ['amps', 'frequencies']:
       ...
       return amps, frequencies
     ```
     Will infer `self.input_keys = ['f0_hz', 'loudness']` and
     `self.output_keys = ['amps', 'frequencies']`. If input_keys, or output_keys
     are provided to the constructor they will override these inferred values.
+    It will also infer `self.default_input_keys = ['power']`, which it will try
+    to look up the inputs, but use the default values and not throw an error if
+    the key is not in the input dictionary.
 
     Example Usage:
+    ==============
     The the example above works with both tensor inputs `layer(f0_hz, loudness)`
-    or a dictionary of tensors `layer({'f0_hz':..., 'loudness':...})`, and in
-    both cases will return a dictionary of tensors
-    `{'amps':..., 'frequencies':...}`.
+    or `layer(f0_hz, loudness, power)` or a dictionary of tensors
+    `layer({'f0_hz':..., 'loudness':...})`, or
+    `layer({'f0_hz':..., 'loudness':..., 'power':...})` and in both cases will
+    return a dictionary of tensors `{'amps':..., 'frequencies':...}`.
 
     Args:
       *inputs: Arguments passed on to call(). If any arguments are dicts, they
@@ -91,6 +98,12 @@ class DictLayer(tfkl.Layer):
     # Otherwise, just use inputs list as input tensors.
     if input_dict:
       inputs = [core.nested_lookup(key, input_dict) for key in self.input_keys]
+      # Optionally add for default arguments if key is present in input_dict.
+      for key in  self.default_input_keys:
+        try:
+          inputs.append(core.nested_lookup(key, input_dict))
+        except KeyError:
+          pass
 
     # Run input tensors through the model.
     outputs = super().__call__(*inputs, **kwargs)
@@ -107,9 +120,22 @@ class DictLayer(tfkl.Layer):
       return dict(zip(self.output_keys, outputs))
 
   def get_argument_names(self, method):
-    """Get list of strings for names of arguments to method."""
+    """Get list of strings for names of required arguments to method."""
     spec = inspect.getfullargspec(getattr(self, method))
-    return spec.args[1:]
+    if spec.defaults:
+      n_defaults = len(spec.defaults)
+      return spec.args[1:-n_defaults]
+    else:
+      return spec.args[1:]
+
+  def get_default_argument_names(self, method):
+    """Get list of strings for names of default arguments to method."""
+    spec = inspect.getfullargspec(getattr(self, method))
+    if spec.defaults:
+      n_defaults = len(spec.defaults)
+      return spec.args[-n_defaults:]
+    else:
+      return []
 
   def get_return_annotations(self, method):
     """Get list of strings of return annotations of method."""

@@ -45,17 +45,15 @@ class F0LoudnessPreprocessor(nn.DictLayer):
     super().__init__(**kwargs)
     self.time_steps = time_steps
 
-  def call(self, loudness_db, f0_hz, **unused_kwargs) -> [
+  def call(self, loudness_db, f0_hz) -> [
       'f0_hz', 'loudness_db', 'f0_scaled', 'ld_scaled']:
     # Resample features to the frame_rate.
-    f0_hz = at_least_3d(f0_hz)
-    loudness_db = at_least_3d(loudness_db)
-    f0_resampled = ddsp.core.resample(f0_hz, self.time_steps)
-    ld_resampled = ddsp.core.resample(loudness_db, self.time_steps)
+    f0_hz = self.resample(f0_hz)
+    loudness_db = self.resample(loudness_db)
     # For NN training, scale frequency and loudness to the range [0, 1].
     # Log-scale f0 features. Loudness from [-1, 0] to [1, 0].
-    f0_scaled = hz_to_midi(f0_resampled) / F0_RANGE
-    ld_scaled = (ld_resampled / LD_RANGE) + 1.0
+    f0_scaled = hz_to_midi(f0_hz) / F0_RANGE
+    ld_scaled = (loudness_db / LD_RANGE) + 1.0
     return f0_hz, loudness_db, f0_scaled, ld_scaled
 
   @staticmethod
@@ -64,6 +62,10 @@ class F0LoudnessPreprocessor(nn.DictLayer):
     f0_hz = ddsp.core.midi_to_hz(F0_RANGE * f0_scaled)
     loudness_db = (ld_scaled - 1.0) * LD_RANGE
     return f0_hz, loudness_db
+
+  def resample(self, x):
+    x = at_least_3d(x)
+    return ddsp.core.resample(x, self.time_steps)
 
 
 @gin.register
@@ -81,26 +83,36 @@ class F0PowerPreprocessor(F0LoudnessPreprocessor):
     self.sample_rate = sample_rate
     self.frame_size = frame_size
 
-  def call(self, audio, loudness_db, f0_hz, **kwargs) -> [
-      'f0_hz', 'loudness_db', 'f0_scaled', 'ld_scaled', 'pw_scaled', 'pw_db']:
-    """Compute power on the fly."""
-    pw_db = ddsp.spectral_ops.compute_power(audio,
-                                            sample_rate=self.sample_rate,
-                                            frame_rate=self.frame_rate,
-                                            frame_size=self.frame_size)
-    if pw_db.shape[1] != self.time_steps:
-      raise ValueError(f'Preprocessor: Power time_steps {pw_db.shape[1]} '
-                       f'is not the same as self.time_steps {self.time_steps}.')
+  def call(self, f0_hz, power_db=None, audio=None) -> [
+      'f0_hz', 'pw_db', 'f0_scaled', 'pw_scaled']:
+    """Compute power on the fly if it's not in the inputs."""
+    # For NN training, scale frequency and loudness to the range [0, 1].
+    f0_hz = self.resample(f0_hz)
+    f0_scaled = hz_to_midi(f0_hz) / F0_RANGE
 
+    if power_db is not None:
+      # Use dataset values if present.
+      pw_db = power_db
+    elif audio is not None:
+      # Otherwise, compute power on the fly.
+      pw_db = ddsp.spectral_ops.compute_power(audio,
+                                              sample_rate=self.sample_rate,
+                                              frame_rate=self.frame_rate,
+                                              frame_size=self.frame_size)
+    else:
+      raise ValueError('Power preprocessing requires either '
+                       '"power_db" or "audio" keys to be provided '
+                       'in the dataset.')
+    # Resample.
+    pw_db = self.resample(pw_db)
+    # Scale power.
     pw_scaled = (pw_db / LD_RANGE) + 1.0
-    f0_hz, loudness_db, f0_scaled, ld_scaled = super().call(
-        loudness_db, f0_hz, **kwargs)
-    return f0_hz, loudness_db, f0_scaled, ld_scaled, pw_scaled, pw_db
+
+    return f0_hz, pw_db, f0_scaled, pw_scaled
 
   @staticmethod
-  def invert_scaling(f0_scaled, ld_scaled, pw_scaled):
+  def invert_scaling(f0_scaled, pw_scaled):
     """Puts scaled f0, loudness, and power back to hz & db scales."""
     f0_hz = ddsp.core.midi_to_hz(F0_RANGE * f0_scaled)
-    loudness_db = (ld_scaled - 1.0) * LD_RANGE
     power_db = (pw_scaled - 1.0) * LD_RANGE
-    return f0_hz, loudness_db, power_db
+    return f0_hz, power_db
