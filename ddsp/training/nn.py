@@ -230,13 +230,17 @@ def split_to_dict(tensor, tensor_splits):
 def normalize_op(x, norm_type='layer', eps=1e-5):
   """Apply either Group, Instance, or Layer normalization, or None."""
   if norm_type is not None:
-    mb, h, w, ch = x.shape
-    n_groups = {'instance': ch, 'layer': 1, 'group': 32}[norm_type]
+    # mb, h, w, ch
+    x_shape = tf.shape(x)
 
-    x = tf.reshape(x, [mb, h, w, n_groups, ch // n_groups])
+    n_groups = {'instance': x_shape[-1], 'layer': 1, 'group': 32}[norm_type]
+    x = tf.reshape(
+        x, tf.concat([x_shape[:-1], [n_groups, x_shape[-1] // n_groups]],
+                     axis=0))
+
     mean, var = tf.nn.moments(x, [1, 2, 4], keepdims=True)
     x = (x - mean) / tf.sqrt(var + eps)
-    x = tf.reshape(x, [mb, h, w, ch])
+    x = tf.reshape(x, x_shape)
   return x
 
 
