@@ -16,8 +16,10 @@
 """Library of loss functions."""
 
 import functools
+from typing import Dict, Text
 
 import crepe
+from ddsp import dags
 from ddsp import spectral_ops
 from ddsp.core import hz_to_midi
 from ddsp.core import safe_divide
@@ -31,8 +33,11 @@ import tensorflow_probability as tfp
 tfd = tfp.distributions
 tfkl = tf.keras.layers
 
+# Define Types.
+TensorDict = Dict[Text, tf.Tensor]
 
-# ---------------------- Base Class --------------------------------------------
+
+# ---------------------- Base Classes ------------------------------------------
 class Loss(tfkl.Layer):
   """Base class. Duck typing: Losses just must implement get_losses_dict()."""
 
@@ -40,6 +45,57 @@ class Loss(tfkl.Layer):
     """Returns a dictionary of losses for the model."""
     loss = self(*args, **kwargs)
     return {self.name: loss}
+
+
+@gin.register
+class LossGroup(dags.DAGLayer):
+  """Compute a group of loss layers on an outputs dictionary."""
+
+  def __init__(self, dag: dags.DAG, **kwarg_losses):
+    """Constructor, completely configurable via gin.
+
+    Args:
+      dag: A list of loss names/instances, with keys to extract call() inputs
+        from a dictionary, ex:
+
+        ['module', ['input_key', ...]]
+
+        'module': Loss module instance or string name of module. For example,
+          'spectral_loss' would access the attribute `loss_group.spectral_loss`.
+        'input_key': List of strings, nested keys in dictionary of dag outputs.
+
+      **kwarg_losses: Losses to add to LossGroup. Each kwarg that is a Loss will
+        be added as a property of the layer, so that it will be accessible as
+        `loss_group.kwarg`. Also, other keras kwargs such as 'name' are split
+        off before adding modules.
+    """
+    super().__init__(dag, **kwarg_losses)
+    self.loss_names = self.module_names
+
+  @property
+  def losses(self):
+    """Loss getter."""
+    return [getattr(self, name) for name in self.loss_names]
+
+  def call(self, outputs: TensorDict, **kwargs) -> TensorDict:
+    """Get a dictionary of loss values from all the losses.
+
+    Args:
+      outputs: A dictionary of model output tensors to feed into the losses.
+      **kwargs: Other kwargs for all the modules in the dag.
+
+    Returns:
+      A flat dictionary of losses {name: scalar}.
+    """
+    dag_outputs = super().call(outputs, **kwargs)
+    loss_outputs = {}
+    for k in self.loss_names:
+      loss_outputs.update(dag_outputs[k])
+    return loss_outputs
+
+  def get_losses_dict(self, outputs, **kwargs):
+    """Returns a dictionary of losses for the model, alias __call__."""
+    return self(outputs, **kwargs)
 
 
 # ---------------------- Losses ------------------------------------------------

@@ -169,9 +169,13 @@ class DAGLayer(tfkl.Layer):
         logging.info('Input to Module: %s\nKeys: %s\nIn: %s\n',
                      module_key, input_keys, shape(inputs))
 
+      # Duck typing to avoid dealing with multiple inheritance of Group modules.
       if is_processor(module):
         # Processor modules.
         module_outputs = module(*inputs, return_outputs_dict=True, **kwargs)
+      elif is_loss(module):
+        # Loss modules.
+        module_outputs = module.get_losses_dict(*inputs, **kwargs)
       else:
         # Network modules.
         module_outputs = module(*inputs, **kwargs)
@@ -191,4 +195,3 @@ class DAGLayer(tfkl.Layer):
     outputs['out'] = module_outputs
 
     return outputs
-
