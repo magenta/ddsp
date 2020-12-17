@@ -43,8 +43,11 @@ class DictLayer(tfkl.Layer):
       **kwargs: Other keras layer kwargs such as name.
     """
     super().__init__(**kwargs)
-    self.input_keys = input_keys or self.get_argument_names('call')
-    self.output_keys = output_keys or self.get_return_annotations('call')
+    input_keys = input_keys or self.get_argument_names('call')
+    output_keys = output_keys or self.get_return_annotations('call')
+
+    self.input_keys = list(input_keys)
+    self.output_keys = list(output_keys)
     self.default_input_keys = self.get_default_argument_names('call')
 
   def __call__(self, *inputs, **kwargs):
