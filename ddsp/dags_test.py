@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2021 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -104,6 +104,9 @@ class DAGLayerTest(parameterized.TestCase, tf.test.TestCase):
     self.assertEqual(x_rec.shape, self.x.shape)
     self.assertEqual(z.shape[-1], self.z_dims)
     self.assertAllClose(x_rec, x_rec2)
+
+    # Confirm that variables are inherited by DAGLayer.
+    self.assertLen(dag_layer.trainable_variables, 6)  # 3 weights, 3 biases.
 
 if __name__ == '__main__':
   tf.test.main()

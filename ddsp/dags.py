@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2021 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -93,19 +93,18 @@ class DAGLayer(tfkl.Layer):
     super().__init__(**keras_kwargs)
 
     # Create properties/submodules from other kwargs.
-    kwarg_modules = filter_by_value(kwarg_modules, is_module)
-    self.module_names = list(kwarg_modules.keys())
-    # Make as propreties of DAGLayer to keep track of variables in checkpoints.
-    self.__dict__.update(kwarg_modules)
+    modules = filter_by_value(kwarg_modules, is_module)
 
     # Remove modules from the dag, make properties of dag_layer.
     dag, dag_modules = self.format_dag(dag)
-    self.module_names += list(dag_modules.keys())
-    # Make as propreties of DAGLayer to keep track of variables in checkpoints.
-    self.__dict__.update(dag_modules)
-
     # DAG is now just strings.
     self.dag = dag
+    modules.update(dag_modules)
+
+    # Make as propreties of DAGLayer to keep track of variables in checkpoints.
+    self.module_names = list(modules.keys())
+    for module_name, module in modules.items():
+      setattr(self, module_name, module)
 
   @property
   def modules(self):
