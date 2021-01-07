@@ -20,7 +20,6 @@ from ddsp.training.models.inverse_synthesis import InverseSynthesis
 from ddsp.training.models.model import Model
 import gin
 
-
 _configurable = lambda cls: gin.configurable(cls, module=__name__)
 
 Autoencoder = _configurable(Autoencoder)
