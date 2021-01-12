@@ -1145,15 +1145,21 @@ def fft_convolve(audio: tf.Tensor,
   """
   audio, impulse_response = tf_float32(audio), tf_float32(impulse_response)
 
+  # Get shapes of audio.
+  batch_size, audio_size = audio.shape.as_list()
+
   # Add a frame dimension to impulse response if it doesn't have one.
   ir_shape = impulse_response.shape.as_list()
   if len(ir_shape) == 2:
     impulse_response = impulse_response[:, tf.newaxis, :]
-    ir_shape = impulse_response.shape.as_list()
 
-  # Get shapes of audio and impulse response.
+  # Broadcast impulse response.
+  if ir_shape[0] == 1 and batch_size > 1:
+    impulse_response = tf.tile(impulse_response, [batch_size, 1, 1])
+
+  # Get shapes of impulse response.
+  ir_shape = impulse_response.shape.as_list()
   batch_size_ir, n_ir_frames, ir_size = ir_shape
-  batch_size, audio_size = audio.shape.as_list()
 
   # Validate that batch sizes match.
   if batch_size != batch_size_ir:
@@ -1291,7 +1297,10 @@ def sinc(x, threshold=1e-20):
   return tf.sin(x) / x
 
 
-def sinc_impulse_response(cutoff_frequency, window_size=512, sample_rate=None):
+def sinc_impulse_response(cutoff_frequency,
+                          window_size=512,
+                          sample_rate=None,
+                          high_pass=False):
   """Get a sinc impulse response for a set of low-pass cutoff frequencies.
 
   Args:
@@ -1301,6 +1310,8 @@ def sinc_impulse_response(cutoff_frequency, window_size=512, sample_rate=None):
       range [0, 1.0]. Shape [batch_size, n_time, 1].
     window_size: Size of the Hamming window to apply to the impulse.
     sample_rate: Optionally provide the sample rate.
+    high_pass: If true, filter removes frequencies below cutoff (high-pass), if
+      false [default], filter removes frequencies above cutoff (low-pass).
 
   Returns:
     impulse_response: A series of impulse responses. Shape
@@ -1325,7 +1336,16 @@ def sinc_impulse_response(cutoff_frequency, window_size=512, sample_rate=None):
   impulse_response = window * tf.math.real(impulse_response)
 
   # Normalize for unity gain.
-  impulse_response /= tf.reduce_sum(impulse_response, axis=-1, keepdims=True)
+  impulse_response /= tf.abs(
+      tf.reduce_sum(impulse_response, axis=-1, keepdims=True))
+
+  if high_pass:
+    # Invert filter.
+    pass_through = np.zeros_like(impulse_response)
+    pass_through[..., half_size] = 1.0
+    pass_through = tf.convert_to_tensor(pass_through, dtype=tf.float32)
+    impulse_response = pass_through - impulse_response
+
   return impulse_response
 
 
@@ -1363,7 +1383,8 @@ def sinc_filter(audio: tf.Tensor,
                 cutoff_frequency: tf.Tensor,
                 window_size: int = 512,
                 sample_rate: int = None,
-                padding: Text = 'same') -> tf.Tensor:
+                padding: Text = 'same',
+                high_pass: bool = False) -> tf.Tensor:
   """Filter audio with sinc low-pass filter.
 
   Args:
@@ -1378,6 +1399,8 @@ def sinc_filter(audio: tf.Tensor,
       same size as the input audio (audio_timesteps). For 'valid' the audio is
       extended to include the tail of the impulse response (audio_timesteps +
       window_size - 1).
+    high_pass: If true, filter removes frequencies below cutoff (high-pass), if
+      false [default], filter removes frequencies above cutoff (low-pass).
 
   Returns:
     Filtered audio. Tensor of shape
@@ -1386,5 +1409,6 @@ def sinc_filter(audio: tf.Tensor,
   """
   impulse_response = sinc_impulse_response(cutoff_frequency,
                                            window_size=window_size,
-                                           sample_rate=sample_rate)
+                                           sample_rate=sample_rate,
+                                           high_pass=high_pass)
   return fft_convolve(audio, impulse_response, padding=padding)
