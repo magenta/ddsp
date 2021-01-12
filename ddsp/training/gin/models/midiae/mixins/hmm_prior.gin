@@ -1,0 +1,16 @@
+# Stop Gradient
+MidiAutoencoder.hmm_prior = @losses.HmmPrior()
+HmmPrior.avg_length = 200
+HmmPrior.midi_std = 0.5
+HmmPrior.n_timesteps = 1000
+HmmPrior.n_pitches = 128
+HmmPrior.weight = 5.0
+
+MidiAutoencoder.hmm_quantize = False
+
+# # Latent Closeness Losses
+MidiAutoencoder.qpitch_f0rec_loss = @qpitch/losses.MarginLoss()
+qpitch/MarginLoss.weight = 50.0
+qpitch/MarginLoss.margin = 0.5
+qpitch/MarginLoss.name = 'q_pitch-f0_rec'
+

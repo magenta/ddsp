@@ -167,5 +167,50 @@ class TWMEvaluator(BaseEvaluator):
     self._f0_twm_metrics.flush(step)
 
 
+@gin.register
+class MidiAutoencoderEvaluator(BaseEvaluator):
+  """Metrics for MIDI Autoencoder."""
+
+  def __init__(self, sample_rate, frame_rate, db_key='loudness_db',
+               f0_key='f0_hz'):
+    super().__init__(sample_rate, frame_rate)
+    self._midi_metrics = metrics.MidiMetrics('learned')
+    self._db_key = db_key
+    self._f0_key = f0_key
+
+  def evaluate(self, batch, outputs, losses):
+    del losses  # Unused.
+    self._midi_metrics.update_state(outputs, outputs['pianoroll'])
+
+  def sample(self, batch, outputs, step):
+    audio = batch['audio']
+    summaries.audio_summary(
+        audio, step, self._sample_rate, name='audio_original')
+
+    audio_keys = ['midi_audio', 'synth_audio', 'midi_audio2', 'synth_audio2']
+    for k in audio_keys:
+      if k in outputs and outputs[k] is not None:
+        summaries.audio_summary(outputs[k], step, self._sample_rate, name=k)
+        summaries.spectrogram_summary(audio, outputs[k], step, tag=k)
+        summaries.waveform_summary(audio, outputs[k], step, name=k)
+
+    summaries.f0_summary(
+        batch[self._f0_key], outputs[f'{self._f0_key}_pred'],
+        step, name='f0_hz_rec')
+
+    summaries.pianoroll_summary(outputs, step, 'pianoroll',
+                                self._frame_rate, 'pianoroll')
+    summaries.midiae_f0_summary(batch[self._f0_key], outputs, step)
+    ld_rec = f'{self._db_key}_rec'
+    if ld_rec in outputs:
+      summaries.midiae_ld_summary(batch[self._db_key], outputs, step,
+                                  self._db_key)
+
+    summaries.midiae_sp_summary(outputs, step)
+
+  def flush(self, step):
+    self._midi_metrics.flush(step)
+
+
 
 

@@ -252,3 +252,267 @@ class SinusoidalToHarmonicEncoder(nn.DictLayer):
     return (harm_amp, harm_dist, f0_hz)
 
 
+@gin.register
+class OneHotEncoder(ZEncoder):
+  """Get an embedding from the instrument one-hot."""
+
+  def __init__(self,
+               one_hot_key='instrument',
+               vocab_size=1024,
+               n_dims=256,
+               skip_expand=True,
+               **kwargs):
+    super().__init__(input_keys=[one_hot_key], **kwargs)
+    self.one_hot_key = one_hot_key
+    self.vocab_size = vocab_size
+    self.n_dims = n_dims
+    self.skip_expand = skip_expand
+
+  def build(self, cond_shape):
+    # pylint: disable=unused-argument
+    self.embedding = nn.get_embedding(vocab_size=self.vocab_size,
+                                      n_dims=self.n_dims)
+
+  def compute_z(self, one_hot):
+    return self.embedding(one_hot)
+
+  def expand_z(self, z, time_steps):
+    if self.skip_expand:
+      # Don't expand z here, rely on broadcasting instead
+      return z
+    else:
+      return super().expand_z(z, time_steps)
+
+
+@gin.register
+class AggregateFeaturesEncoder(ZEncoder):
+  """Take mean of feature embeddings in time."""
+
+  def __init__(self, ch=512, **kwargs):
+    super().__init__(**kwargs)
+    self.fc = tfkl.Dense(ch)
+
+  def compute_z(self, f0_scaled, ld_scaled):
+    x = tf.concat([f0_scaled, ld_scaled], axis=-1)
+    z = self.fc(x)
+    return tf.reduce_mean(z, axis=1, keepdims=True)
+
+
+@gin.register
+class MfccEncoder(ZEncoder):
+  """Use MFCCs as latent variables."""
+
+  def __init__(self,
+               fft_sizes=(1024,),
+               mel_bins=(128,),
+               mfcc_bins=(30,),
+               time_steps=250,
+               **kwargs):
+    super().__init__(**kwargs)
+    self.fft_sizes = ddsp.core.make_iterable(fft_sizes)
+    self.mel_bins = ddsp.core.make_iterable(mel_bins)
+    self.mfcc_bins = ddsp.core.make_iterable(mfcc_bins)
+    self.time_steps = time_steps
+
+    # Layers.
+    self.norm_out = nn.Normalize('instance')
+
+  def compute_z(self, audio):
+    mfccs = []
+    for fft_size, mel_bin, mfcc_bin in zip(self.fft_sizes, self.mel_bins,
+                                           self.mfcc_bins):
+      mfcc = spectral_ops.compute_mfcc(
+          audio,
+          lo_hz=20.0,
+          hi_hz=8000.0,
+          fft_size=fft_size,
+          mel_bins=mel_bin,
+          mfcc_bins=mfcc_bin)
+      mfccs.append(ddsp.core.resample(mfcc, self.time_steps))
+
+    mfccs = tf.concat(mfccs, axis=-1)
+
+    return self.nom_out(mfccs[:, :, tf.newaxis, :])[:, :, 0, :]
+
+
+@gin.register
+class MfccRnnEncoder(ZEncoder):
+  """Use MFCCs as latent variables, compress to single timestep."""
+
+  def __init__(self,
+               rnn_channels=512,
+               rnn_type='gru',
+               z_dims=512,
+               mean_aggregate=False,
+               **kwargs):
+    super().__init__(**kwargs)
+    self.mean_aggregate = mean_aggregate
+
+    # Layers.
+    self.norm_in = nn.Normalize('instance')
+    self.rnn = nn.Rnn(rnn_channels, rnn_type)
+    self.dense_z = tfkl.Dense(z_dims)
+
+  def compute_z(self, audio):
+    mfccs = spectral_ops.compute_mfcc(
+        audio,
+        lo_hz=20.0,
+        hi_hz=8000.0,
+        fft_size=1024,
+        mel_bins=128,
+        mfcc_bins=30)
+    z = self.norm_in(mfccs[:, :, tf.newaxis, :])[:, :, 0, :]
+
+    if self.mean_aggregate:
+      z = self.rnn(z)
+      z = tf.reduce_mean(z, axis=1, keepdims=True)
+    else:
+      z = self.rnn(z)
+      z = tf.concat(z, axis=-1)[:, tf.newaxis, :]
+
+    # Bounce down to compressed dimensions.
+    return self.dense_z(z)
+
+
+@gin.register
+class MidiEncoder(nn.DictLayer):
+  """Encodes f0 & loudness to MIDI representation."""
+
+  def __init__(self,
+               net=None,
+               f0_residual=True,
+               **kwargs):
+    """Constructor."""
+    super().__init__(**kwargs)
+    self.net = net
+    self.f0_residual = f0_residual
+    self.dense_out = tfkl.Dense(2)
+    self.norm = nn.Normalize('layer')
+
+  def call(self, f0_midi, loudness) -> ['z_pitch', 'z_vel']:
+    """Forward pass for the encoder.
+
+    Args:
+      f0_midi: Tensor containing an f0 curve in MIDI scale. [batch, time, 1]
+      loudness: Tensor containing a loudness curve in db scale.
+        [batch, time, 1].
+
+    Returns:
+      z_pitch, z_vel: Un-quantized pitch and velocity encodings, respecitively.
+    """
+    # pylint: disable=unused-argument
+    x = tf.concat([f0_midi, loudness], axis=-1)
+
+    x = self.net(x)
+    x = self.norm(x)
+    x = self.dense_out(x)
+
+    z_pitch = x[..., 0:1]
+    z_vel = x[..., 1:2]
+
+    if self.f0_residual:
+      z_pitch += f0_midi
+
+    return z_pitch, z_vel
+
+
+@gin.register
+class HarmonicToMidiEncoder(nn.DictLayer):
+  """Encodes Harmonic synthesizer parameters to MIDI representation."""
+
+  def __init__(self,
+               net=None,
+               f0_residual=True,
+               **kwargs):
+    """Constructor."""
+    super().__init__(**kwargs)
+    self.net = net
+    self.f0_residual = f0_residual
+    self.dense_out = tfkl.Dense(2)
+    self.norm = nn.Normalize('layer')
+
+  def call(self, f0_midi, amps, hd, noise) -> ['z_pitch', 'z_vel']:
+    """Forward pass for the encoder.
+
+    Args:
+      f0_midi: Tensor containing an f0 curve in MIDI scale. [batch, time, 1]
+      amps: Tensor with amplitude curve in log scale. [batch, time, 1].
+      hd: Tensor with harmonic distribution in log scale.
+        [batch, time, n_harmonics].
+      noise: Tensor with noise magnitudes in log scale.
+        [batch, time, n_noise_bands].
+
+    Returns:
+      z_pitch, z_vel: Un-quantized pitch and velocity encodings, respecitively.
+    """
+    x = tf.concat([f0_midi, amps, hd, noise], axis=-1)
+
+    x = self.net(x)
+    x = self.norm(x)
+    x = self.dense_out(x)
+
+    z_pitch = x[..., 0:1]
+    z_vel = x[..., 1:2]
+
+    if self.f0_residual:
+      z_pitch += f0_midi
+
+    return z_pitch, z_vel
+
+
+@gin.register
+class ExpressionEncoder(ZEncoder):
+  """Get latent variable from MFCCs, loudness, and pitch."""
+
+  def __init__(self,
+               net=None,
+               z_dims=128,
+               input_keys=('f0_scaled', 'ld_scaled'),
+               mfcc_bins=60,
+               fft_size=1024,
+               mel_bins=128,
+               pool_time=True,
+               **kwargs):
+    self.input_keys = input_keys
+    super().__init__(input_keys, **kwargs)
+    self.compute_mfccs = 'audio' in self.input_keys
+    self.mfcc_bins = mfcc_bins
+    self.fft_size = fft_size
+    self.mel_bins = mel_bins
+    self.pool_time = pool_time
+
+    # Layers.
+    self.net = net
+    self.norm = nn.Normalize('layer')
+    self.dense_out = tfkl.Dense(z_dims)
+    if self.compute_mfccs:
+      self.norm_mfcc = nn.Normalize('instance')
+
+  def compute_z(self, *inputs):
+    if self.compute_mfccs:
+      audio_idx = self.input_keys.index('audio')
+      audio = inputs.pop(audio_idx)
+      n_t = inputs[0].shape[1]
+
+      mfccs = spectral_ops.compute_mfcc(
+          audio,
+          lo_hz=20.0,
+          hi_hz=8000.0,
+          fft_size=self.fft_size,
+          mel_bins=self.mel_bins,
+          mfcc_bins=self.mfcc_bins)
+      mfccs_scaled = self.norm_mfcc(mfccs)
+      mfccs_scaled = ddsp.core.resample(mfccs_scaled, n_t)
+      inputs.append(mfccs_scaled)
+
+    x = tf.concat(inputs, axis=-1)
+    z = self.net(x)
+    z = self.norm(z)
+    z = self.dense_out(z)
+
+    if self.pool_time:
+      z = tf.reduce_mean(z, axis=1, keepdims=True)
+
+    return z
+
+

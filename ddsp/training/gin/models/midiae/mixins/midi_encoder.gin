@@ -1,0 +1,16 @@
+# Turn on the MIDI Encoder network (it's off by default)
+
+
+# HACK(emanilow): initialize all the model types (gin will ignore unused)
+MidiAutoencoder.midi_encoder = @encoders.HarmonicToMidiEncoder()
+ZMidiAutoencoder.midi_encoder = @encoders.HarmonicToMidiEncoder()
+HmmMidiAutoencoder.midi_encoder = @encoders.HarmonicToMidiEncoder()
+
+# --- MIDI Encoder details
+HarmonicToMidiEncoder.f0_residual = True
+HarmonicToMidiEncoder.net = @enc/nn.DilatedConvStack()
+enc/DilatedConvStack.ch = 128
+enc/DilatedConvStack.layers_per_stack = 5
+enc/DilatedConvStack.stacks = 4
+enc/DilatedConvStack.norm_type = 'layer'
+enc/DilatedConvStack.conditional = False

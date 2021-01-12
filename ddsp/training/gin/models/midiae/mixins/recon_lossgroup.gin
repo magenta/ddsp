@@ -1,0 +1,37 @@
+# Standard reconstruction losses for the MidiAutoencoder encapsulated in a
+# LossGroup
+
+
+recon_lossgroup/LossGroup.dag = [
+    ['synth_spectral_loss', ['audio', 'synth_audio']],
+    ['f0_loss', ['f0_midi', 'f0_midi_pred', 'f0_loss_weights']],
+    ['amps_loss', ['amps', 'amps_pred']],
+    ['hd_loss', ['hd', 'hd_pred']],
+    ['noise_loss', ['noise', 'noise_pred']]
+]
+
+recon_lossgroup/LossGroup.amps_loss = @amps_loss/losses.ParamLoss()
+amps_loss/ParamLoss.weight = 0.5
+amps_loss/ParamLoss.loss_type = 'L1'
+amps_loss/ParamLoss.name = 'amplitude_reconstruction'
+
+recon_lossgroup/LossGroup.f0_loss = @f0_loss/losses.ParamLoss()
+f0_loss/ParamLoss.weight = 50.0
+f0_loss/ParamLoss.loss_type = 'L2'
+f0_loss/ParamLoss.name = 'f0_reconstruction'
+
+recon_lossgroup/LossGroup.hd_loss = @hd_loss/losses.ParamLoss()
+hd_loss/ParamLoss.weight = 500.0
+hd_loss/ParamLoss.loss_type = 'L1'
+hd_loss/ParamLoss.name = 'harmonic_distribution_reconstruction'
+
+recon_lossgroup/LossGroup.noise_loss = @noise_loss/losses.ParamLoss()
+noise_loss/ParamLoss.weight = 0.5
+noise_loss/ParamLoss.loss_type = 'L1'
+noise_loss/ParamLoss.name = 'noise_reconstruction'
+
+recon_lossgroup/LossGroup.synth_spectral_loss = @losses.SpectralLoss()
+SpectralLoss.loss_type = 'L1'
+SpectralLoss.mag_weight = 1.0
+SpectralLoss.logmag_weight = 1.0
+SpectralLoss.name = 'spectral_loss_synth'
