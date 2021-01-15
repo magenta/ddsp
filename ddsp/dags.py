@@ -131,7 +131,7 @@ class DAGLayer(tfkl.Layer):
     """Run dag for an input dictionary."""
     return self.run_dag(inputs, **kwargs)
 
-  @gin.configurable(whitelist=['verbose'])  # For debugging.
+  @gin.configurable(allowlist=['verbose'])  # For debugging.
   def run_dag(self,
               inputs: TensorDict,
               verbose: bool = True,
