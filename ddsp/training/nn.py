@@ -599,3 +599,318 @@ class RnnSandwich(tf.keras.Sequential):
     super().__init__(layers, **kwargs)
 
 
+# ------------------ Embeddings ------------------------------------------------
+def get_embedding(vocab_size=1024, n_dims=256):
+  """Get a real-valued embedding from an integer."""
+  return tfkl.Embedding(
+      input_dim=vocab_size,
+      output_dim=n_dims,
+      input_length=1)
+
+
+# ------------------ Normalization ---------------------------------------------
+class ConditionalScaleAndShift(tfkl.Layer):
+  """Conditional scaling and shifting after normalization."""
+
+  def __init__(self, shift_only=False, **kwargs):
+    super().__init__(**kwargs)
+    self.shift_only = shift_only
+
+  def build(self, inputs_shapes):
+    x_shape, _ = inputs_shapes
+    self.x_ch = int(x_shape[-1])
+    ch = self.x_ch if self.shift_only else 2 * self.x_ch
+    self.dense = tfkl.Dense(ch)
+
+  def call(self, inputs):
+    """Conditional scaling and shifting after normalization."""
+    x, z = inputs
+    if self.shift_only:
+      shift = self.dense(z)
+      x += shift
+    else:
+      scale_shift = self.dense(z)
+      scale = scale_shift[..., :self.x_ch]
+      shift = scale_shift[..., self.x_ch:]
+      x = (x * scale) + shift
+    return x
+
+
+@gin.register
+class ConditionalNorm(tfkl.Layer):
+  """Apply normalization and then conditional scale and shift."""
+
+  def __init__(self,
+               norm_type='instance',
+               shift_only=False,
+               **kwargs):
+    """Apply normalization and then conditional scale and shift.
+
+    Args:
+      norm_type: Choose between 'group', 'instance', and 'layer' normalization.
+      shift_only: Only apply a conditional shift, with no conditional scaling.
+      **kwargs: Keras-specific constructor kwargs.
+    """
+    super().__init__(**kwargs)
+    self.norm_type = norm_type
+    self.conditional_scale_and_shift = ConditionalScaleAndShift(
+        shift_only=shift_only)
+
+  def call(self, inputs):
+    """Apply normalization and then conditional scale and shift.
+
+    Args:
+      inputs: Pair of input tensors. X of shape [batch, height, width, ch], and
+        z, conditioning tensor of a shape broadcastable to [batch, height,
+        width, channels].
+
+    Returns:
+      Normalized and scaled output tensor of shape
+          [batch, height, width, channels].
+    """
+    x, z = inputs
+    x = normalize_op(x, norm_type=self.norm_type)
+    return self.conditional_scale_and_shift([x, z])
+
+
+# ------------------ Stacks ----------------------------------------------------
+@gin.register
+class SingleGru(tf.keras.Sequential):
+  """Makes a GRU -> LayerNorm -> Dense network."""
+
+  def __init__(self, gru_dim=128, **kwargs):
+    layers = [
+        tfkl.GRU(gru_dim, return_sequences=True),
+        tfkl.LayerNormalization()
+    ]
+    super().__init__(layers, **kwargs)
+
+
+@gin.register
+class DilatedConvStack(tfkl.Layer):
+  """Stack of dilated 1-D convolutions, optional conditioning at each layer."""
+
+  def __init__(self,
+               ch=256,
+               layers_per_stack=5,
+               stacks=2,
+               kernel_size=3,
+               dilation=2,
+               norm_type=None,
+               resample_type=None,
+               resample_stride=2,
+               stacks_per_resample=1,
+               shift_only=False,
+               conditional=False,
+               **kwargs):
+    super().__init__(**kwargs)
+    self.conditional = conditional
+    self.norm_type = norm_type
+
+    def dilated_conv(i):
+      if dilation > 0:
+        dilation_rate = int(dilation ** i)
+      else:
+        # If dilation is negative, decrease dilation with depth instead of
+        # increasing.
+        dilation_rate = int((-dilation) ** (layers_per_stack - i - 1))
+      layer = tf.keras.Sequential(name='dilated_conv')
+      layer.add(tfkl.Activation(tf.nn.relu))
+      layer.add(tfkl.Conv2D(ch,
+                            (kernel_size, 1),
+                            dilation_rate=(dilation_rate, 1),
+                            padding='same'))
+      return layer
+
+    # Layers.
+    self.conv_in = tfkl.Conv2D(ch, (kernel_size, 1), padding='same')
+    self.layers = []
+    self.norms = []
+    self.resample_layers = []
+    for i in range(stacks):
+      for j in range(layers_per_stack):
+        # Convolution.
+        layer = dilated_conv(j)
+        # Normalization / scale and shift.
+        if self.conditional:
+          norm = ConditionalNorm(norm_type=norm_type, shift_only=shift_only)
+        else:
+          norm = Normalize(norm_type=norm_type)
+
+        # Add to the stack.
+        self.layers.append(layer)
+        self.norms.append(norm)
+
+      # Resampling.
+      if resample_type and (i + 1) % stacks_per_resample == 0:
+        if resample_type == 'downsample':
+          resample_layer = tfkl.Conv2D(
+              ch, (resample_stride, 1), (resample_stride, 1), padding='same')
+        elif resample_type == 'upsample':
+          resample_layer = tfkl.Conv2DTranspose(
+              ch, (resample_stride * 2, 1), (resample_stride, 1),
+              padding='same')
+        else:
+          raise ValueError('invalid resample type: %s' % resample_type)
+        self.resample_layers.append(resample_layer)
+
+  def call(self, inputs):
+    # Get inputs.
+    if self.conditional:
+      x, z = inputs
+      x = ensure_4d(x)
+      z = ensure_4d(z)
+    else:
+      x = inputs
+      x = ensure_4d(x)
+
+    # Run them through the network.
+    x = self.conv_in(x)
+
+    for i, (layer, norm) in enumerate(zip(self.layers, self.norms)):
+      # Scale and shift by conditioning.
+      if self.conditional:
+        y = layer(x)
+        x += norm([y, z])
+
+      # Regular residual network.
+      else:
+        x += norm(layer(x))
+
+      if self.resample_layers:
+        # Resample at the end of each sequence of dilated conv stacks.
+        layers_per_resample = len(self.layers) // len(self.resample_layers)
+        if (i + 1) % layers_per_resample == 0:
+          x = self.resample_layers[i // layers_per_resample](x)
+
+    return x[:, :, 0, :]  # Convert back to 3-D.
+
+
+@gin.register
+class FcStackOut(tfkl.Layer):
+  """Stack of FC layers with variable hidden and output dims."""
+
+  def __init__(self, ch, layers, n_out, **kwargs):
+    super().__init__(**kwargs)
+    self.stack = FcStack(ch, layers)
+    self.dense_out = tfkl.Dense(n_out)
+
+  def call(self, x):
+    x = self.stack(x)
+    return self.dense_out(x)
+
+
+# ------------------ Vector Quantization ---------------------------------------
+@gin.register
+class VectorQuantization(tfkl.Layer):
+  """Vector quantization using exponential moving average.
+
+  Based on https://github.com/sarus-tech/tf2-published-models/blob/master/vqvae
+  but with variables named to reflect https://arxiv.org/abs/1711.00937 and
+  https://arxiv.org/abs/1906.00446
+  """
+
+  def __init__(self, k, gamma=0.99, restart_threshold=0.0, num_heads=1,
+               **kwargs):
+    super().__init__(**kwargs)
+    self.k = k
+    self.gamma = gamma
+    self.restart_threshold = restart_threshold
+    self.num_heads = num_heads
+
+  def build(self, input_shapes):
+    self.depth = input_shapes[-1]
+    if self.depth % self.num_heads != 0:
+      raise ValueError('Input depth must be a multiple of the number of heads.')
+
+    # Number of input vectors assigned to each cluster center.
+    self.counts = tf.Variable(
+        tf.zeros([self.k], dtype=tf.float32),
+        trainable=False,
+        name='counts',
+        aggregation=tf.VariableAggregation.MEAN
+    )
+
+    # Sum of input vectors assigned to each cluster center.
+    self.sums = tf.Variable(
+        tf.zeros([self.k, self.depth // self.num_heads], dtype=tf.float32),
+        trainable=False,
+        name='sums',
+        aggregation=tf.VariableAggregation.MEAN
+    )
+
+  def call(self, x, training=False):
+    x_flat = tf.reshape(x, shape=(-1, self.depth))
+
+    # Split each input vector into one segment per head.
+    x_flat_split = tf.split(x_flat, self.num_heads, axis=1)
+    x_flat = tf.concat(x_flat_split, axis=0)
+
+    if training:
+      # Figure out which centroids we want to keep, and which we want to
+      # restart.
+      n = x_flat.shape[0]
+      keep = self.counts * self.k > self.restart_threshold * n
+      restart = tf.math.logical_not(keep)
+
+      # Replace centroids to restart with elements from the batch, using samples
+      # from a uniform distribution as a fallback in case we need to restart
+      # more centroids than we have elements in the batch.
+      restart_idx = tf.squeeze(tf.where(restart), -1)
+      n_replace = tf.minimum(tf.shape(restart_idx)[0], x_flat.shape[0])
+      e_restart = tf.tensor_scatter_nd_update(
+          tf.random.uniform([self.k, self.depth // self.num_heads]),
+          tf.expand_dims(restart_idx[:n_replace], 1),
+          tf.random.shuffle(x_flat)[:n_replace]
+      )
+
+      # Compute the values of the centroids we want to keep by dividing the
+      # summed vectors by the corresponding counts.
+      e = tf.where(
+          tf.expand_dims(keep, 1),
+          tf.math.divide_no_nan(self.sums, tf.expand_dims(self.counts, 1)),
+          e_restart
+      )
+
+    else:
+      # If not training, just use the centroids as is with no restarts.
+      e = tf.math.divide_no_nan(self.sums, tf.expand_dims(self.counts, 1))
+
+    # Compute distance between each input vector and each cluster center.
+    distances = (
+        tf.expand_dims(tf.reduce_sum(x_flat**2, axis=1), 1) -
+        2 * tf.matmul(x_flat, tf.transpose(e)) +
+        tf.expand_dims(tf.reduce_sum(e**2, axis=1), 0)
+    )
+
+    # Find nearest cluster center for each input vector.
+    c = tf.argmin(distances, axis=1)
+
+    # Quantize input vectors with straight-through estimator.
+    z = tf.nn.embedding_lookup(e, c)
+    z_split = tf.split(z, self.num_heads, axis=0)
+    z = tf.concat(z_split, axis=1)
+    z = tf.reshape(z, tf.shape(x))
+    z = x + tf.stop_gradient(z - x)
+
+    if training:
+      # Compute cluster counts and vector sums over the batch.
+      oh = tf.one_hot(indices=c, depth=self.k)
+      counts = tf.reduce_sum(oh, axis=0)
+      sums = tf.matmul(oh, x_flat, transpose_a=True)
+
+      # Apply exponential moving average to cluster counts and vector sums.
+      self.counts.assign_sub((1 - self.gamma) * (self.counts - counts))
+      self.sums.assign_sub((1 - self.gamma) * (self.sums - sums))
+
+    c_split = tf.split(c, self.num_heads, axis=0)
+    c = tf.stack(c_split, axis=1)
+    c = tf.reshape(c, tf.concat([tf.shape(x)[:-1], [self.num_heads]], axis=0))
+
+    return z, c
+
+  def unquantize(self, c):
+    e = tf.math.divide_no_nan(self.sums, tf.expand_dims(self.counts, 1))
+    z = tf.nn.embedding_lookup(e, c)
+    return tf.reshape(z, tf.concat([tf.shape(c)[:-1], [self.depth]], axis=0))
+
