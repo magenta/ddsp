@@ -18,6 +18,7 @@
 import inspect
 
 from ddsp import core
+from ddsp import losses
 from ddsp import spectral_ops
 import gin
 import tensorflow.compat.v2 as tf
@@ -698,7 +699,7 @@ class DilatedConvStack(tfkl.Layer):
                dilation=2,
                norm_type=None,
                resample_type=None,
-               resample_stride=2,
+               resample_stride=1,
                stacks_per_resample=1,
                shift_only=False,
                conditional=False,
@@ -751,7 +752,8 @@ class DilatedConvStack(tfkl.Layer):
               ch, (resample_stride * 2, 1), (resample_stride, 1),
               padding='same')
         else:
-          raise ValueError('invalid resample type: %s' % resample_type)
+          raise ValueError(f'invalid resample type: {resample_type}, '
+                           'must be either `upsample` or `downsample`.')
         self.resample_layers.append(resample_layer)
 
   def call(self, inputs):
@@ -811,12 +813,13 @@ class VectorQuantization(tfkl.Layer):
   """
 
   def __init__(self, k, gamma=0.99, restart_threshold=0.0, num_heads=1,
-               **kwargs):
+               commitment_loss_weight=0.2, **kwargs):
     super().__init__(**kwargs)
     self.k = k
     self.gamma = gamma
     self.restart_threshold = restart_threshold
     self.num_heads = num_heads
+    self.commitment_loss_weight = commitment_loss_weight
 
   def build(self, input_shapes):
     self.depth = input_shapes[-1]
@@ -913,4 +916,12 @@ class VectorQuantization(tfkl.Layer):
     e = tf.math.divide_no_nan(self.sums, tf.expand_dims(self.counts, 1))
     z = tf.nn.embedding_lookup(e, c)
     return tf.reshape(z, tf.concat([tf.shape(c)[:-1], [self.depth]], axis=0))
+
+  def committment_loss(self, z, z_q):
+    """Encourage encoder to output embeddings close to the current centroids."""
+    loss = losses.mean_difference(z, tf.stop_gradient(z_q), loss_type='L2')
+    return self.commitment_loss_weight * loss
+
+  def get_losses_dict(self, z, z_q):
+    return {self.name + '_commitment_loss': self.committment_loss(z, z_q)}
 

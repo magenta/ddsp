@@ -212,5 +212,3 @@ class MidiAutoencoderEvaluator(BaseEvaluator):
     self._midi_metrics.flush(step)
 
 
-
-

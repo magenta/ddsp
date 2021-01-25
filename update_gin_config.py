@@ -57,6 +57,8 @@ gfile = io.gfile
 REMOVE = [
     'SpectralLoss.delta_delta_freq_weight',
     'SpectralLoss.delta_delta_time_weight',
+    'DilatedConvEncoder.resample',
+    'DilatedConvDecoder.resample',
 ]
 
 

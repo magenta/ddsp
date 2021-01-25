@@ -1341,7 +1341,7 @@ def sinc_impulse_response(cutoff_frequency,
 
   if high_pass:
     # Invert filter.
-    pass_through = np.zeros_like(impulse_response)
+    pass_through = np.zeros(impulse_response.shape)
     pass_through[..., half_size] = 1.0
     pass_through = tf.convert_to_tensor(pass_through, dtype=tf.float32)
     impulse_response = pass_through - impulse_response

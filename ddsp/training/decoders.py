@@ -170,13 +170,13 @@ class DilatedConvDecoder(nn.OutputSplitsLayer):
 
   def __init__(self,
                ch=256,
+               kernel_size=3,
                layers_per_stack=5,
                stacks=2,
                dilation=2,
                norm_type='layer',
-               resample=False,
-               resample_stride=None,
-               stacks_per_resample=None,
+               resample_stride=1,
+               stacks_per_resample=1,
                input_keys=('ld_scaled', 'f0_scaled'),
                output_splits=(('amps', 1), ('harmonic_distribution', 60)),
                conditioning_keys=('z'),
@@ -199,11 +199,12 @@ class DilatedConvDecoder(nn.OutputSplitsLayer):
     self.precondition_stack = precondition_stack
     self.dilated_conv_stack = nn.DilatedConvStack(
         ch=ch,
+        kernel_size=kernel_size,
         layers_per_stack=layers_per_stack,
         stacks=stacks,
         dilation=dilation,
         norm_type=norm_type,
-        resample_type='upsample' if resample else None,
+        resample_type='upsample' if resample_stride > 1 else None,
         resample_stride=resample_stride,
         stacks_per_resample=stacks_per_resample,
         conditional=self.conditional)
