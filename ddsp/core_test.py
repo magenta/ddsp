@@ -886,6 +886,26 @@ class FiniteImpulseResponseTest(parameterized.TestCase, tf.test.TestCase):
     audio_out_size = int(audio_out.shape[-1])
     self.assertEqual(audio_out_size, self.audio_size)
 
+  @parameterized.named_parameters(
+      ('high_pass_odd_window', True, 257),
+      ('low_pass_even_window', False, 256),
+  )
+  def test_sinc_filter_gives_correct_size(self, high_pass, window_size):
+    """Tests filtering signals with sinc impulse response sampling method.
+
+    Args:
+      high_pass: Remove frequencies below cutoff.
+      window_size: Size of the filter window.
+    """
+    cutoff = 0.5
+    audio_out = core.sinc_filter(self.audio,
+                                 cutoff_frequency=cutoff,
+                                 window_size=window_size,
+                                 padding='same',
+                                 high_pass=high_pass)
+    audio_out_size = int(audio_out.shape[-1])
+    self.assertEqual(audio_out_size, self.audio_size)
+
 
 if __name__ == '__main__':
   tf.test.main()
