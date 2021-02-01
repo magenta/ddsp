@@ -86,6 +86,8 @@ class SpectralLossTest(tf.test.TestCase):
     self.assertTrue(np.isfinite(loss))
 
 
+
+
 class PretrainedCREPEEmbeddingLossTest(tf.test.TestCase):
 
   def test_output_shape_is_correct(self):
