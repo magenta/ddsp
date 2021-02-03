@@ -88,4 +88,3 @@ class StreamingF0Ld(models.Autoencoder):
     hd = controls['harmonic']['controls']['harmonic_distribution']
     return amps, hd
 
-
