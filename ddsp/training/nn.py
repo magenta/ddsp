@@ -701,14 +701,48 @@ class DilatedConvStack(tfkl.Layer):
                resample_type=None,
                resample_stride=1,
                stacks_per_resample=1,
+               resample_after_convolve=True,
                shift_only=False,
                conditional=False,
                **kwargs):
+    """Constructor.
+
+    Args:
+      ch: Number of channels in each convolution layer.
+      layers_per_stack: Convolution layers in each 'stack'. Dilation increases
+        exponentially with layer depth inside a stack.
+      stacks: Number of convolutions stacks.
+      kernel_size: Size of convolution kernel.
+      dilation: Exponent base of dilation factor within a stack.
+      norm_type: Type of normalization before each nonlinearity, choose from
+        'layer', 'instance', or 'group'.
+      resample_type: Whether to 'upsample' or 'downsample' the signal. None
+        performs no resampling.
+      resample_stride: Stride for upsample or downsample layers.
+      stacks_per_resample: Number of stacks per a resample layer.
+      resample_after_convolve: Ordering of convolution and resampling. If True,
+        apply `stacks_per_resample` stacks of convolution then a resampling
+        layer. If False, apply the opposite order.
+      shift_only: Learn/condition only shifts of normalization and not scale.
+      conditional: Use conditioning signal to modulate shifts (and scales) of
+        normalization (FiLM), instead of learned parameters.
+      **kwargs: Other keras kwargs.
+
+    Returns:
+      Convolved and resampled signal. If inputs shape is [batch, time, ch_in],
+      output shape is [batch, time_out, ch], where `ch` is the class kwarg, and
+      `time_out` is (stacks // stacks_per_resample) * resample_stride times
+      smaller or larger than `time` depending on whether `resample_type` is
+      upsampling or downsampling.
+    """
     super().__init__(**kwargs)
     self.conditional = conditional
     self.norm_type = norm_type
+    self.resample_after_convolve = resample_after_convolve
 
+    # Layer Factories.
     def dilated_conv(i):
+      """Generates a dilated convolution layer, based on `i` depth in stack."""
       if dilation > 0:
         dilation_rate = int(dilation ** i)
       else:
@@ -723,12 +757,33 @@ class DilatedConvStack(tfkl.Layer):
                             padding='same'))
       return layer
 
+    def resample_layer():
+      """Generates a resampling layer."""
+      if resample_type == 'downsample':
+        return tfkl.Conv2D(
+            ch, (resample_stride, 1), (resample_stride, 1), padding='same')
+      elif resample_type == 'upsample':
+        return tfkl.Conv2DTranspose(
+            ch, (resample_stride * 2, 1), (resample_stride, 1),
+            padding='same')
+      else:
+        raise ValueError(f'invalid resample type: {resample_type}, '
+                         'must be either `upsample` or `downsample`.')
+
     # Layers.
     self.conv_in = tfkl.Conv2D(ch, (kernel_size, 1), padding='same')
     self.layers = []
     self.norms = []
     self.resample_layers = []
+
+    # Stacks.
     for i in range(stacks):
+      # Option: Resample before convolve.
+      if (resample_type and not self.resample_after_convolve and
+          i % stacks_per_resample == 0):
+        self.resample_layers.append(resample_layer())
+
+      # Convolve.
       for j in range(layers_per_stack):
         # Convolution.
         layer = dilated_conv(j)
@@ -742,21 +797,19 @@ class DilatedConvStack(tfkl.Layer):
         self.layers.append(layer)
         self.norms.append(norm)
 
-      # Resampling.
-      if resample_type and (i + 1) % stacks_per_resample == 0:
-        if resample_type == 'downsample':
-          resample_layer = tfkl.Conv2D(
-              ch, (resample_stride, 1), (resample_stride, 1), padding='same')
-        elif resample_type == 'upsample':
-          resample_layer = tfkl.Conv2DTranspose(
-              ch, (resample_stride * 2, 1), (resample_stride, 1),
-              padding='same')
-        else:
-          raise ValueError(f'invalid resample type: {resample_type}, '
-                           'must be either `upsample` or `downsample`.')
-        self.resample_layers.append(resample_layer)
+      # Option: Resample after convolve.
+      if (resample_type and self.resample_after_convolve and
+          (i + 1) % stacks_per_resample == 0):
+        self.resample_layers.append(resample_layer())
+
+    # For forward pass, calculate layers per a resample.
+    if self.resample_layers:
+      self.layers_per_resample = len(self.layers) // len(self.resample_layers)
+    else:
+      self.layers_per_resample = 0
 
   def call(self, inputs):
+    """Forward pass."""
     # Get inputs.
     if self.conditional:
       x, z = inputs
@@ -769,7 +822,14 @@ class DilatedConvStack(tfkl.Layer):
     # Run them through the network.
     x = self.conv_in(x)
 
+    # Stacks.
     for i, (layer, norm) in enumerate(zip(self.layers, self.norms)):
+
+      # Optional: Resample before conv.
+      if (self.resample_layers and not self.resample_after_convolve and
+          i  % self.layers_per_resample == 0):
+        x = self.resample_layers[i // self.layers_per_resample](x)
+
       # Scale and shift by conditioning.
       if self.conditional:
         y = layer(x)
@@ -779,11 +839,10 @@ class DilatedConvStack(tfkl.Layer):
       else:
         x += norm(layer(x))
 
-      if self.resample_layers:
-        # Resample at the end of each sequence of dilated conv stacks.
-        layers_per_resample = len(self.layers) // len(self.resample_layers)
-        if (i + 1) % layers_per_resample == 0:
-          x = self.resample_layers[i // layers_per_resample](x)
+      # Optional: Resample after conv.
+      if (self.resample_layers and self.resample_after_convolve and
+          (i + 1) % self.layers_per_resample == 0):
+        x = self.resample_layers[i // self.layers_per_resample](x)
 
     return x[:, :, 0, :]  # Convert back to 3-D.
 

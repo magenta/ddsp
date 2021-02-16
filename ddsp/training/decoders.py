@@ -177,6 +177,7 @@ class DilatedConvDecoder(nn.OutputSplitsLayer):
                norm_type='layer',
                resample_stride=1,
                stacks_per_resample=1,
+               resample_after_convolve=True,
                input_keys=('ld_scaled', 'f0_scaled'),
                output_splits=(('amps', 1), ('harmonic_distribution', 60)),
                conditioning_keys=('z'),
@@ -207,6 +208,7 @@ class DilatedConvDecoder(nn.OutputSplitsLayer):
         resample_type='upsample' if resample_stride > 1 else None,
         resample_stride=resample_stride,
         stacks_per_resample=stacks_per_resample,
+        resample_after_convolve=resample_after_convolve,
         conditional=self.conditional)
 
   def _parse_inputs(self, inputs):
