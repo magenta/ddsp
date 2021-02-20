@@ -50,32 +50,32 @@ class DAGLayerTest(parameterized.TestCase, tf.test.TestCase):
         ('bottleneck', ['encoder/z'], ['z_bottleneck']),
         ('decoder', ['bottleneck/z_bottleneck'], ['reconstruction']),
     ]
-    ConfigurableDAGLayer.encoder = @encoder/Dense()
-    encoder/Dense.units = {self.x_dims}
+    ConfigurableDAGLayer.encoder = @encoder/layers.Dense()
+    encoder/layers.Dense.units = {self.x_dims}
 
-    ConfigurableDAGLayer.bottleneck = @bottleneck/Dense()
-    bottleneck/Dense.units = {self.z_dims}
+    ConfigurableDAGLayer.bottleneck = @bottleneck/layers.Dense()
+    bottleneck/layers.Dense.units = {self.z_dims}
 
-    ConfigurableDAGLayer.decoder = @decoder/Dense()
-    decoder/Dense.units = {self.x_dims}
+    ConfigurableDAGLayer.decoder = @decoder/layers.Dense()
+    decoder/layers.Dense.units = {self.x_dims}
     """
     self.gin_config_dag_modules = f"""
     import ddsp
 
     ### Modules
     ConfigurableDAGLayer.dag = [
-        (@encoder/Dense(), ['inputs/test_data'], ['z']),
-        (@bottleneck/Dense(), ['encoder/z'], ['z_bottleneck']),
-        (@decoder/Dense(), ['bottleneck/z_bottleneck'], ['reconstruction']),
+        (@encoder/layers.Dense(), ['inputs/test_data'], ['z']),
+        (@bottleneck/layers.Dense(), ['encoder/z'], ['z_bottleneck']),
+        (@decoder/layers.Dense(), ['bottleneck/z_bottleneck'], ['reconstruction']),
     ]
-    encoder/Dense.name = 'encoder'
-    encoder/Dense.units = {self.x_dims}
+    encoder/layers.Dense.name = 'encoder'
+    encoder/layers.Dense.units = {self.x_dims}
 
-    bottleneck/Dense.name = 'bottleneck'
-    bottleneck/Dense.units = {self.z_dims}
+    bottleneck/layers.Dense.name = 'bottleneck'
+    bottleneck/layers.Dense.units = {self.z_dims}
 
-    decoder/Dense.name = 'decoder'
-    decoder/Dense.units = {self.x_dims}
+    decoder/layers.Dense.name = 'decoder'
+    decoder/layers.Dense.units = {self.x_dims}
     """
 
   @parameterized.named_parameters(

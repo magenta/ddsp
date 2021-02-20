@@ -31,6 +31,7 @@ MidiAutoencoder = _configurable(MidiAutoencoder)
 ZMidiAutoencoder = _configurable(ZMidiAutoencoder)
 
 
+
 @gin.configurable
 def get_model(model=gin.REQUIRED):
   """Gin configurable function get a 'global' model for use in ddsp_run.py.

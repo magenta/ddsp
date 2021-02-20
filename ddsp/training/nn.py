@@ -600,6 +600,17 @@ class RnnSandwich(tf.keras.Sequential):
     super().__init__(layers, **kwargs)
 
 
+# ------------------ Utility Layers --------------------------------------------
+@gin.register
+class Identity(tfkl.Layer):
+  """Utility identity layer."""
+
+  def call(self, x):
+    return x
+
+gin.register(tfkl.Dense, module=__name__)
+
+
 # ------------------ Embeddings ------------------------------------------------
 def get_embedding(vocab_size=1024, n_dims=256):
   """Get a real-valued embedding from an integer."""
