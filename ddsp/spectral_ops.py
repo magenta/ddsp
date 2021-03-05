@@ -85,12 +85,13 @@ def compute_mel(audio,
                 bins=64,
                 fft_size=2048,
                 overlap=0.75,
-                pad_end=True):
+                pad_end=True,
+                sample_rate=16000):
   """Calculate Mel Spectrogram."""
   mag = compute_mag(audio, fft_size, overlap, pad_end)
   num_spectrogram_bins = int(mag.shape[-1])
   linear_to_mel_matrix = tf.signal.linear_to_mel_weight_matrix(
-      bins, num_spectrogram_bins, 16000, lo_hz, hi_hz)
+      bins, num_spectrogram_bins, sample_rate, lo_hz, hi_hz)
   mel = tf.tensordot(mag, linear_to_mel_matrix, 1)
   mel.set_shape(mag.shape[:-1].concatenate(linear_to_mel_matrix.shape[-1:]))
   return mel
@@ -108,8 +109,11 @@ def compute_logmel(audio,
                    bins=64,
                    fft_size=2048,
                    overlap=0.75,
-                   pad_end=True):
-  mel = compute_mel(audio, lo_hz, hi_hz, bins, fft_size, overlap, pad_end)
+                   pad_end=True,
+                   sample_rate=16000):
+  """Logarithmic amplitude of mel-scaled spectrogram."""
+  mel = compute_mel(audio, lo_hz, hi_hz, bins,
+                    fft_size, overlap, pad_end, sample_rate)
   return safe_log(mel)
 
 
@@ -121,7 +125,8 @@ def compute_mfcc(audio,
                  mel_bins=128,
                  mfcc_bins=13,
                  overlap=0.75,
-                 pad_end=True):
+                 pad_end=True,
+                 sample_rate=16000):
   """Calculate Mel-frequency Cepstral Coefficients."""
   logmel = compute_logmel(
       audio,
@@ -130,7 +135,8 @@ def compute_mfcc(audio,
       bins=mel_bins,
       fft_size=fft_size,
       overlap=overlap,
-      pad_end=pad_end)
+      pad_end=pad_end,
+      sample_rate=sample_rate)
   mfccs = tf.signal.mfccs_from_log_mel_spectrograms(logmel)
   return mfccs[..., :mfcc_bins]
 
