@@ -242,7 +242,7 @@ class F0CrepeMetrics(BaseMetrics):
           sample_rate=self._sample_rate,
           frame_rate=self._frame_rate,
           viterbi=True)
-      if 'f0_hz' and 'f0_confidence' in batch:
+      if 'f0_hz' in batch and 'f0_confidence' in batch:
         f0_hz_gt = batch['f0_hz'][i]
         f0_conf_gt = batch['f0_confidence'][i]
       else:
