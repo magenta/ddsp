@@ -21,6 +21,7 @@ just like other SavedModels.
 
 import os
 
+import ddsp
 from ddsp.training import models
 from ddsp.training import train_util
 import gin
@@ -31,12 +32,13 @@ class AutoencoderInference(models.Autoencoder):
   """Create an inference-only version of the model."""
 
   @tf.function
-  def call(self, features):
-    """Run the core of the network, get predictions and loss."""
-    return super().call(features, training=False)
+  def call(self, input_dict):
+    """Run the core of the network, get predictions."""
+    input_dict = ddsp.core.copy_if_tf_function(input_dict)
+    return super().call(input_dict, training=False)
 
 
-class StreamingF0Ld(models.Autoencoder):
+class StreamingF0Pw(models.Autoencoder):
   """Create an inference-only version of the model."""
 
   def __init__(self, ckpt, **kwargs):
@@ -62,11 +64,11 @@ class StreamingF0Ld(models.Autoencoder):
       (@processors.Add(),
         ['filtered_noise/signal', 'harmonic/signal']),
       ]"""
-      time_steps = gin.query_parameter('F0LoudnessPreprocessor.time_steps')
+      time_steps = gin.query_parameter('F0PowerPreprocessor.time_steps')
       n_samples = gin.query_parameter('Harmonic.n_samples')
       samples_per_frame = int(n_samples / time_steps)
       gin.parse_config([
-          'F0LoudnessPreprocessor.time_steps=1',
+          'F0PowerPreprocessor.time_steps=1',
           f'Harmonic.n_samples={samples_per_frame}',
           f'FilteredNoise.n_samples={samples_per_frame}',
           pg_string,
@@ -74,17 +76,21 @@ class StreamingF0Ld(models.Autoencoder):
 
   def build_network(self):
     """Run a fake batch through the network."""
-    inputs = {
+    input_dict = {
         'f0_hz': tf.zeros([1]),
-        'loudness_db': tf.zeros([1]),
+        'power_db': tf.zeros([1]),
     }
-    unused_outputs = self(inputs)
+    print('Inputs to Model:', input_dict)
+    unused_outputs = self(input_dict)
+    print('Outputs', unused_outputs)
 
   @tf.function
   def call(self, input_dict):
     """Convert f0 and loudness to synthesizer parameters."""
-    controls = super().__call__(input_dict, training=False)
+    input_dict = ddsp.core.copy_if_tf_function(input_dict)
+    controls = super().call(input_dict, training=False)
     amps = controls['harmonic']['controls']['amplitudes']
     hd = controls['harmonic']['controls']['harmonic_distribution']
-    return amps, hd
+    noise = controls['filtered_noise']['controls']['magnitudes']
+    return amps, hd, noise
 
