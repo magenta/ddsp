@@ -62,15 +62,19 @@ class Trainer(object):
         decay_rate=lr_decay_rate)
 
     with self.strategy.scope():
-      optimizer = tf.keras.optimizers.Adam(lr_schedule)
-      self.optimizer = optimizer
+      self.optimizer = tf.keras.optimizers.Adam(lr_schedule)
+
+  def get_checkpoint(self, model=None):
+    """Model arg can also be a tf.train.Checkpoint(**dict(submodules))."""
+    model = model or self.model  # Default to full model.
+    return tf.train.Checkpoint(model=model, optimizer=self.optimizer)
 
   def save(self, save_dir):
     """Saves model and optimizer to a checkpoint."""
     # Saving weights in checkpoint format because saved_model requires
     # handling variable batch size, which some synths and effects can't.
     start_time = time.time()
-    checkpoint = tf.train.Checkpoint(model=self.model, optimizer=self.optimizer)
+    checkpoint = self.get_checkpoint()
     manager = tf.train.CheckpointManager(
         checkpoint, directory=save_dir, max_to_keep=self.checkpoints_to_keep)
     step = self.step.numpy()
@@ -84,7 +88,7 @@ class Trainer(object):
     start_time = time.time()
 
     # Prefer function args over object properties.
-    restore_keys = self.restore_keys if restore_keys is None else restore_keys
+    restore_keys = restore_keys or self.restore_keys
     if restore_keys is None:
       # If no keys are passed, restore the whole model.
       model = self.model
@@ -100,7 +104,7 @@ class Trainer(object):
         logging.info(log_str)
 
     # Restore from latest checkpoint.
-    checkpoint = tf.train.Checkpoint(model=model, optimizer=self.optimizer)
+    checkpoint = self.get_checkpoint(model)
     latest_checkpoint = train_util.get_latest_chekpoint(checkpoint_path)
     if latest_checkpoint is not None:
       # checkpoint.restore must be within a strategy.scope() so that optimizer
@@ -163,3 +167,14 @@ class Trainer(object):
     return losses
 
 
+@gin.configurable
+def get_trainer_class(trainer_class=Trainer):
+  """Gin configurable function get a 'global' trainer for use in ddsp_run.py.
+
+  Args:
+    trainer_class: A trainer class such as `Trainer`.
+
+  Returns:
+    The 'global' trainer class specifieed in the gin config.
+  """
+  return trainer_class

@@ -189,7 +189,7 @@ def main(unused_argv):
                                        cluster_config=FLAGS.cluster_config)
     with strategy.scope():
       model = models.get_model()
-      trainer = trainers.Trainer(model, strategy)
+      trainer = trainers.get_trainer_class()(model, strategy)
 
     train_util.train(data_provider=gin.REQUIRED,
                      trainer=trainer,

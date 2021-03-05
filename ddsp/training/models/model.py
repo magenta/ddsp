@@ -25,7 +25,7 @@ import tensorflow as tf
 
 
 class Model(tf.keras.Model):
-  """Wrap the model function for dependency injection with gin."""
+  """Base class for all models."""
 
   def __init__(self, **kwargs):
     super().__init__(**kwargs)
@@ -57,9 +57,12 @@ class Model(tf.keras.Model):
     if not return_losses:
       return outputs
     else:
-      self._losses_dict['total_loss'] = tf.reduce_sum(
-          list(self._losses_dict.values()))
+      self._losses_dict['total_loss'] = self.sum_losses(self._losses_dict)
       return outputs, self._losses_dict
+
+  def sum_losses(self, losses_dict):
+    """Sum all the scalar losses in a dictionary."""
+    return tf.reduce_sum(list(losses_dict.values()))
 
   def _update_losses_dict(self, loss_objs, *args, **kwargs):
     """Helper function to run loss objects on args and add to model losses."""
@@ -100,3 +103,5 @@ class Model(tf.keras.Model):
       Dictionary of all relevant tensors.
     """
     raise NotImplementedError('Must implement a `self.call()` method.')
+
+
