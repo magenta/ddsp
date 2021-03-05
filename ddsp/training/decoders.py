@@ -182,6 +182,8 @@ class DilatedConvDecoder(nn.OutputSplitsLayer):
                output_splits=(('amps', 1), ('harmonic_distribution', 60)),
                conditioning_keys=('z'),
                precondition_stack=None,
+               spectral_norm=False,
+               ortho_init=False,
                **kwargs):
     """Constructor, combines input_keys and conditioning_keys."""
     self.conditioning_keys = ([] if conditioning_keys is None else
@@ -209,7 +211,9 @@ class DilatedConvDecoder(nn.OutputSplitsLayer):
         resample_stride=resample_stride,
         stacks_per_resample=stacks_per_resample,
         resample_after_convolve=resample_after_convolve,
-        conditional=self.conditional)
+        conditional=self.conditional,
+        spectral_norm=spectral_norm,
+        ortho_init=ortho_init)
 
   def _parse_inputs(self, inputs):
     """Split x and z inputs and run preconditioning."""

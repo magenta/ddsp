@@ -21,11 +21,15 @@ from ddsp import core
 from ddsp import losses
 from ddsp import spectral_ops
 import gin
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
+import tensorflow_addons as tfa
 import tensorflow_probability as tfp
 
 tfk = tf.keras
 tfkl = tfk.layers
+
+# False positive lint error on tf.split().
+# pylint: disable=redundant-keyword-arg
 
 
 class DictLayer(tfkl.Layer):
@@ -713,6 +717,8 @@ class DilatedConvStack(tfkl.Layer):
                resample_stride=1,
                stacks_per_resample=1,
                resample_after_convolve=True,
+               spectral_norm=False,
+               ortho_init=False,
                shift_only=False,
                conditional=False,
                **kwargs):
@@ -734,6 +740,8 @@ class DilatedConvStack(tfkl.Layer):
       resample_after_convolve: Ordering of convolution and resampling. If True,
         apply `stacks_per_resample` stacks of convolution then a resampling
         layer. If False, apply the opposite order.
+      spectral_norm: Apply spectral normalization to the convolution weights.
+      ortho_init: Orthogonally initialize the kernel weights.
       shift_only: Learn/condition only shifts of normalization and not scale.
       conditional: Use conditioning signal to modulate shifts (and scales) of
         normalization (FiLM), instead of learned parameters.
@@ -751,6 +759,22 @@ class DilatedConvStack(tfkl.Layer):
     self.norm_type = norm_type
     self.resample_after_convolve = resample_after_convolve
 
+    initializer = 'orthogonal' if ortho_init else 'glorot_uniform'
+
+    def conv(ch, k, stride=1, dilation=1, transpose=False):
+      """Make a convolution layer."""
+      layer_class = tfkl.Conv2DTranspose if transpose else tfkl.Conv2D
+      layer = layer_class(ch,
+                          (k, 1),
+                          (stride, 1),
+                          dilation_rate=(dilation, 1),
+                          padding='same',
+                          kernel_initializer=initializer)
+      if spectral_norm:
+        return tfa.layers.SpectralNormalization(layer)
+      else:
+        return layer
+
     # Layer Factories.
     def dilated_conv(i):
       """Generates a dilated convolution layer, based on `i` depth in stack."""
@@ -762,27 +786,21 @@ class DilatedConvStack(tfkl.Layer):
         dilation_rate = int((-dilation) ** (layers_per_stack - i - 1))
       layer = tf.keras.Sequential(name='dilated_conv')
       layer.add(tfkl.Activation(tf.nn.relu))
-      layer.add(tfkl.Conv2D(ch,
-                            (kernel_size, 1),
-                            dilation_rate=(dilation_rate, 1),
-                            padding='same'))
+      layer.add(conv(ch, kernel_size, 1, dilation_rate))
       return layer
 
     def resample_layer():
       """Generates a resampling layer."""
       if resample_type == 'downsample':
-        return tfkl.Conv2D(
-            ch, (resample_stride, 1), (resample_stride, 1), padding='same')
+        return conv(ch, resample_stride, resample_stride)
       elif resample_type == 'upsample':
-        return tfkl.Conv2DTranspose(
-            ch, (resample_stride * 2, 1), (resample_stride, 1),
-            padding='same')
+        return conv(ch, resample_stride * 2, resample_stride, transpose=True)
       else:
         raise ValueError(f'invalid resample type: {resample_type}, '
                          'must be either `upsample` or `downsample`.')
 
     # Layers.
-    self.conv_in = tfkl.Conv2D(ch, (kernel_size, 1), padding='same')
+    self.conv_in = conv(ch, kernel_size)
     self.layers = []
     self.norms = []
     self.resample_layers = []
