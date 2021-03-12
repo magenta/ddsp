@@ -116,3 +116,5 @@ class F0PowerPreprocessor(F0LoudnessPreprocessor):
     f0_hz = ddsp.core.midi_to_hz(F0_RANGE * f0_scaled)
     power_db = (pw_scaled - 1.0) * LD_RANGE
     return f0_hz, power_db
+
+

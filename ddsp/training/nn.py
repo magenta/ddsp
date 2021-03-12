@@ -28,6 +28,7 @@ import tensorflow_probability as tfp
 tfk = tf.keras
 tfkl = tfk.layers
 
+
 # False positive lint error on tf.split().
 # pylint: disable=redundant-keyword-arg
 
@@ -258,6 +259,16 @@ def split_to_dict(tensor, tensor_splits):
   return dict(zip(labels, tensors))
 
 
+def get_nonlinearity(nonlinearity):
+  """Get nonlinearity function by name."""
+  try:
+    return tf.keras.activations.get(nonlinearity)
+  except ValueError:
+    pass
+
+  return getattr(tf.nn, nonlinearity)
+
+
 # ------------------ Straight-through Estimators -------------------------------
 def straight_through_softmax(logits):
   """Straight-through estimator of a one-hot categorical distribution."""
@@ -460,6 +471,14 @@ class Normalize(tfkl.Layer):
     return inv_ensure_4d(x, n_dims)
 
 
+def get_norm(norm_type, conditional, shift_only):
+  """Helper function to get conditional norm if needed."""
+  if conditional:
+    return ConditionalNorm(norm_type=norm_type, shift_only=shift_only)
+  else:
+    return Normalize(norm_type)
+
+
 # ------------------ ResNet ----------------------------------------------------
 @gin.register
 class NormReluConv(tf.keras.Sequential):
@@ -479,14 +498,17 @@ class NormReluConv(tf.keras.Sequential):
 class ResidualLayer(tfkl.Layer):
   """A single layer for ResNet, with a bottleneck."""
 
-  def __init__(self, ch, stride, shortcut, norm_type, **kwargs):
+  def __init__(self, ch, stride, shortcut, norm_type,
+               conditional, shift_only, **kwargs):
     """Downsample frequency by stride, upsample channels by 4."""
     super().__init__(**kwargs)
     ch_out = 4 * ch
     self.shortcut = shortcut
+    self.conditional = conditional
 
     # Layers.
-    self.norm_input = Normalize(norm_type)
+    self.norm_input = get_norm(norm_type, conditional, shift_only)
+
     if self.shortcut:
       self.conv_proj = tfkl.Conv2D(
           ch_out, (1, 1), (1, stride), padding='same', name='conv_proj')
@@ -497,9 +519,21 @@ class ResidualLayer(tfkl.Layer):
     ]
     self.bottleneck = tf.keras.Sequential(layers, name='bottleneck')
 
-  def call(self, x):
-    r = x
-    x = tf.nn.relu(self.norm_input(x))
+  def call(self, inputs):
+    if self.conditional:
+      x, z = inputs
+      r = x
+
+      x = ensure_4d(x)
+      z = ensure_4d(z)
+      x = tf.nn.relu(self.norm_input((x, z)))
+    else:
+      x = inputs
+      r = x
+
+      x = ensure_4d(x)
+      x = tf.nn.relu(self.norm_input(x))
+
     # The projection shortcut should come after the first norm and ReLU
     # since it performs a 1x1 convolution.
     r = self.conv_proj(x) if self.shortcut else r
@@ -508,7 +542,7 @@ class ResidualLayer(tfkl.Layer):
 
 
 @gin.register
-class ResidualStack(tf.keras.Sequential):
+class ResidualStack(tfkl.Layer):
   """LayerNorm -> ReLU -> Conv layer."""
 
   def __init__(self,
@@ -516,38 +550,78 @@ class ResidualStack(tf.keras.Sequential):
                block_sizes,
                strides,
                norm_type,
+               conditional=False,
+               shift_only=False,
+               nonlinearity='relu',
                **kwargs):
     """ResNet layers."""
+    super().__init__(**kwargs)
+    self.conditional = conditional
     layers = []
     for (ch, n_layers, stride) in zip(filters, block_sizes, strides):
+
       # Only the first block per residual_stack uses shortcut and strides.
-      layers.append(ResidualLayer(ch, stride, True, norm_type))
+      layers.append(ResidualLayer(ch, stride, True, norm_type,
+                                  conditional, shift_only))
+
       # Add the additional (n_layers - 1) layers to the stack.
       for _ in range(1, n_layers):
-        layers.append(ResidualLayer(ch, 1, False, norm_type))
+        layers.append(ResidualLayer(ch, 1, False, norm_type,
+                                    conditional, shift_only))
+
     layers.append(Normalize(norm_type))
-    layers.append(tfkl.Activation(tf.nn.relu))
-    super().__init__(layers, **kwargs)
+    layers.append(tfkl.Activation(get_nonlinearity(nonlinearity)))
+    self.layers = layers
+
+  def __call__(self, inputs):
+    if self.conditional:
+      x, z = inputs
+
+    else:
+      x = inputs
+
+    for layer in self.layers:
+      is_cond = self.conditional and isinstance(layer, ResidualLayer)
+      l_in = [x, z] if is_cond else x
+      x = layer(l_in)
+    return x
 
 
 @gin.register
-class ResNet(tf.keras.Sequential):
+class ResNet(tfkl.Layer):
   """Residual network."""
 
-  def __init__(self, size='large', norm_type='layer', **kwargs):
+  def __init__(self, size='large', norm_type='layer',
+               conditional=False, shift_only=False, **kwargs):
+    super().__init__(**kwargs)
+    self.conditional = conditional
     size_dict = {
         'small': (32, [2, 3, 4]),
         'medium': (32, [3, 4, 6]),
         'large': (64, [3, 4, 6]),
     }
     ch, blocks = size_dict[size]
-    layers = [
+    self.layers = [
         tfkl.Conv2D(64, (7, 7), (1, 2), padding='same'),
         tfkl.MaxPool2D(pool_size=(1, 3), strides=(1, 2), padding='same'),
-        ResidualStack([ch, 2 * ch, 4 * ch], blocks, [1, 2, 2], norm_type),
-        ResidualStack([8 * ch], [3], [2], norm_type)
+        ResidualStack([ch, 2 * ch, 4 * ch], blocks, [1, 2, 2], norm_type,
+                      conditional, shift_only),
+        ResidualStack([8 * ch], [3], [2], norm_type,
+                      conditional, shift_only)
     ]
-    super().__init__(layers, **kwargs)
+
+  def __call__(self, inputs):
+    if self.conditional:
+      x, z = inputs
+
+    else:
+      x = inputs
+
+    for layer in self.layers:
+      is_cond = self.conditional and isinstance(layer, ResidualStack)
+      l_in = [x, z] if is_cond else x
+      x = layer(l_in)
+    return x
 
 
 # ---------------- Stacks ------------------------------------------------------
@@ -555,11 +629,11 @@ class ResNet(tf.keras.Sequential):
 class Fc(tf.keras.Sequential):
   """Makes a Dense -> LayerNorm -> Leaky ReLU layer."""
 
-  def __init__(self, ch=128, **kwargs):
+  def __init__(self, ch=128, nonlinearity='leaky_relu', **kwargs):
     layers = [
         tfkl.Dense(ch),
         tfkl.LayerNormalization(),
-        tfkl.Activation(tf.nn.leaky_relu),
+        tfkl.Activation(get_nonlinearity(nonlinearity)),
     ]
     super().__init__(layers, **kwargs)
 
@@ -568,8 +642,8 @@ class Fc(tf.keras.Sequential):
 class FcStack(tf.keras.Sequential):
   """Stack Dense -> LayerNorm -> Leaky ReLU layers."""
 
-  def __init__(self, ch=256, layers=2, **kwargs):
-    layers = [Fc(ch) for i in range(layers)]
+  def __init__(self, ch=256, layers=2, nonlinearity='leaky_relu', **kwargs):
+    layers = [Fc(ch, nonlinearity) for i in range(layers)]
     super().__init__(layers, **kwargs)
 
 
@@ -584,6 +658,19 @@ class Rnn(tfkl.Layer):
 
   def call(self, x):
     return self.rnn(x)
+
+
+@gin.register
+class RnnFc(tfk.Sequential):
+  """RNN layer -> fully connected -> LayerNorm -> Activation fn."""
+
+  def __init__(self, rnn_feat, out_feat,
+               rnn_type='lstm', nonlinearity='sigmoid', **kwargs):
+    layers = [
+        Rnn(rnn_feat, rnn_type),
+        Fc(out_feat, nonlinearity=nonlinearity),
+    ]
+    super().__init__(layers, **kwargs)
 
 
 @gin.register
@@ -1012,4 +1099,6 @@ class VectorQuantization(tfkl.Layer):
 
   def get_losses_dict(self, z, z_q):
     return {self.name + '_commitment_loss': self.committment_loss(z, z_q)}
+
+
 
