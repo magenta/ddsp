@@ -162,8 +162,13 @@ class Trainer(object):
       _, losses = self.model(batch, return_losses=True, training=True)
     # Clip and apply gradients.
     grads = tape.gradient(losses['total_loss'], self.model.trainable_variables)
-    grads, _ = tf.clip_by_global_norm(grads, self.grad_clip_norm)
-    self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
+    if any(grads):
+      grads, _ = tf.clip_by_global_norm(grads, self.grad_clip_norm)
+      self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
+    else:
+      logging.warning('No gradients found for any variables! Still training '
+                      'anyways, but make sure this is what you want to do.')
+      self.optimizer.iterations.assign_add(1)
     return losses
 
 

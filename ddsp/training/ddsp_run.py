@@ -178,6 +178,7 @@ def main(unused_argv):
 
   gfile.makedirs(restore_dir)  # Only makes dirs if they don't exist.
   parse_gin(restore_dir)
+  logging.info('Operative Gin Config:\n%s', gin.config.config_str())
   train_util.gin_register_keras_layers()
 
   if FLAGS.allow_memory_growth:

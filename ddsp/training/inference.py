@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Constructs inference version of the models.
+"""Constructs inference (SavedModel) versions of the models.
 
 These models can be stored as SavedModels by calling model.save() and used
 just like other SavedModels.
