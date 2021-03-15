@@ -62,12 +62,28 @@ class Harmonic(processors.Processor):
                sample_rate=16000,
                scale_fn=core.exp_sigmoid,
                normalize_below_nyquist=True,
+               amp_resample_method='window',
                name='harmonic'):
+    """Constructor.
+
+    Args:
+      n_samples: Fixed length of output audio.
+      sample_rate: Samples per a second.
+      scale_fn: Scale function for amplitude and harmonic distribution inputs.
+      normalize_below_nyquist: Remove harmonics above the nyquist frequency
+        and normalize the remaining harmonic distribution to sum to 1.0.
+      amp_resample_method: Mode with which to resample amplitude envelopes.
+        Must be in ['nearest', 'linear', 'cubic', 'window']. 'window' uses
+        overlapping windows (only for upsampling) which is smoother
+        for amplitude envelopes with large frame sizes.
+      name: Synth name.
+    """
     super().__init__(name=name)
     self.n_samples = n_samples
     self.sample_rate = sample_rate
     self.scale_fn = scale_fn
     self.normalize_below_nyquist = normalize_below_nyquist
+    self.amp_resample_method = amp_resample_method
 
   def get_controls(self,
                    amplitudes,
@@ -128,7 +144,8 @@ class Harmonic(processors.Processor):
         amplitudes=amplitudes,
         harmonic_distribution=harmonic_distribution,
         n_samples=self.n_samples,
-        sample_rate=self.sample_rate)
+        sample_rate=self.sample_rate,
+        amp_resample_method=self.amp_resample_method)
     return signal
 
 
