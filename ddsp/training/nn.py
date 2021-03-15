@@ -479,6 +479,89 @@ def get_norm(norm_type, conditional, shift_only):
     return Normalize(norm_type)
 
 
+# ------------------ Resampling ------------------------------------------------
+def polyphase_resample(x, stride=2, resample_type='down', trim_or_pad='pad'):
+  """Resample by 'space_to_depth' conversion of time and channels.
+
+  For example,
+    Downsampling: [batch, time, ch] --> [batch, time/stride, ch*stride]
+    Upsampling:   [batch, time, ch] --> [batch, time*stride, ch/stride]
+
+  Named 'polyphase' resample because it performs a transformation similar to a
+  polyphase filter (each "phase" gets its own channel, filter in parallel).
+  Args:
+    x: Input tensor, shape [batch, time, ch].
+    stride: Amount to resample by.
+    resample_type: 'up' or 'down'.
+    trim_or_pad: 'trim' or 'pad'. What to do if time or channels cannot be
+      evenly divided by stride.
+
+  Returns:
+    A resampled tensor.
+  """
+  is_4d = len(x.shape) == 4
+  if is_4d:
+    x = x[:, :, 0, :]
+
+  n_time = x.shape[1]
+  n_ch = x.shape[2]
+
+  if resample_type == 'down':
+    # Pad or trim.
+    if trim_or_pad == 'pad':
+      pad = (stride - n_time % stride) % stride
+      x = tf.pad(x, [[0, 0], [0, pad], [0, 0]]) if pad > 0 else x
+    else:
+      trim = n_time % stride
+      x = x[:, :-trim, :] if trim > 0 else x
+
+    # Reshape.
+    n_time = x.shape[1]
+    x_reshape = tf.reshape(x, [-1, n_time // stride, n_ch * stride])
+
+  elif resample_type == 'up':
+    # Pad or trim.
+    if trim_or_pad == 'pad':
+      pad = (stride - n_ch % stride) % stride
+      x = tf.pad(x, [[0, 0], [0, 0], [0, pad]]) if pad > 0 else x
+
+    else:
+      trim = n_ch % stride
+      if trim > 0:
+        x = x[:, :, :-trim]
+
+    # Reshape.
+    n_ch = x.shape[2]
+    x_reshape = tf.reshape(x, [-1, n_time * stride, n_ch // stride])
+
+  else:
+    raise ValueError('`resample_type` must be either "up" or "down"')
+
+  if is_4d:
+    x_reshape = x_reshape[:, :, None, :]
+
+  return x_reshape
+
+
+@gin.register
+class PolyphaseResample(tfkl.Layer):
+  """Resample by interleaving time and channels."""
+
+  def __init__(self,
+               stride=2,
+               resample_type='down',
+               trim_or_pad='pad',
+               **kwargs):
+    super().__init__(**kwargs)
+    self.stride = stride
+    self.resample_type = resample_type
+    self.trim_or_pad = trim_or_pad
+
+  def call(self, x):
+    return polyphase_resample(
+        x, self.stride, self.resample_type, self.trim_or_pad)
+
+
 # ------------------ ResNet ----------------------------------------------------
 @gin.register
 class NormReluConv(tf.keras.Sequential):

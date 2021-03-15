@@ -192,5 +192,21 @@ class SplitToDictTest(tf.test.TestCase):
     self.assertAllEqual(x3, output.get('x3'))
 
 
+class PolyphaseResampleTest(parameterized.TestCase, tf.test.TestCase):
+
+  @parameterized.named_parameters(
+      ('even_multiple', 4, 2),
+      ('stride_n_t', 5, 5),
+      ('stride_1', 4, 1),
+  )
+  def test_reconstructions_are_lossless(self, n_t, stride):
+    n_batch = 2
+    n_ch = 3
+    x = tf.tile(tf.reshape(tf.range(n_t), [1, n_t, 1]), [n_batch, 1, n_ch])
+    x_down = nn.polyphase_resample(x, stride, 'down', trim_or_pad='pad')
+    x_recon = nn.polyphase_resample(x_down, stride, 'up', trim_or_pad='pad')
+    self.assertAllEqual(x, x_recon)
+
+
 if __name__ == '__main__':
   tf.test.main()
