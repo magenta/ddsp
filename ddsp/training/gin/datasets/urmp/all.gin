@@ -1,0 +1,5 @@
+# -*-Python-*-
+include 'datasets/urmp/base.gin'
+
+# All URMP instruments
+Urmp.instrument_key =  'all'

@@ -4,8 +4,8 @@
 import ddsp
 import ddsp.training
 
-include 'eval/google/midi_ae.gin'
-include 'models/google/midi/mixins/recon_lossgroup.gin'
+include 'eval/midi_ae.gin'
+include 'models/midiae/mixins/recon_lossgroup.gin'
 
 # Training
 train.num_steps = 500000

@@ -960,3 +960,18 @@ class TWMLoss(Loss):
     return harmonics
 
 
+@gin.register
+class ParamLoss(Loss):
+  """Loss on the mean difference between any two tensors."""
+
+  def __init__(self, weight=1.0, loss_type='L1', **kwargs):
+    super().__init__(**kwargs)
+    self.weight = weight
+    self.loss_type = loss_type
+
+  def call(self, pred, target, weights=None):
+    # Take the difference.
+    loss = mean_difference(pred, target, self.loss_type, weights)
+    return self.weight * loss
+
+

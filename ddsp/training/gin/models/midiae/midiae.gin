@@ -4,8 +4,8 @@
 import ddsp
 import ddsp.training
 
-include 'eval/google/midi_ae.gin'
-include 'models/google/midi/mixins/recon_encoders.gin'
+include 'eval/midi_ae.gin'
+include 'models/midiae/mixins/recon_lossgroup.gin'
 
 # Training
 train.num_steps = 500000
@@ -29,6 +29,7 @@ DilatedConvDecoder.layers_per_stack = 9
 DilatedConvDecoder.norm_type = 'layer'
 DilatedConvDecoder.input_keys = ('ld_scaled', 'f0_scaled')
 DilatedConvDecoder.stacks = 2
+DilatedConvDecoder.conditioning_keys = None
 DilatedConvDecoder.precondition_stack = None
 DilatedConvDecoder.output_splits = (('amplitudes', 1),
                                     ('harmonic_distribution', 60),
@@ -56,7 +57,7 @@ dec/DilatedConvStack.ch = 128
 dec/DilatedConvStack.layers_per_stack = 5
 dec/DilatedConvStack.stacks = 4
 dec/DilatedConvStack.norm_type = 'layer'
-dec/DilatedConvStack.conditional = True
+dec/DilatedConvStack.conditional = False
 
 
 # ==============================================================================

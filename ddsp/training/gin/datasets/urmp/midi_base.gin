@@ -1,0 +1,10 @@
+# -*-Python-*-
+include 'datasets/base.gin'
+
+train.data_provider = @train_data/data.UrmpMidi()
+train_data/data.UrmpMidi.split = 'train'
+
+evaluate.data_provider = @test_data/data.UrmpMidi()
+sample.data_provider = @test_data/data.UrmpMidi()
+eval_discrete.data_provider = @test_data/data.UrmpMidi()
+test_data/data.UrmpMidi.split = 'test'

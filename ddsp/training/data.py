@@ -14,6 +14,7 @@
 
 # Lint as: python3
 """Library of functions to help loading data."""
+import os
 
 from absl import logging
 import gin
@@ -359,5 +360,76 @@ class SyntheticNotes(TFRecordProvider):
             tf.io.FixedLenFeature(
                 [self.n_timesteps, self.n_mags], dtype=tf.float32),
     }
+
+
+@gin.register
+class Urmp(TFRecordProvider):
+  """Urmp training set."""
+
+  def __init__(self, base_dir, instrument_key='tpt', split='train'):
+    """URMP dataset for either a specific instrument or all instruments.
+
+    Args:
+      base_dir: Base directory to URMP TFRecords.
+      instrument_key: Determines which instrument to return. Choices include
+        ['all', 'bn', 'cl', 'db', 'fl', 'hn', 'ob', 'sax', 'tba', 'tbn',
+        'tpt', 'va', 'vc', 'vn'].
+      split: Choices include ['train', 'test'].
+    """
+    self.instrument_key = instrument_key
+    self.split = split
+    self.base_dir = base_dir
+    super().__init__()
+
+  @property
+  def default_file_pattern(self):
+    if self.instrument_key == 'all':
+      file_pattern = 'all_instruments_{}.tfrecord*'.format(self.split)
+    else:
+      file_pattern = 'urmp_{}_solo_ddsp_conditioning_{}.tfrecord*'.format(
+          self.instrument_key, self.split)
+
+    return os.path.join(self.base_dir, file_pattern)
+
+
+@gin.register
+class UrmpMidi(Urmp):
+  """Urmp training set with midi note data."""
+
+  _INSTRUMENTS = ['vn', 'va', 'vc', 'db', 'fl', 'ob', 'cl', 'sax', 'bn', 'tpt',
+                  'hn', 'tbn', 'tba']
+
+  @property
+  def features_dict(self):
+    base_features = super().features_dict
+    base_features.update({
+        'note_active_velocities':
+            tf.io.FixedLenFeature([self._feature_length * 128], tf.float32),
+        'note_active_frame_indices':
+            tf.io.FixedLenFeature([self._feature_length * 128], tf.float32),
+        'instrument_id': tf.io.FixedLenFeature([], tf.string),
+        'power_db':
+            tf.io.FixedLenFeature([self._feature_length], dtype=tf.float32),
+    })
+    return base_features
+
+  def get_dataset(self, shuffle=True):
+
+    instrument_ids = range(len(self._INSTRUMENTS))
+    inst_vocab = tf.lookup.StaticHashTable(
+        tf.lookup.KeyValueTensorInitializer(self._INSTRUMENTS, instrument_ids),
+        -1)
+
+    def _reshape_tensors(data):
+      data['note_active_frame_indices'] = tf.reshape(
+          data['note_active_frame_indices'], (-1, 128))
+      data['note_active_velocities'] = tf.reshape(
+          data['note_active_velocities'], (-1, 128))
+      data['instrument_id'] = inst_vocab.lookup(data['instrument_id'])
+      return data
+
+    ds = super().get_dataset(shuffle)
+    ds = ds.map(_reshape_tensors, num_parallel_calls=_AUTOTUNE)
+    return ds
 
 

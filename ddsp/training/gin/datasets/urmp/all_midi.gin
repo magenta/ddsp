@@ -1,0 +1,5 @@
+# -*-Python-*-
+include 'datasets/urmp/midi_base.gin'
+
+# All URMP instruments
+UrmpMidi.instrument_key =  'all'
