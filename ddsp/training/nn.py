@@ -73,12 +73,28 @@ class DictLayer(tfkl.Layer):
       **kwargs: Other keras layer kwargs such as name.
     """
     super().__init__(**kwargs)
-    input_keys = input_keys or self.get_argument_names('call')
+    if not input_keys:
+      input_keys = self.get_argument_names('call')
+      self.default_input_keys = list(self.get_default_argument_names('call'))
+      self.default_input_values = list(self.get_default_argument_values('call'))
+    else:
+      # Manually specifying input keys overwrites default arguments.
+      self.default_input_keys = []
+      self.default_input_values = []
     output_keys = output_keys or self.get_return_annotations('call')
 
     self.input_keys = list(input_keys)
     self.output_keys = list(output_keys)
-    self.default_input_keys = self.get_default_argument_names('call')
+
+  @property
+  def all_input_keys(self):
+    """Full list of inputs and outputs."""
+    return self.input_keys + self.default_input_keys
+
+  @property
+  def n_inputs(self):
+    """Dynamically computed in case input_keys is changed in subclass init."""
+    return len(self.all_input_keys)
 
   def __call__(self, *inputs, **kwargs):
     """Wrap the layer's __call__() with dictionary inputs and outputs.
@@ -121,24 +137,58 @@ class DictLayer(tfkl.Layer):
         returns a dictionary it will be returned directly, otherwise the output
         tensors will be wrapped in a dictionary {output_key: output_tensor}.
     """
-    # Merge all dictionaries provided in inputs.
+    # Construct a list of input tensors equal in length and order to the `call`
+    # input signature.
+    # -- Start first with any tensor arguments.
+    # -- Then lookup tensors from input dictionaries.
+    # -- Use default values if not found.
+
+    # Start by merging all dictionaries of tensors from the input.
     input_dict = {}
     for v in inputs:
       if isinstance(v, dict):
         input_dict.update(v)
 
-    # If any dicts provided, lookup input tensors from those dicts.
-    # Otherwise, just use inputs list as input tensors.
-    if input_dict:
-      inputs = [core.nested_lookup(key, input_dict) for key in self.input_keys]
-      # Optionally add for default arguments if key is present in input_dict.
-      for key in  self.default_input_keys:
-        try:
-          inputs.append(core.nested_lookup(key, input_dict))
-        except KeyError:
-          pass
+    # And then strip all dictionaries from the input.
+    inputs = [v for v in inputs if not isinstance(v, dict)]
+
+    # Add any tensors from kwargs.
+    for key in self.all_input_keys:
+      if key in kwargs:
+        input_dict[key] = kwargs[key]
+
+    # And strip from kwargs.
+    kwargs = {k: v for k, v in kwargs.items() if k not in self.all_input_keys}
+
+    # Look up further inputs from the dictionaries.
+    for key in self.input_keys:
+      try:
+        # If key is present use the input_dict value.
+        inputs.append(core.nested_lookup(key, input_dict))
+      except KeyError:
+        # Skip if not present.
+        pass
+
+    # Add default arguments.
+    for key, value in zip(self.default_input_keys, self.default_input_values):
+      try:
+        # If key is present, use the input_dict value.
+        inputs.append(core.nested_lookup(key, input_dict))
+      except KeyError:
+        # Otherwise use the default value if not supplied as non-dict input.
+        if len(inputs) < self.n_inputs:
+          inputs.append(value)
 
     # Run input tensors through the model.
+    if len(inputs) != self.n_inputs:
+      raise TypeError(f'{len(inputs)} input tensors extracted from inputs'
+                      '(including default args) but the layer expects '
+                      f'{self.n_inputs} tensors.\n'
+                      f'Input keys: {self.input_keys}\n'
+                      f'Default keys: {self.default_input_keys}\n'
+                      f'Default values: {self.default_input_values}\n'
+                      f'Input dictionaries: {input_dict}\n'
+                      f'Input Tensors (Args, Dicts, and Defaults): {inputs}\n')
     outputs = super().__call__(*inputs, **kwargs)
 
     # Return dict if call() returns it.
@@ -167,6 +217,14 @@ class DictLayer(tfkl.Layer):
     if spec.defaults:
       n_defaults = len(spec.defaults)
       return spec.args[-n_defaults:]
+    else:
+      return []
+
+  def get_default_argument_values(self, method):
+    """Get list of strings for names of default arguments to method."""
+    spec = inspect.getfullargspec(getattr(self, method))
+    if spec.defaults:
+      return spec.defaults
     else:
       return []
 

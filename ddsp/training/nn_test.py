@@ -75,6 +75,20 @@ class DictLayerTest(parameterized.TestCase, tf.test.TestCase):
 
     self.TestLayerDefaults = TestLayerDefaults  # pylint: disable=invalid-name
 
+    class TestLayerOptionals(nn.DictLayer):
+      """Uses args and return annotations, and default arg inputs."""
+
+      def call(self, x1, x2=None, x3=None) -> ['y']:
+        """Optionally add multiples of each input."""
+        y = x1
+        if x2 is not None:
+          y += 2.0 * x2
+        if x3 is not None:
+          y += 3.0 * x3
+        return y
+
+    self.TestLayerOptionals = TestLayerOptionals  # pylint: disable=invalid-name
+
   def assert_output_shapes_are_correct(self, dict_layer, outputs):
     """Check that the output is correct for a input."""
     self.assertListEqual(list(dict_layer.output_keys), list(outputs.keys()))
@@ -104,22 +118,24 @@ class DictLayerTest(parameterized.TestCase, tf.test.TestCase):
     outputs = test_layer(x1=self.x, x2=self.x)
     self.assert_output_shapes_are_correct(test_layer, outputs)
 
-    # Merge multiple dict inputs, ignore other args, ignore extra keys.
+    # Merge multiple dict inputs, ignore extra keys.
     outputs = test_layer({'x1': self.x, 'ignore': 0},
-                         {'x2': self.x, 'ignore2': 0},
-                         0, 0, 0)
+                         {'x2': self.x, 'ignore2': 0})
     self.assert_output_shapes_are_correct(test_layer, outputs)
 
     # Raises errors for bad inputs.
-    # Missing key, wrong key name.
-    with self.assertRaises(KeyError):
-      test_layer({'asdf': self.x, 'x2': self.x})
-    # Missing keys.
-    with self.assertRaises(KeyError):
-      test_layer({'x': self.x})
     # Wrong number of args.
     with self.assertRaises(TypeError):
       test_layer(self.x)
+    # Missing key --> Wrong number of args.
+    with self.assertRaises(TypeError):
+      test_layer({'x1': self.x})
+    # Missing key, wrong key name --> Wrong number of args.
+    with self.assertRaises(TypeError):
+      test_layer({'asdf': self.x, 'x2': self.x})
+    # Duplicate input argument.
+    with self.assertRaises(TypeError):
+      test_layer(self.x, {'x1': self.x, 'x2': self.x})
 
   def test_input_output_keys_are_correct(self):
     """Ensure input output keys are the same for different class definitions."""
@@ -152,7 +168,7 @@ class DictLayerTest(parameterized.TestCase, tf.test.TestCase):
     self.assert_output_shapes_are_correct(test_layer, outputs)
 
     # Make sure original input_keys no longer are correct.
-    with self.assertRaises(KeyError):
+    with self.assertRaises(TypeError):
       test_layer({'x1': self.x, 'x2': self.x})
 
   def assertOutputsEqual(self, outputs_1, outputs_2):
@@ -173,6 +189,19 @@ class DictLayerTest(parameterized.TestCase, tf.test.TestCase):
     outputs_1 = test_layer({'x1': self.x, 'x2': self.x})
     outputs_2 = test_layer({'x1': self.x})
     self.assertOutputsEqual(outputs_1, outputs_2)
+
+  def test_optional_args_read_in_correct_order(self):
+    """Check correct result regardless of whether default args are provided."""
+    test_layer = self.TestLayerOptionals()
+    # Dict inputs.
+    outputs_1 = test_layer({'x1': self.x})['y']
+    outputs_1_2 = test_layer({'x1': self.x, 'x2': self.x})['y']
+    outputs_1_3 = test_layer({'x1': self.x, 'x3': self.x})['y']
+    outputs_1_2_3 = test_layer({'x1': self.x, 'x2': self.x, 'x3': self.x})['y']
+    self.assertAllClose(outputs_1, self.x)
+    self.assertAllClose(outputs_1_2, 3.0 * self.x)
+    self.assertAllClose(outputs_1_3, 4.0 * self.x)
+    self.assertAllClose(outputs_1_2_3, 6.0 * self.x)
 
 
 class SplitToDictTest(tf.test.TestCase):

@@ -130,6 +130,22 @@ def nested_lookup(nested_key: Text,
   return value
 
 
+def leaf_key(nested_key: Text,
+             delimiter: Text = '/') -> tf.Tensor:
+  """Returns the leaf node key name.
+
+  Args:
+    nested_key: String of the form "key/key/key...".
+    delimiter: String that splits the nested keys.
+
+  Returns:
+    value: Final leaf node key name.
+  """
+  # Parse the input string.
+  keys = nested_key.split(delimiter)
+  return keys[-1]
+
+
 def pad_axis(x, padding=(0, 0), axis=0, **pad_kwargs):
   """Pads only one axis of a tensor.
 
