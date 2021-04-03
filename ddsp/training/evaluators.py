@@ -13,7 +13,6 @@
 # limitations under the License.
 
 """Library of evaluator implementations for use in eval_util."""
-
 import ddsp
 from ddsp.training import metrics
 from ddsp.training import summaries

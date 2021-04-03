@@ -86,6 +86,15 @@ def get_spectrogram(audio, rotate=False, size=1024):
   return mag
 
 
+def _plt_spec(spec, ax, title):
+  """Helper function to plot a spectrogram to an axis."""
+  spec = np.rot90(spec)
+  ax.matshow(spec, vmin=-5, vmax=1, aspect='auto', cmap=plt.cm.magma)
+  ax.set_title(title)
+  ax.set_xticks([])
+  ax.set_yticks([])
+
+
 def spectrogram_summary(audio, audio_gen, step, name='', tag='spectrogram'):
   """Writes a summary of spectrograms for a batch of images."""
   specgram = lambda a: ddsp.spectral_ops.compute_logmag(tf_float32(a), size=768)
@@ -101,19 +110,8 @@ def spectrogram_summary(audio, audio_gen, step, name='', tag='spectrogram'):
     # Manually specify exact size of fig for tensorboard
     fig, axs = plt.subplots(2, 1, figsize=(8, 8))
 
-    ax = axs[0]
-    spec = np.rot90(spectrograms[i])
-    ax.matshow(spec, vmin=-5, vmax=1, aspect='auto', cmap=plt.cm.magma)
-    ax.set_title('original')
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = axs[1]
-    spec = np.rot90(spectrograms_gen[i])
-    ax.matshow(spec, vmin=-5, vmax=1, aspect='auto', cmap=plt.cm.magma)
-    ax.set_title('synthesized')
-    ax.set_xticks([])
-    ax.set_yticks([])
+    _plt_spec(spectrograms[i], axs[0], 'original')
+    _plt_spec(spectrograms_gen[i], axs[1], 'synthesized')
 
     # Format and save plot to image
     tag_i = f'{tag}/{name}{i+1}'
@@ -400,12 +398,18 @@ def midiae_sp_summary(outputs, step):
     fig_summary(f'noise_mags/noise_mags_{i + 1}', fig, step)
 
 
-def pianoroll_summary(batch, step, name, frame_rate, pianoroll_key):
+def pianoroll_summary(batch, step, name, frame_rate, pred_key,
+                      gt_key='note_active_velocities', ch=None,
+                      threshold=0.0):
   """Plots ground truth pianoroll against predicted MIDI."""
-  batch_size = batch['note_active_velocities'].shape[0]
+  batch_size = batch[gt_key].shape[0]
   for i in range(batch_size):
-    gt_pianoroll = batch['note_active_velocities'][i]
-    pred_pianoroll = batch[pianoroll_key][i]
+    if ch is None:
+      gt_pianoroll = batch[gt_key][i]
+      pred_pianoroll = batch[pred_key][i]
+    else:
+      gt_pianoroll = batch[gt_key][i, ..., ch]
+      pred_pianoroll = batch[pred_key][i, ..., ch]
 
     if isinstance(pred_pianoroll, note_seq.NoteSequence):
       pred_pianoroll = sequences_lib.sequence_to_pianoroll(
@@ -425,7 +429,8 @@ def pianoroll_summary(batch, step, name, frame_rate, pianoroll_key):
     img[:, :, pred_color['idx']] = pred_pianoroll_t
 
     # this is the alpha channel:
-    img[:, :, 3] = np.logical_or(gt_pianoroll_t > 0.0, pred_pianoroll_t > 0.0)
+    img[:, :, 3] = np.logical_or(gt_pianoroll_t > threshold,
+                                 pred_pianoroll_t > threshold)
 
     # Determine the min & max y-values for plotting.
     gt_note_indices = np.argmax(gt_pianoroll, axis=1)
@@ -440,8 +445,9 @@ def pianoroll_summary(batch, step, name, frame_rate, pianoroll_key):
       upper_limit = 127
 
     # Make the figures and add them to the summary.
-    fig, ax, _ = pianoroll_plot_setup(figsize=(6.0, 4.0))
-    ax.imshow(img, origin='lower', aspect='auto')
+    fig, ax, _ = pianoroll_plot_setup(figsize=(6.0, 4.0),
+                                      xlim=[0, img.shape[1]])
+    ax.imshow(img, origin='lower', aspect='auto', interpolation='nearest')
     ax.set_ylim((max(lower_limit - 5, 0), min(upper_limit + 5, 127)))
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     labels_and_colors = [
