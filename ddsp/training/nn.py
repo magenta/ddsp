@@ -792,10 +792,13 @@ class FcStack(tf.keras.Sequential):
 class Rnn(tfkl.Layer):
   """Single RNN layer."""
 
-  def __init__(self, dims, rnn_type, return_sequences=True, **kwargs):
+  def __init__(self, dims, rnn_type, return_sequences=True, bidir=False,
+               **kwargs):
     super().__init__(**kwargs)
     rnn_class = {'lstm': tfkl.LSTM, 'gru': tfkl.GRU}[rnn_type]
     self.rnn = rnn_class(dims, return_sequences=return_sequences)
+    if bidir:
+      self.rnn = tfkl.Bidirectional(self.rnn)
 
   def call(self, x):
     return self.rnn(x)
@@ -806,11 +809,10 @@ class RnnFc(tfk.Sequential):
   """RNN layer -> fully connected -> LayerNorm -> Activation fn."""
 
   def __init__(self, rnn_feat, out_feat,
-               rnn_type='lstm', nonlinearity='sigmoid', **kwargs):
-    layers = [
-        Rnn(rnn_feat, rnn_type),
-        Fc(out_feat, nonlinearity=nonlinearity),
-    ]
+               rnn_type='lstm', nonlinearity='sigmoid',
+               bidir=False, n_rnn=1, **kwargs):
+    layers = [Rnn(rnn_feat, rnn_type, bidir) for _ in range(n_rnn)]
+    layers.append(Fc(out_feat, nonlinearity=nonlinearity))
     super().__init__(layers, **kwargs)
 
 
