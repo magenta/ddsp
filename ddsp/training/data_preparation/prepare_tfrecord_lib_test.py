@@ -86,7 +86,8 @@ class ProcessTaskBeamTest(parameterized.TestCase):
         sample_rate=sample_rate,
         frame_rate=frame_rate,
         window_secs=window_secs,
-        hop_secs=hop_secs)
+        hop_secs=hop_secs,
+        coarse_chunk_secs=None)
 
     expected_f0_and_loudness_length = int(window_secs * frame_rate)
     self.validate_outputs(
@@ -107,12 +108,37 @@ class ProcessTaskBeamTest(parameterized.TestCase):
         num_shards=2,
         sample_rate=sample_rate,
         frame_rate=frame_rate,
-        window_secs=None)
+        window_secs=None,
+        coarse_chunk_secs=None)
 
     expected_f0_and_loudness_length = int(self.wav_secs * frame_rate)
     self.validate_outputs(
         1, {
             'audio': int(self.wav_secs * sample_rate),
+            'f0_hz': expected_f0_and_loudness_length,
+            'f0_confidence': expected_f0_and_loudness_length,
+            'loudness_db': expected_f0_and_loudness_length,
+        })
+
+  @parameterized.named_parameters(('16k', 16000), ('24k', 24000),
+                                  ('48k', 48000))
+  def test_prepare_tfrecord_chunk(self, sample_rate):
+    frame_rate = 250
+    chunk_secs = 1.5
+    prepare_tfrecord_lib.prepare_tfrecord(
+        [self.wav_path],
+        os.path.join(self.test_dir, 'output.tfrecord'),
+        num_shards=2,
+        sample_rate=sample_rate,
+        frame_rate=frame_rate,
+        window_secs=None,
+        coarse_chunk_secs=chunk_secs)
+
+    expected_f0_and_loudness_length = int(chunk_secs * frame_rate)
+
+    self.validate_outputs(
+        2, {
+            'audio': int(chunk_secs * sample_rate),
             'f0_hz': expected_f0_and_loudness_length,
             'f0_confidence': expected_f0_and_loudness_length,
             'loudness_db': expected_f0_and_loudness_length,
@@ -127,7 +153,8 @@ class ProcessTaskBeamTest(parameterized.TestCase):
         num_shards=2,
         sample_rate=sample_rate,
         frame_rate=None,
-        window_secs=None)
+        window_secs=None,
+        coarse_chunk_secs=None)
 
     self.validate_outputs(
         1, {
@@ -147,7 +174,8 @@ class ProcessTaskBeamTest(parameterized.TestCase):
                                             num_shards=2,
                                             sample_rate=sample_rate,
                                             frame_rate=frame_rate,
-                                            window_secs=None)
+                                            window_secs=None,
+                                            coarse_chunk_secs=None)
 
 
 if __name__ == '__main__':

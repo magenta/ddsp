@@ -32,9 +32,8 @@ import tensorflow.compat.v2 as tf
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_list(
-    'input_audio_filepatterns', [],
-    'List of filepatterns to glob for input audio files.')
+flags.DEFINE_list('input_audio_filepatterns', [],
+                  'List of filepatterns to glob for input audio files.')
 flags.DEFINE_string(
     'output_tfrecord_path', None,
     'The prefix path to the output TFRecord. Shard numbers will be added to '
@@ -43,9 +42,8 @@ flags.DEFINE_integer(
     'num_shards', None,
     'The number of shards to use for the TFRecord. If None, this number will '
     'be determined automatically.')
-flags.DEFINE_integer(
-    'sample_rate', 16000,
-    'The sample rate to use for the audio.')
+flags.DEFINE_integer('sample_rate', 16000,
+                     'The sample rate to use for the audio.')
 flags.DEFINE_integer(
     'frame_rate', 250,
     'The frame rate to use for f0 and loudness features. If set to 0, '
@@ -59,6 +57,14 @@ flags.DEFINE_float(
     'sliding_window_hop_secs', 1,
     'The hop size in seconds to use when splitting audio into constant-length '
     'examples.')
+flags.DEFINE_float(
+    'eval_split_fraction', 0.0,
+    'Fraction of the dataset to reserve for eval split. If set to 0, no eval '
+    'split is created.'
+)
+flags.DEFINE_float(
+    'coarse_chunk_secs', 20.0,
+    'Chunk size in seconds used to split the input audio files.')
 flags.DEFINE_list(
     'pipeline_options', '--runner=DirectRunner',
     'A comma-separated list of command line arguments to be used as options '
@@ -78,6 +84,8 @@ def run():
       frame_rate=FLAGS.frame_rate,
       window_secs=FLAGS.example_secs,
       hop_secs=FLAGS.sliding_window_hop_secs,
+      eval_split_fraction=FLAGS.eval_split_fraction,
+      coarse_chunk_secs=FLAGS.coarse_chunk_secs,
       pipeline_options=FLAGS.pipeline_options)
 
 
