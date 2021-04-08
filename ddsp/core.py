@@ -146,6 +146,11 @@ def leaf_key(nested_key: Text,
   return keys[-1]
 
 
+def map_shape(x: Dict[Text, tf.Tensor]) -> Dict[Text, Sequence[int]]:
+  """Recursively infer tensor shapes for a dictionary of tensors."""
+  return tf.nest.map_structure(lambda t: list(tf.shape(t).numpy()), x)
+
+
 def pad_axis(x, padding=(0, 0), axis=0, **pad_kwargs):
   """Pads only one axis of a tensor.
 

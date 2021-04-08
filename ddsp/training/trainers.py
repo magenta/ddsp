@@ -83,7 +83,15 @@ class Trainer(object):
     logging.info('Saving model took %.1f seconds', time.time() - start_time)
 
   def restore(self, checkpoint_path, restore_keys=None):
-    """Restore model and optimizer from a checkpoint if it exists."""
+    """Restore model and optimizer from a checkpoint if it exists.
+
+    Args:
+      checkpoint_path: Path to checkpoint file or directory.
+      restore_keys: Optional list of strings for submodules to restore.
+
+    Raises:
+      FileNotFoundError: If no checkpoint is found.
+    """
     logging.info('Restoring from checkpoint...')
     start_time = time.time()
 
@@ -105,19 +113,16 @@ class Trainer(object):
 
     # Restore from latest checkpoint.
     checkpoint = self.get_checkpoint(model)
-    latest_checkpoint = train_util.get_latest_chekpoint(checkpoint_path)
-    if latest_checkpoint is not None:
-      # checkpoint.restore must be within a strategy.scope() so that optimizer
-      # slot variables are mirrored.
-      with self.strategy.scope():
-        if restore_keys is None:
-          checkpoint.restore(latest_checkpoint)
-        else:
-          checkpoint.restore(latest_checkpoint).expect_partial()
-        logging.info('Loaded checkpoint %s', latest_checkpoint)
-      logging.info('Loading model took %.1f seconds', time.time() - start_time)
-    else:
-      logging.info('No checkpoint, skipping.')
+    latest_checkpoint = train_util.get_latest_checkpoint(checkpoint_path)
+    # checkpoint.restore must be within a strategy.scope() so that optimizer
+    # slot variables are mirrored.
+    with self.strategy.scope():
+      if restore_keys is None:
+        checkpoint.restore(latest_checkpoint)
+      else:
+        checkpoint.restore(latest_checkpoint).expect_partial()
+      logging.info('Loaded checkpoint %s', latest_checkpoint)
+    logging.info('Loading model took %.1f seconds', time.time() - start_time)
 
   @property
   def step(self):

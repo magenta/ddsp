@@ -94,7 +94,11 @@ def evaluate_or_sample(data_provider,
       dataset_iter = iter(dataset)
 
       # Load model.
-      model.restore(checkpoint_path)
+      try:
+        model.restore(checkpoint_path)
+      except FileNotFoundError:
+        logging.warn('No existing checkpoint found in %s, skipping '
+                     'checkpoint loading.', restore_dir)
 
       # Iterate through dataset and make predictions
       checkpoint_start_time = time.time()

@@ -142,11 +142,13 @@ def parse_gin(restore_dir):
     gin.parse_config_file(eval_default)
 
     # Load operative_config if it exists (model has already trained).
-    operative_config = train_util.get_latest_operative_config(restore_dir)
-    if tf.io.gfile.exists(operative_config):
+    try:
+      operative_config = train_util.get_latest_operative_config(restore_dir)
       logging.info('Using operative config: %s', operative_config)
       operative_config = cloud.make_file_paths_local(operative_config, GIN_PATH)
       gin.parse_config_file(operative_config, skip_unknown=True)
+    except FileNotFoundError:
+      logging.info('Operative config not found in %s', restore_dir)
 
     # User gin config and user hyperparameters from flags.
     gin_file = cloud.make_file_paths_local(FLAGS.gin_file, GIN_PATH)

@@ -15,11 +15,20 @@
 # Lint as: python3
 """Constructs inference version of the models.
 
-These models can be stored as SavedModels by calling model.save() and used
-just like other SavedModels.
-"""
+N.B. (jesseengel): I tried to make a nice base class. I tried both with multiple
+inheritance, and encapsulation, but restoring model parameters seems a bit
+fragile given that TF implicitly uses the Python object model for checkpoints,
+so I decided to opt for code duplication to make things more robust and preserve
+the python object model structure of the original ddsp.training models.
 
-import os
+That said, inference models should satisfy the following interface.
+
+Interface:
+  Initialize from checkpoint: `model = InferenceModel(ckpt_path)`
+  Create SavedModel: `model.save_model(save_dir)`
+
+Need to use model.save_model() as can't override keras model.save().
+"""
 
 import ddsp
 from ddsp.training import models
@@ -28,67 +37,62 @@ import gin
 import tensorflow as tf
 
 
-class InferenceModel(object):
-  """Base class for inference models."""
-
-  def __init__(self, ckpt, model_class, **kwargs):
-    self.parse_gin_config(ckpt)
-    model_class.__init__(self, **kwargs)
-    self.restore(ckpt)
-    self.build_network()
-
-  def parse_gin_config(self, ckpt):
-    with gin.unlock_config():
-      ckpt_dir = os.path.dirname(ckpt)
-      operative_config = train_util.get_latest_operative_config(ckpt_dir)
-      print(f'Parsing from operative_config {operative_config}')
-      gin.parse_config_file(operative_config, skip_unknown=True)
-
-  def build_network(self):
-    """Run a fake batch through the network."""
-    raise NotImplementedError('Need to specify build_network() method.')
-
-  def save_model(self, save_dir):
-    """Save model to save_dir, override for custom function signatures."""
-    self.save(save_dir)
+def parse_operative_config(ckpt_dir):
+  with gin.unlock_config():
+    operative_config = train_util.get_latest_operative_config(ckpt_dir)
+    print(f'Parsing from operative_config {operative_config}')
+    gin.parse_config_file(operative_config, skip_unknown=True)
 
 
 @gin.configurable
-class AutoencoderInference(models.Autoencoder, InferenceModel):
+class AutoencoderInference(models.Autoencoder):
   """Create an inference-only version of the model."""
 
   def __init__(self,
                ckpt,
                length_seconds=4,
-               sample_rate=16000,
-               frame_rate=250,
+               remove_reverb=True,
+               verbose=True,
                **kwargs):
-    # pylint: disable=super-init-not-called
     self.length_seconds = length_seconds
-    self.sample_rate = sample_rate
-    self.frame_rate = frame_rate
-    self.hop_size = int(sample_rate / frame_rate)
-    self.time_steps = int(length_seconds * sample_rate / self.hop_size)
-    self.n_samples = self.time_steps * self.hop_size
-    self.n_frames = int(frame_rate * length_seconds)
-    InferenceModel.__init__(self, ckpt, models.Autoencoder, **kwargs)
+    self.remove_reverb = remove_reverb
+    self.configure_gin(ckpt)
+    super().__init__(**kwargs)
+    self.restore(ckpt, verbose=verbose)
+    self.build_network()
 
-  @tf.function
-  def call(self, input_dict):
-    """Run the core of the network, get predictions."""
-    input_dict = ddsp.core.copy_if_tf_function(input_dict)
-    return super().call(input_dict, training=False)
+  def configure_gin(self, ckpt):
+    """Parse the model operative config to infer new length parameters."""
+    parse_operative_config(ckpt)
 
-  def parse_gin_config(self, ckpt):
-    """Parse the model operative config with new length parameters."""
-    with gin.unlock_config():
-      ckpt_dir = os.path.dirname(ckpt)
-      operative_config = train_util.get_latest_operative_config(ckpt_dir)
-      print(f'Parsing from operative_config {operative_config}')
-      gin.parse_config_file(operative_config, skip_unknown=True)
-      # Set gin params to new length.
+    # Get preprocessor_type,
+    ref = gin.query_parameter('Autoencoder.preprocessor')
+    self.preprocessor_type = ref.config_key[-1].split('.')[-1]
+
+    # Get hop_size, and sample_rate from gin config.
+    self.sample_rate = gin.query_parameter('Harmonic.sample_rate')
+    n_samples_train = gin.query_parameter('Harmonic.n_samples')
+    time_steps_train = gin.query_parameter(
+        f'{self.preprocessor_type}.time_steps')
+    self.hop_size = n_samples_train // time_steps_train
+
+    # Get new lengths for inference.
+    self.n_frames = int(self.length_seconds * self.sample_rate / self.hop_size)
+    self.n_samples = self.n_frames * self.hop_size
+    print('N_Samples:', self.n_samples)
+    print('Hop Size:', self.hop_size)
+    print('N_Frames:', self.n_frames)
+
+    # Set gin config to new lengths from model properties.
+    config = [
+        f'Harmonic.n_samples = {self.n_samples}',
+        f'FilteredNoise.n_samples = {self.n_samples}',
+        f'{self.preprocessor_type}.time_steps = {self.n_frames}',
+        'oscillator_bank.use_angular_cumsum = True',
+    ]
+    if self.remove_reverb:
       # Remove reverb processor.
-      pg_string = """ProcessorGroup.dag = [
+      processor_group_string = """ProcessorGroup.dag = [
       (@synths.Harmonic(),
         ['amps', 'harmonic_distribution', 'f0_hz']),
       (@synths.FilteredNoise(),
@@ -96,59 +100,75 @@ class AutoencoderInference(models.Autoencoder, InferenceModel):
       (@processors.Add(),
         ['filtered_noise/signal', 'harmonic/signal']),
       ]"""
-      gin.parse_config([
-          'Harmonic.n_samples=%d' % self.n_samples,
-          'FilteredNoise.n_samples=%d' % self.n_samples,
-          'F0LoudnessPreprocessor.time_steps=%d' % self.time_steps,
-          'oscillator_bank.use_angular_cumsum=True',
-          pg_string,
-      ])
+      config.append(processor_group_string)
+
+    with gin.unlock_config():
+      gin.parse_config(config)
+
+  def save_model(self, save_dir):
+    """Saves a SavedModel after initialization."""
+    self.save(save_dir)
 
   def build_network(self):
     """Run a fake batch through the network."""
+    db_key = 'power_db' if 'Power' in self.preprocessor_type else 'loudness_db'
     input_dict = {
-        'loudness_db': tf.zeros([self.n_frames]),
+        db_key: tf.zeros([self.n_frames]),
         'f0_hz': tf.zeros([self.n_frames]),
     }
-    print('Inputs to Model:', input_dict)
+    # Recursive print of shape.
+    print('Inputs to Model:', ddsp.core.map_shape(input_dict))
     unused_outputs = self(input_dict)
-    print('Outputs', unused_outputs)
+    print('Outputs from Model:', ddsp.core.map_shape(unused_outputs))
+
+  @tf.function
+  def call(self, inputs, **unused_kwargs):
+    """Run the core of the network, get predictions."""
+    inputs = ddsp.core.copy_if_tf_function(inputs)
+    return super().call(inputs, training=False)
 
 
 @gin.configurable
-class StreamingF0PwInference(models.Autoencoder, InferenceModel):
+class StreamingF0PwInference(models.Autoencoder):
   """Create an inference-only version of the model."""
 
-  def __init__(self, ckpt, **kwargs):
-    # pylint: disable=super-init-not-called
-    InferenceModel.__init__(self, ckpt, models.Autoencoder, **kwargs)
+  def __init__(self, ckpt, verbose=True, **kwargs):
+    self.configure_gin(ckpt)
+    super().__init__(**kwargs)
+    self.restore(ckpt, verbose=verbose)
+    self.build_network()
 
-  def parse_gin_config(self, ckpt):
+  def configure_gin(self, ckpt):
     """Parse the model operative config with special streaming parameters."""
+    parse_operative_config(ckpt)
+
+    # Set streaming specific params.
+    time_steps = gin.query_parameter('F0PowerPreprocessor.time_steps')
+    n_samples = gin.query_parameter('Harmonic.n_samples')
+    samples_per_frame = int(n_samples / time_steps)
+    config = [
+        'F0PowerPreprocessor.time_steps = 1',
+        f'Harmonic.n_samples = {samples_per_frame}',
+        f'FilteredNoise.n_samples = {samples_per_frame}',
+    ]
+
+    # Remove reverb processor.
+    processor_group_string = """ProcessorGroup.dag = [
+    (@synths.Harmonic(),
+      ['amps', 'harmonic_distribution', 'f0_hz']),
+    (@synths.FilteredNoise(),
+      ['noise_magnitudes']),
+    (@processors.Add(),
+      ['filtered_noise/signal', 'harmonic/signal']),
+    ]"""
+    config.append(processor_group_string)
+
     with gin.unlock_config():
-      ckpt_dir = os.path.dirname(ckpt)
-      operative_config = train_util.get_latest_operative_config(ckpt_dir)
-      print(f'Parsing from operative_config {operative_config}')
-      gin.parse_config_file(operative_config, skip_unknown=True)
-      # Set streaming specific params.
-      # Remove reverb processor.
-      pg_string = """ProcessorGroup.dag = [
-      (@synths.Harmonic(),
-        ['amps', 'harmonic_distribution', 'f0_hz']),
-      (@synths.FilteredNoise(),
-        ['noise_magnitudes']),
-      (@processors.Add(),
-        ['filtered_noise/signal', 'harmonic/signal']),
-      ]"""
-      time_steps = gin.query_parameter('F0PowerPreprocessor.time_steps')
-      n_samples = gin.query_parameter('Harmonic.n_samples')
-      samples_per_frame = int(n_samples / time_steps)
-      gin.parse_config([
-          'F0PowerPreprocessor.time_steps=1',
-          f'Harmonic.n_samples={samples_per_frame}',
-          f'FilteredNoise.n_samples={samples_per_frame}',
-          pg_string,
-      ])
+      gin.parse_config(config)
+
+  def save_model(self, save_dir):
+    """Saves a SavedModel after initialization."""
+    self.save(save_dir)
 
   def build_network(self):
     """Run a fake batch through the network."""
@@ -156,15 +176,15 @@ class StreamingF0PwInference(models.Autoencoder, InferenceModel):
         'f0_hz': tf.zeros([1]),
         'power_db': tf.zeros([1]),
     }
-    print('Inputs to Model:', input_dict)
+    print('Inputs to Model:', ddsp.core.map_shape(input_dict))
     unused_outputs = self(input_dict)
-    print('Outputs', unused_outputs)
+    print('Outputs from Model:', ddsp.core.map_shape(unused_outputs))
 
   @tf.function
-  def call(self, input_dict):
+  def call(self, inputs, **unused_kwargs):
     """Convert f0 and loudness to synthesizer parameters."""
-    input_dict = ddsp.core.copy_if_tf_function(input_dict)
-    controls = super().call(input_dict, training=False)
+    inputs = ddsp.core.copy_if_tf_function(inputs)
+    controls = super().call(inputs, training=False)
     amps = controls['harmonic']['controls']['amplitudes']
     hd = controls['harmonic']['controls']['harmonic_distribution']
     noise = controls['filtered_noise']['controls']['magnitudes']

@@ -53,7 +53,10 @@ setuptools.setup(
         'scipy',
         'six',
         'tensorflow',
+        # TODO(jesseengel): Update to v2.5 when CREPE is no longer blocking.
+        # 'tensorflow==2.5.0rc0',
         'tensorflow-addons',
+        'tensorflowjs',
         'tensorflow-probability',
         # TODO(adarob): Switch to tensorflow_datasets once includes nsynth 2.3.
         'tfds-nightly',
@@ -70,6 +73,7 @@ setuptools.setup(
     },
     entry_points={
         'console_scripts': [
+            'ddsp_export = ddsp.training.ddsp_export:console_entry_point',
             'ddsp_run = ddsp.training.ddsp_run:console_entry_point',
             'ddsp_prepare_tfrecord = ddsp.training.data_preparation.ddsp_prepare_tfrecord:console_entry_point',
             'ddsp_generate_synthetic_dataset = ddsp.training.data_preparation.ddsp_generate_synthetic_dataset:console_entry_point',

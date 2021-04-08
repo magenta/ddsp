@@ -71,18 +71,25 @@ class Model(tf.keras.Model):
         losses_dict = loss_obj.get_losses_dict(*args, **kwargs)
         self._losses_dict.update(losses_dict)
 
-  def restore(self, checkpoint_path):
-    """Restore model and optimizer from a checkpoint."""
+  def restore(self, checkpoint_path, verbose=True):
+    """Restore model and optimizer from a checkpoint.
+
+    Args:
+      checkpoint_path: Path to checkpoint file or directory.
+      verbose: Warn about missing variables.
+
+    Raises:
+      FileNotFoundError: If no checkpoint is found.
+    """
     start_time = time.time()
-    latest_checkpoint = train_util.get_latest_chekpoint(checkpoint_path)
-    if latest_checkpoint is not None:
-      checkpoint = tf.train.Checkpoint(model=self)
-      checkpoint.restore(latest_checkpoint).expect_partial()
-      logging.info('Loaded checkpoint %s', latest_checkpoint)
-      logging.info('Loading model took %.1f seconds', time.time() - start_time)
+    latest_checkpoint = train_util.get_latest_checkpoint(checkpoint_path)
+    checkpoint = tf.train.Checkpoint(model=self)
+    if verbose:
+      checkpoint.restore(latest_checkpoint)
     else:
-      logging.info('Could not find checkpoint to load at %s, skipping.',
-                   checkpoint_path)
+      checkpoint.restore(latest_checkpoint).expect_partial()
+    logging.info('Loaded checkpoint %s', latest_checkpoint)
+    logging.info('Loading model took %.1f seconds', time.time() - start_time)
 
   def get_audio_from_outputs(self, outputs):
     """Extract audio output tensor from outputs dict of call()."""
