@@ -188,6 +188,11 @@ class StreamingF0PwInference(models.Autoencoder):
     amps = controls['harmonic']['controls']['amplitudes']
     hd = controls['harmonic']['controls']['harmonic_distribution']
     noise = controls['filtered_noise']['controls']['magnitudes']
-    return amps, hd, noise
+    outputs = {
+        'amps': amps,
+        'hd': hd,
+        'noise': noise,
+    }
+    return outputs
 
 
