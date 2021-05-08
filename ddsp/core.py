@@ -980,6 +980,27 @@ def linear_lookup(phase: tf.Tensor,
   return tf.reduce_sum(weighted_wavetables, axis=-1)
 
 
+def harmonic_distribution_to_wavetable(harmonic_distribution, n_wavetable=2048):
+  """Convert a harmonic distribution into a wavetable for synthesis.
+
+  Args:
+    harmonic_distribution: Shape [batch, time, n_harmonics], where the last axis
+      is normalized (sums to 1.0).
+    n_wavetable: Number of samples to have in the wavetable. If more than the
+      number of harmonics, performs interpolation/upsampling.
+
+  Returns:
+    A series of wavetables, shape [batch, time, n_wavetable]
+  """
+  n_harmonics = harmonic_distribution.shape[-1]
+  n_pad = int(n_wavetable/2 - n_harmonics)
+  # Pad the left for DC component, pad the right for wavetable interpolation.
+  fft_in = tf.pad(harmonic_distribution, [[0, 0], [0, 0], [1, n_pad]])
+  fft_in = tf.complex(fft_in, tf.zeros_like(fft_in))
+  wavetable = tf.signal.irfft(fft_in) * (n_wavetable / 2)
+  return wavetable
+
+
 def wavetable_synthesis(frequencies: tf.Tensor,
                         amplitudes: tf.Tensor,
                         wavetables: tf.Tensor,
