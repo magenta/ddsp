@@ -16,16 +16,18 @@
 """Library of performance metrics relevant to DDSP training."""
 
 from absl import logging
+import dataclasses
 import ddsp
 import librosa
 import mir_eval
+import note_seq
+from note_seq import sequences_lib
 import numpy as np
 import tensorflow.compat.v2 as tf
 
 # Global values for evaluation.
 MIN_F0_CONFIDENCE = 0.85
 OUTLIER_MIDI_THRESH = 12
-
 
 
 # ---------------------- Helper Functions --------------------------------------
@@ -347,5 +349,205 @@ class F0Metrics(BaseMetrics):
                    f'raw_chroma_accuracy: {rca:.3f} '
                    f'raw_pitch_accuracy: {rpa:.3f}')
         logging.info(log_str)
+
+
+@dataclasses.dataclass
+class EvalCounts:
+  """Data class to aggregate tp, fp and fn counts."""
+  tp: int
+  fp: int
+  fn: int
+
+  def add(self, other):
+    self.tp += other.tp
+    self.fp += other.fp
+    self.fn += other.fn
+
+  @property
+  def precision(self):
+    return self.tp / max((self.tp + self.fp), 1)
+
+  @property
+  def recall(self):
+    return self.tp / max((self.tp + self.fn), 1)
+
+  @property
+  def f1(self):
+    return (2 * self.precision * self.recall) / max(
+        self.precision + self.recall, 1)
+
+
+def sequence2intervals(sequence):
+  """Convert a NoteSequence to a list of intervals for mir_eval."""
+  notes = sequence.notes
+  intervals = np.zeros((len(notes), 2))
+  pitches = np.zeros(len(notes))
+  velocities = np.zeros(len(notes))
+
+  for i, note in enumerate(notes):
+    intervals[i, 0] = note.start_time
+    intervals[i, 1] = note.end_time
+    pitches[i] = note.pitch
+    velocities[i] = note.velocity
+
+  return intervals, pitches, velocities
+
+
+def compute_note_metrics(gt_sequence, pred_sequence):
+  """Computes metrics for predicted sequence given ground truth in controls."""
+  gt_intervals, gt_pitches, _ = sequence2intervals(gt_sequence)
+  pred_intervals, pred_pitches, _ = sequence2intervals(pred_sequence)
+  onset_matching = (
+      mir_eval.transcription.match_notes(
+          gt_intervals,
+          ddsp.core.midi_to_hz(gt_pitches),
+          pred_intervals,
+          ddsp.core.midi_to_hz(pred_pitches),
+          offset_ratio=None))
+  onset_metrics = EvalCounts(
+      tp=len(onset_matching),
+      fp=len(pred_pitches) - len(onset_matching),
+      fn=len(gt_pitches) - len(onset_matching))
+
+  offset_matching = (
+      mir_eval.transcription.match_notes(gt_intervals,
+                                         ddsp.core.midi_to_hz(gt_pitches),
+                                         pred_intervals,
+                                         ddsp.core.midi_to_hz(pred_pitches)))
+
+  full_note_metrics = EvalCounts(
+      tp=len(offset_matching),
+      fp=len(pred_pitches) - len(offset_matching),
+      fn=len(gt_pitches) - len(offset_matching))
+
+  return onset_metrics, full_note_metrics
+
+
+def compute_frame_metrics(gt_pianoroll, pred_pianoroll):
+  """Counts TP/FP/FN for framewise note activity assuming single-note audio."""
+  gt_arr = np.squeeze(gt_pianoroll).max(axis=1)
+  pred_arr = np.squeeze(pred_pianoroll).max(axis=1)
+  assert gt_arr.shape == pred_arr.shape
+  tp = np.logical_and(pred_arr > 0, gt_arr > 0).sum()
+  fp = np.logical_and(pred_arr > 0, gt_arr == 0).sum()
+  fn = np.logical_and(pred_arr == 0, gt_arr > 0).sum()
+  return EvalCounts(tp, fp, fn)
+
+
+class MidiMetrics(object):
+  """A helper class to compute metrics for MIDI output."""
+
+  def __init__(self,
+               frames_per_second,
+               tag,
+               align_midi_with_f0=True):
+    self.tag = tag
+    self.note_counts = EvalCounts(0, 0, 0)
+    self.note_offset_counts = EvalCounts(0, 0, 0)
+    self.frame_counts = EvalCounts(0, 0, 0)
+    self._frames_per_second = frames_per_second
+    self._align_midi_with_f0 = align_midi_with_f0
+
+  def _safe_convert_to_note_sequence(self, representation):
+    """If the input is not a NoteSequence, convert it, else return it as is."""
+    if isinstance(representation, note_seq.NoteSequence):
+      return representation
+    else:
+      return sequences_lib.pianoroll_to_note_sequence(
+          representation,
+          frames_per_second=self._frames_per_second,
+          min_duration_ms=0)
+
+  def _safe_convert_to_pianoroll(self, representation):
+    """If the input is not a piano roll, convert it, else return it as is."""
+    pr_types = [sequences_lib.Pianoroll, np.ndarray, tf.Tensor]
+    if any(isinstance(representation, t) for t in pr_types):
+      return representation
+    else:
+      return sequences_lib.sequence_to_pianoroll(
+          representation,
+          frames_per_second=self._frames_per_second,
+          min_pitch=note_seq.MIN_MIDI_PITCH,
+          max_pitch=note_seq.MAX_MIDI_PITCH).active
+
+  def align_midi_with_f0(self, gt_sequence, f0):
+    """Align the notes in the NoteSequence with the extracted f0_hz."""
+    sr = self._frames_per_second
+    f0_midi = np.round(ddsp.core.hz_to_midi(f0))
+    for i, note in enumerate(gt_sequence.notes):
+      # look for the first match in [end of last note, end of curr note]
+      lower_bound = int(gt_sequence.notes[i - 1].end_time * sr) if i > 0 else 0
+      upper_bound = int(note.end_time * sr)
+      for j in range(lower_bound, upper_bound):
+        if int(f0_midi[j]) == note.pitch:
+          note.start_time = float(j) / sr
+          break
+
+      # look for the last match in [start of curr note, start of next note]
+      lower_bound = int(note.start_time * sr)
+      upper_bound = int(
+          gt_sequence.notes[i + 1].start_time *
+          sr) if i < (len(gt_sequence.notes) - 1) else len(f0_midi) - 1
+      for j in range(upper_bound, lower_bound, -1):
+        if int(f0_midi[j]) == note.pitch:
+          note.end_time = float(j) / sr
+          break
+    return gt_sequence
+
+  def update_state(self, controls_batch, pred_seq_batch,
+                   gt_key='note_active_velocities', ch=None):
+    """Update metrics with given controls and notes."""
+
+    gt_pianoroll_batch = controls_batch[gt_key]
+    for i in range(len(pred_seq_batch)):
+      if ch is None:
+        pred_sequence = pred_seq_batch[i]
+        gt_pianoroll = gt_pianoroll_batch[i]
+      else:
+        pred_sequence = pred_seq_batch[i, ..., ch]
+        gt_pianoroll = gt_pianoroll_batch[i, ..., ch]
+
+      # ------ Note metrics
+      gt_sequence = self._safe_convert_to_note_sequence(gt_pianoroll)
+      pred_sequence = self._safe_convert_to_note_sequence(pred_sequence)
+
+      if self._align_midi_with_f0:
+        f0 = controls_batch['f0_hz'][i]
+        gt_sequence = self.align_midi_with_f0(gt_sequence, f0)
+
+      note_counts_i, note_offset_counts_i = compute_note_metrics(
+          gt_sequence, pred_sequence)
+      self.note_counts.add(note_counts_i)
+      self.note_offset_counts.add(note_offset_counts_i)
+
+      # ------ Framewise metrics
+
+      # converting to/from note_seq adds empty frames at the end. Remove them.
+      gt_len = gt_pianoroll.shape[0]
+      pred_pianoroll = self._safe_convert_to_pianoroll(pred_sequence)
+      pred_pianoroll = pred_pianoroll[:gt_len, :]
+
+      frame_counts_i = compute_frame_metrics(gt_pianoroll, pred_pianoroll)
+      self.frame_counts.add(frame_counts_i)
+
+  def flush(self, step):
+    """Write summaries and reset state."""
+    def write_summaries(counts, prefix):
+      tf.summary.scalar(f'{prefix}/f1', counts.f1, step)
+      tf.summary.scalar(f'{prefix}/precision', counts.precision, step)
+      tf.summary.scalar(f'{prefix}/recall', counts.recall, step)
+      metric_log = (f'{prefix}/f1: {counts.f1:0.3f} | '
+                    f'{prefix}/precision: {counts.precision:0.3f} | '
+                    f'{prefix}/recall: {counts.recall:0.3f}')
+      logging.info(metric_log)
+
+    write_summaries(self.note_counts, f'metrics/midi/{self.tag}/onset')
+    write_summaries(self.note_offset_counts,
+                    f'metrics/midi/{self.tag}/full_note')
+    write_summaries(self.frame_counts, f'metrics/midi/{self.tag}/frame')
+
+    self.full_note_counts = EvalCounts(0, 0, 0)
+    self.note_counts = EvalCounts(0, 0, 0)
+    self.frame_counts = EvalCounts(0, 0, 0)
 
 

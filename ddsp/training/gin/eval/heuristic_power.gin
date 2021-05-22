@@ -1,0 +1,3 @@
+segment_notes_batch.binarize_f = @heuristics.midi_heuristic_power
+segment_notes_batch.pick_f0_f = @heuristics.mean_f0
+segment_notes_batch.pick_amps_f = @heuristics.median_amps

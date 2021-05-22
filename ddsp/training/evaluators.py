@@ -14,6 +14,7 @@
 
 """Library of evaluator implementations for use in eval_util."""
 import ddsp
+from ddsp.training import heuristics
 from ddsp.training import metrics
 from ddsp.training import summaries
 import gin
@@ -173,7 +174,8 @@ class MidiAutoencoderEvaluator(BaseEvaluator):
   def __init__(self, sample_rate, frame_rate, db_key='loudness_db',
                f0_key='f0_hz'):
     super().__init__(sample_rate, frame_rate)
-    self._midi_metrics = metrics.MidiMetrics('learned')
+    self._midi_metrics = metrics.MidiMetrics(
+        frames_per_second=frame_rate, tag='learned')
     self._db_key = db_key
     self._f0_key = f0_key
 
@@ -206,6 +208,39 @@ class MidiAutoencoderEvaluator(BaseEvaluator):
                                   self._db_key)
 
     summaries.midiae_sp_summary(outputs, step)
+
+  def flush(self, step):
+    self._midi_metrics.flush(step)
+
+
+@gin.register
+class MidiHeuristicEvaluator(BaseEvaluator):
+  """Metrics for MIDI heuristic."""
+
+  def __init__(self, sample_rate, frame_rate):
+    super().__init__(sample_rate, frame_rate)
+    self._midi_metrics = metrics.MidiMetrics(
+        tag='heuristic', frames_per_second=frame_rate)
+
+  def _compute_heuristic_notes(self, outputs):
+    return heuristics.segment_notes_batch(
+        binarize_f=heuristics.midi_heuristic,
+        pick_f0_f=heuristics.mean_f0,
+        pick_amps_f=heuristics.median_amps,
+        controls_batch=outputs)
+
+  def evaluate(self, batch, outputs, losses):
+    del losses  # Unused.
+    notes = self._compute_heuristic_notes(outputs)
+    self._midi_metrics.update_state(outputs, notes)
+
+  def sample(self, batch, outputs, step):
+    notes = self._compute_heuristic_notes(outputs)
+    outputs['heuristic_notes'] = notes
+    summaries.midi_summary(outputs, step, 'heuristic', self._frame_rate,
+                           'heuristic_notes')
+    summaries.pianoroll_summary(outputs, step, 'heuristic',
+                                self._frame_rate, 'heuristic_notes')
 
   def flush(self, step):
     self._midi_metrics.flush(step)

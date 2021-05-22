@@ -243,6 +243,108 @@ class SpectralLoss(Loss):
     return loss
 
 
+@gin.register
+class HmmTranscriber(tfp.distributions.HiddenMarkovModel):
+  """HMM initialized for decoding MIDI from Pitch and Amps."""
+
+  def __init__(self,
+               avg_length=200,
+               midi_std=0.5,
+               amps_on_center=1.5,
+               amps_on_scale=0.5,
+               amps_off_center=0.0,
+               amps_off_scale=0.1,
+               n_timesteps=1000,
+               n_pitches=128,
+               weight=1.0,
+               **kwargs):
+    """Discrete hidden states for each midi pitch, f0 observations (in midi).
+
+    Args:
+      avg_length: Prior over average note length between transitions.
+      midi_std: Prior over f0 variance (in midi) allowed around discrete states.
+      amps_on_center: Center amplitude of the "on" state.
+      amps_on_scale: Variance amplitude of the "on" state.
+      amps_off_center: Center amplitude of the "off" state.
+      amps_off_scale: Variance amplitude of the "off" state.
+      n_timesteps: Number of timesteps in the batch to unroll the HMM.
+      n_pitches: Number of pitches (starting from 0) to use as HMM states.
+      weight: Weighting of the nll loss term.
+      **kwargs: Other kwargs for the distribution such as name.
+    """
+    # Initial distribution is uniform.
+    initial_distribution = tfp.distributions.Categorical(
+        probs=tf.ones([n_pitches]) / n_pitches)
+
+    # Transition is heavily peaked around diagonal and uniform otherwise.
+    hold = 1.0 - 1.0/avg_length
+    other = (1.0 - hold) / (n_pitches - 1)
+    transitions = ((hold - other) * tf.eye(n_pitches)
+                   + other * tf.ones([n_pitches, n_pitches]))
+    transitions /= tf.reduce_sum(transitions, axis=1, keepdims=True)
+    transition_distribution = tfp.distributions.Categorical(
+        probs=transitions)
+
+    # Observations are normally distributed around the MIDI pitch (hmm state).
+    p_loc = tf.range(1, n_pitches, dtype=tf.float32)
+    p_scale = tf.ones([n_pitches - 1]) * midi_std
+    pitch_loc = tf.concat([tf.ones([1]) * n_pitches / 2.0, p_loc], axis=0)
+    pitch_scale = tf.concat([tf.ones([1]) * n_pitches, p_scale], axis=0)
+
+    amps_loc = tf.concat([tf.ones([1]) * amps_off_center,
+                          tf.ones(n_pitches - 1) * amps_on_center], axis=0)
+    amps_scale = tf.concat([tf.ones([1]) * amps_off_scale,
+                            tf.ones(n_pitches - 1) * amps_on_scale], axis=0)
+
+    loc = tf.stack([pitch_loc, amps_loc], axis=-1)
+    scale = tf.stack([pitch_scale, amps_scale], axis=-1)
+
+    # observation_distribution = tfp.distributions.Normal(loc=loc, scale=scale)
+    observation_distribution = tfp.distributions.MultivariateNormalDiag(
+        loc=loc, scale_diag=scale)
+
+    super().__init__(
+        initial_distribution=initial_distribution,
+        transition_distribution=transition_distribution,
+        observation_distribution=observation_distribution,
+        num_steps=n_timesteps,
+        **kwargs
+    )
+
+    self.initial_distribution = initial_distribution
+    self.transition_distribution = transition_distribution
+    self.observation_distribution = observation_distribution
+    self.avg_length = avg_length
+    self.midi_std = midi_std
+    self.n_timesteps = n_timesteps
+    self.n_pitches = n_pitches
+    self.weight = weight
+
+  def __call__(self, pitch, amps):
+    return self.nll(pitch, amps)
+
+  @staticmethod
+  def straight_through(x, x_quant):
+    """Straight through estimation."""
+    return x - tf.stop_gradient(x - x_quant)
+
+  def nll(self, pitch, amps, per_example_loss=False):
+    """Negative log-likelihood per a timestep."""
+    pa = tf.concat([pitch, amps], axis=-1)
+    avg_nll = -self.log_prob(pa) / pitch.shape[1]
+    loss = avg_nll if per_example_loss else tf.reduce_mean(avg_nll)
+    return self.weight * loss
+
+  def predict_midi(self, pitch, amps, channel_dim=True, dtype=tf.float32):
+    """Viterbi decode most likely hidden state as the quantized MIDI signal."""
+    pa = tf.concat([pitch, amps], axis=-1)
+    q_pitch = self.posterior_mode(pa)
+    q_pitch = tf.cast(q_pitch, dtype)
+    if channel_dim:
+      q_pitch = q_pitch[:, :, tf.newaxis]
+    return q_pitch
+
+
 
 
 # ------------------------------------------------------------------------------
