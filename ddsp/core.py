@@ -18,7 +18,7 @@
 
 import collections
 import copy
-from typing import Any, Dict, Sequence, Text, TypeVar
+from typing import Any, Dict, Optional, Sequence, Text, TypeVar
 
 import gin
 import numpy as np
@@ -870,8 +870,8 @@ def get_harmonic_frequencies(frequencies: tf.Tensor,
 
 def harmonic_synthesis(frequencies: tf.Tensor,
                        amplitudes: tf.Tensor,
-                       harmonic_shifts: tf.Tensor = None,
-                       harmonic_distribution: tf.Tensor = None,
+                       harmonic_shifts: Optional[tf.Tensor] = None,
+                       harmonic_distribution: Optional[tf.Tensor] = None,
                        n_samples: int = 64000,
                        sample_rate: int = 16000,
                        amp_resample_method: Text = 'window') -> tf.Tensor:
@@ -1424,7 +1424,7 @@ def frequency_filter(audio: tf.Tensor,
 def sinc_filter(audio: tf.Tensor,
                 cutoff_frequency: tf.Tensor,
                 window_size: int = 512,
-                sample_rate: int = None,
+                sample_rate: Optional[int] = None,
                 padding: Text = 'same',
                 high_pass: bool = False) -> tf.Tensor:
   """Filter audio with sinc low-pass filter.
