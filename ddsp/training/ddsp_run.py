@@ -128,6 +128,8 @@ def delay_start():
 
 def parse_gin(restore_dir):
   """Parse gin config from --gin_file, --gin_param, and the model directory."""
+  # Enable parsing gin files on Google Cloud.
+  gin.config.register_file_reader(tf.io.gfile.GFile, tf.io.gfile.exists)
   # Add user folders to the gin search path.
   for gin_search_path in [GIN_PATH] + FLAGS.gin_search_path:
     gin.add_config_file_search_path(gin_search_path)
