@@ -21,15 +21,14 @@ import pickle
 
 import ddsp
 import ddsp.training
+from google.colab import files
+from google.colab import output
 from IPython import display
 import note_seq
 import numpy as np
 from scipy import stats
 from scipy.io import wavfile
 import tensorflow.compat.v2 as tf
-
-from google.colab import files
-from google.colab import output
 
 download = files.download
 
@@ -423,20 +422,38 @@ def fit_quantile_transform(loudness_db, mask_on, inv_quantile=None):
     return quantile_transform, loudness_norm
 
 
-def save_dataset_statistics(data_provider, file_path, batch_size=1):
-  """Calculate dataset stats and save in a pickle file."""
+def save_dataset_statistics(data_provider,
+                            file_path=None,
+                            batch_size=1,
+                            power_frame_size=256,):
+  """Calculate dataset stats and save in a pickle file.
+
+  Args:
+    data_provider: A DataProvider from ddsp.training.data.
+    file_path: Path for saved pickle file of dataset statistics.
+    batch_size: Iterate over dataset with this batch size.
+    power_frame_size: Calculate power features on the fly with this frame size.
+
+  Returns:
+    Dictionary of dataset statistics. This is an overcomplete set of statistics,
+    as there are now several different tone transfer implementations (js, colab,
+    vst) that need different statistics for normalization.
+  """
   print('Calculating dataset statistics for', data_provider)
   data_iter = iter(data_provider.get_batch(batch_size, repeats=1))
 
   # Unpack dataset.
   i = 0
   loudness = []
+  power = []
   f0 = []
   f0_conf = []
   audio = []
 
   for batch in data_iter:
     loudness.append(batch['loudness_db'])
+    power.append(ddsp.spectral_ops.compute_power(batch['audio'],
+                                                 frame_size=power_frame_size))
     f0.append(batch['f0_hz'])
     f0_conf.append(batch['f0_confidence'])
     audio.append(batch['audio'])
@@ -445,6 +462,7 @@ def save_dataset_statistics(data_provider, file_path, batch_size=1):
   print(f'Computing statistics for {i * batch_size} examples.')
 
   loudness = np.vstack(loudness)
+  power = np.vstack(power)
   f0 = np.vstack(f0)
   f0_conf = np.vstack(f0_conf)
   audio = np.vstack(audio)
@@ -452,26 +470,61 @@ def save_dataset_statistics(data_provider, file_path, batch_size=1):
   # Fit the transform.
   trim_end = 20
   f0_trimmed = f0[:, :-trim_end]
-  l_trimmed = loudness[:, :-trim_end]
+  pitch_trimmed = ddsp.core.hz_to_midi(f0_trimmed)
+  power_trimmed = power[:, :-trim_end]
+  loudness_trimmed = loudness[:, :-trim_end]
   f0_conf_trimmed = f0_conf[:, :-trim_end]
-  mask_on, _ = detect_notes(l_trimmed, f0_conf_trimmed)
-  quantile_transform = fit_quantile_transform(l_trimmed, mask_on)
 
-  # Average values.
-  mean_pitch = np.mean(ddsp.core.hz_to_midi(f0_trimmed[mask_on]))
-  mean_loudness = np.mean(l_trimmed)
-  mean_max_loudness = np.mean(np.max(l_trimmed, axis=0))
+  # Detect notes.
+  mask_on, _ = detect_notes(loudness_trimmed, f0_conf_trimmed)
+  quantile_transform = fit_quantile_transform(loudness_trimmed, mask_on)
 
-  # Object to pickle all the statistics together.
-  ds = {'mean_pitch': mean_pitch,
-        'mean_loudness': mean_loudness,
-        'mean_max_loudness': mean_max_loudness,
-        'quantile_transform': quantile_transform}
+  # Pitch statistics.
+  def get_stats(x, prefix='x', note_mask=None):
+    if note_mask is None:
+      mean_max = np.mean(np.max(x, axis=-1))
+      mean_min = np.mean(np.min(x, axis=-1))
+    else:
+      max_list = []
+      for x_i, m in zip(x, note_mask):
+        if np.sum(m) > 0:
+          max_list.append(np.max(x_i[m]))
+      mean_max = np.mean(max_list)
+
+      min_list = []
+      for x_i, m in zip(x, note_mask):
+        if np.sum(m) > 0:
+          min_list.append(np.min(x_i[m]))
+      mean_min = np.mean(min_list)
+
+      x = x[note_mask]
+
+    return {
+        f'mean_{prefix}': np.mean(x),
+        f'max_{prefix}': np.max(x),
+        f'min_{prefix}': np.min(x),
+        f'mean_max_{prefix}': mean_max,
+        f'mean_min_{prefix}': mean_min,
+        f'std_{prefix}': np.std(x)
+    }
+
+  ds_stats = {}
+  ds_stats.update(get_stats(pitch_trimmed, 'pitch'))
+  ds_stats.update(get_stats(power_trimmed, 'power'))
+  ds_stats.update(get_stats(loudness_trimmed, 'loudness'))
+  ds_stats.update(get_stats(pitch_trimmed, 'pitch_note', mask_on))
+  ds_stats.update(get_stats(power_trimmed, 'power_note', mask_on))
+  ds_stats.update(get_stats(loudness_trimmed, 'loudness_note', mask_on))
+
+  ds_stats['quantile_transform'] = quantile_transform
 
   # Save.
-  with tf.io.gfile.GFile(file_path, 'wb') as f:
-    pickle.dump(ds, f)
-  print(f'Done! Saved to: {file_path}')
+  if file_path is not None:
+    with tf.io.gfile.GFile(file_path, 'wb') as f:
+      pickle.dump(ds_stats, f)
+    print(f'Done! Saved dataset statistics to: {file_path}')
+
+  return ds_stats
 
 
 # ------------------------------------------------------------------------------
