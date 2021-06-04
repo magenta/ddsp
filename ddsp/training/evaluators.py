@@ -47,6 +47,7 @@ class BaseEvaluator(object):
     raise NotImplementedError()
 
 
+
 @gin.register
 class BasicEvaluator(BaseEvaluator):
   """Computes audio samples and losses."""

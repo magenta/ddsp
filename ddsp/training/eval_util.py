@@ -34,9 +34,11 @@ def evaluate_or_sample(data_provider,
                        restore_dir='',
                        batch_size=32,
                        num_batches=50,
+                       repeats=-1,
                        ckpt_delay_secs=0,
                        run_once=False,
-                       run_until_step=0):
+                       run_until_step=0,
+                       ):
   """Run evaluation loop.
 
   Args:
@@ -48,6 +50,7 @@ def evaluate_or_sample(data_provider,
     restore_dir: Path to directory with checkpoints, defaults to save_dir.
     batch_size: Size of each eval/sample batch.
     num_batches: How many batches to eval from dataset. -1 denotes all batches.
+    repeats: Number of repeats through dataset. -1 means repeat infinitely.
     ckpt_delay_secs: Time to wait when a new checkpoint was not detected.
     run_once: Only run evaluation or sampling once.
     run_until_step: Run until we see a checkpoint with a step greater or equal
@@ -71,7 +74,10 @@ def evaluate_or_sample(data_provider,
   # Get the dataset.
   dataset = data_provider.get_batch(batch_size=batch_size,
                                     shuffle=False,
-                                    repeats=-1)
+                                    repeats=repeats)
+  # Set number of batches.
+  # If num_batches >=1 set it to a huge value (StopIteration will be caught).
+  num_batches = num_batches if num_batches >= 1 else int(1e12)
 
   # Get audio sample rate
   sample_rate = data_provider.sample_rate
@@ -126,7 +132,7 @@ def evaluate_or_sample(data_provider,
           logging.info('Metrics for batch %i with size %i took %.1f seconds',
                        batch_idx, batch_size, time.time() - start_time)
 
-        except tf.errors.OutOfRangeError:
+        except StopIteration:
           logging.info('End of dataset.')
           break
 
@@ -135,6 +141,8 @@ def evaluate_or_sample(data_provider,
 
       if mode == 'eval':
         for evaluator in evaluators:
+
+
           evaluator.flush(step)
 
       summary_writer.flush()
@@ -151,16 +159,19 @@ def evaluate_or_sample(data_provider,
 
 
 @gin.configurable
-def evaluate(data_provider,
-             model,
-             evaluator_classes,
-             save_dir='/tmp/ddsp/training',
-             restore_dir='',
-             batch_size=32,
-             num_batches=50,
-             ckpt_delay_secs=0,
-             run_once=False,
-             run_until_step=0):
+def evaluate(
+    data_provider,
+    model,
+    evaluator_classes,
+    save_dir='/tmp/ddsp/training',
+    restore_dir='',
+    batch_size=32,
+    num_batches=50,
+    repeats=-1,
+    ckpt_delay_secs=0,
+    run_once=False,
+    run_until_step=0,
+):
   """Run evaluation loop.
 
   Args:
@@ -171,6 +182,7 @@ def evaluate(data_provider,
     restore_dir: Path to directory with checkpoints, defaults to save_dir.
     batch_size: Size of each eval/sample batch.
     num_batches: How many batches to eval from dataset. -1 denotes all batches.
+    repeats: Number of repeats through dataset. -1 means repeat infinitely.
     ckpt_delay_secs: Time to wait when a new checkpoint was not detected.
     run_once: Only run evaluation or sampling once.
     run_until_step: Run until we see a checkpoint with a step greater or equal
@@ -188,10 +200,12 @@ def evaluate(data_provider,
       save_dir=save_dir,
       restore_dir=restore_dir,
       batch_size=batch_size,
+      repeats=repeats,
       num_batches=num_batches,
       ckpt_delay_secs=ckpt_delay_secs,
       run_once=run_once,
-      run_until_step=run_until_step)
+      run_until_step=run_until_step,
+      )
 
 
 @gin.configurable
