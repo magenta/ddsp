@@ -38,6 +38,7 @@ def evaluate_or_sample(data_provider,
                        ckpt_delay_secs=0,
                        run_once=False,
                        run_until_step=0,
+                       evaluate_and_sample=False,
                        ):
   """Run evaluation loop.
 
@@ -55,6 +56,7 @@ def evaluate_or_sample(data_provider,
     run_once: Only run evaluation or sampling once.
     run_until_step: Run until we see a checkpoint with a step greater or equal
       to the specified value. Ignored if <= 0.
+    evaluate_and_sample: Run both evaluate() and sample() on the batches.
 
   Returns:
     If the mode is 'eval', then returns a dictionary of Tensors keyed by loss
@@ -125,9 +127,9 @@ def evaluate_or_sample(data_provider,
           outputs, losses = model(batch, return_losses=True, training=False)
           outputs['audio_gen'] = model.get_audio_from_outputs(outputs)
           for evaluator in evaluators:
-            if mode == 'eval':
+            if mode == 'eval' or evaluate_and_sample:
               evaluator.evaluate(batch, outputs, losses)
-            if mode == 'sample':
+            if mode == 'sample' or evaluate_and_sample:
               evaluator.sample(batch, outputs, step)
           logging.info('Metrics for batch %i with size %i took %.1f seconds',
                        batch_idx, batch_size, time.time() - start_time)
@@ -139,7 +141,7 @@ def evaluate_or_sample(data_provider,
       logging.info('All %d batches in checkpoint took %.1f seconds',
                    num_batches, time.time() - checkpoint_start_time)
 
-      if mode == 'eval':
+      if mode == 'eval' or evaluate_and_sample:
         for evaluator in evaluators:
 
 
@@ -171,6 +173,7 @@ def evaluate(
     ckpt_delay_secs=0,
     run_once=False,
     run_until_step=0,
+    evaluate_and_sample=False,
 ):
   """Run evaluation loop.
 
@@ -187,6 +190,7 @@ def evaluate(
     run_once: Only run evaluation or sampling once.
     run_until_step: Run until we see a checkpoint with a step greater or equal
       to the specified value. Ignored if <= 0.
+    evaluate_and_sample: Run both evaluate() and sample() on the batches.
 
   Returns:
     A dictionary of tensors containing the loss values, keyed by loss type.
@@ -205,6 +209,7 @@ def evaluate(
       ckpt_delay_secs=ckpt_delay_secs,
       run_once=run_once,
       run_until_step=run_until_step,
+      evaluate_and_sample=evaluate_and_sample,
       )
 
 
@@ -218,7 +223,8 @@ def sample(data_provider,
            num_batches=1,
            ckpt_delay_secs=0,
            run_once=False,
-           run_until_step=0):
+           run_until_step=0,
+           evaluate_and_sample=False):
   """Run sampling loop.
 
   Args:
@@ -233,6 +239,7 @@ def sample(data_provider,
     run_once: Only run evaluation or sampling once.
     run_until_step: Run until we see a checkpoint with a step greater or equal
       to the specified value. Ignored if <= 0.
+    evaluate_and_sample: Run both evaluate() and sample() on the batches.
   """
   evaluate_or_sample(
       data_provider=data_provider,
@@ -245,6 +252,7 @@ def sample(data_provider,
       num_batches=num_batches,
       ckpt_delay_secs=ckpt_delay_secs,
       run_once=run_once,
-      run_until_step=run_until_step)
+      run_until_step=run_until_step,
+      evaluate_and_sample=evaluate_and_sample)
 
 

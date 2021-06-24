@@ -34,11 +34,11 @@ class BaseEvaluator(object):
     self._sample_rate = sample_rate
     self._frame_rate = frame_rate
 
-  def evaluate(self, model, batch, losses):
+  def evaluate(self, batch, output, losses):
     """Computes metrics."""
     raise NotImplementedError()
 
-  def sample(self, model, batch, step):
+  def sample(self, batch, outputs, step):
     """Computes and logs samples."""
     raise NotImplementedError()
 

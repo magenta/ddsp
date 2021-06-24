@@ -53,8 +53,6 @@ setuptools.setup(
         'scipy',
         'six',
         'tensorflow',
-        # TODO(jesseengel): Update to v2.5 when CREPE is no longer blocking.
-        # 'tensorflow==2.5.0rc0',
         'tensorflow-addons',
         'tensorflowjs',
         'tensorflow-probability',
