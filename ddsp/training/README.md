@@ -148,7 +148,7 @@ ddsp_run \
   --save_dir=/tmp/$USER-ddsp-0 \
   --gin_file=models/solo_instrument.gin \
   --gin_file=datasets/tfrecord.gin \
-  --gin_file=eval/basic_f0_ld.gin
+  --gin_file=eval/basic_f0_ld.gin \
   --gin_param="TFRecordProvider.file_pattern='/path/to/dataset_name.tfrecord*'" \
   --gin_param="batch_size=16" \
   --alsologtostderr
