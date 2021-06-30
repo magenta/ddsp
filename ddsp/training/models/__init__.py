@@ -41,6 +41,6 @@ def get_model(model=gin.REQUIRED):
     model: An instantiated model, such as 'models.Autoencoder()'.
 
   Returns:
-    The 'global' model specifieed in the gin config.
+    The 'global' model specified in the gin config.
   """
   return model
