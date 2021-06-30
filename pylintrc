@@ -59,6 +59,7 @@ confidence=
 disable=abstract-method,
         apply-builtin,
         arguments-differ,
+        arguments-renamed,
         attribute-defined-outside-init,
         backtick,
         bad-option-value,

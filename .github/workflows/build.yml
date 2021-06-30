@@ -12,10 +12,14 @@ jobs:
       with:
         python-version: '3.8'
     - name: Install dependencies
+    # TODO(jesseengel): Remove `legacy-resolver` when pip dependency resolution
+    # is no longer broken. Currently stalls (backtracking), only on GitHub, not
+    # locally.
       run: |
         sudo apt update
         sudo apt-get -y install ffmpeg
-        pip install -e .[data_preparation,test]
+        pip install -U pip
+        pip install -e .[data_preparation,test] --use-deprecated=legacy-resolver
     - name: Test with pytest
       run: pytest
     - name: Lint with pylint
