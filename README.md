@@ -47,7 +47,7 @@ audio = harmonic(outputs['amplitudes'],
 * [Check out the blog post 💻](https://magenta.tensorflow.org/ddsp)
 * [Read the original paper 📄](https://arxiv.org/abs/2001.04643)
 * [Listen to some examples 🔈](https://goo.gl/magenta/ddsp-examples)
-* [Try out the timbre transfer demo 🎤->🎻](https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/demos/timbre_transfer.ipynb)
+* [Try out the timbre transfer demo 🎤->🎻](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/demos/timbre_transfer.ipynb)
 
 
 <a id='Demos'></a>
@@ -55,13 +55,13 @@ audio = harmonic(outputs['amplitudes'],
 
 Colab notebooks demonstrating some of the neat things you can do with DDSP [`ddsp/colab/demos`](./ddsp/colab/demos)
 
-*   [Timbre Transfer](https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/demos/timbre_transfer.ipynb):
+*   [Timbre Transfer](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/demos/timbre_transfer.ipynb):
     Convert audio between sound sources with pretrained models. Try turning your voice into a violin, or scratching your laptop and seeing how it sounds as a flute :). Pick from a selection of pretrained models or upload your own that you can train with the `train_autoencoder` demo.
 
-*   [Train Autoencoder](https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/demos/train_autoencoder.ipynb):
+*   [Train Autoencoder](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/demos/train_autoencoder.ipynb):
     Takes you through all the steps to convert audio files into a dataset and train your own DDSP autoencoder model. You can transfer data and models to/from google drive, and download a .zip file of your trained model to be used with the `timbre_transfer` demo.
 
-*   [Pitch Detection](https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/demos/pitch_detection.ipynb):
+*   [Pitch Detection](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/demos/pitch_detection.ipynb):
     Demonstration of self-supervised pitch detection models from the [2020 ICML Workshop paper](https://openreview.net/forum?id=RlVTYWhsky7).
 
 
@@ -72,15 +72,15 @@ Colab notebooks demonstrating some of the neat things you can do with DDSP [`dds
 To introduce the main concepts of the library, we have step-by-step colab tutorials for all the major library components
 [`ddsp/colab/tutorials`](./ddsp/colab/tutorials).
 
-*  [0_processor](https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/tutorials/0_processor.ipynb):
+*  [0_processor](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/tutorials/0_processor.ipynb):
     Introduction to the Processor class.
-* [1_synths_and_effects](https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/tutorials/1_synths_and_effects.ipynb):
+* [1_synths_and_effects](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/tutorials/1_synths_and_effects.ipynb):
     Example usage of processors.
-*   [2_processor_group](https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/tutorials/2_processor_group.ipynb):
+*   [2_processor_group](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/tutorials/2_processor_group.ipynb):
     Stringing processors together in a ProcessorGroup.
-* [3_training](https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/tutorials/3_training.ipynb):
+* [3_training](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/tutorials/3_training.ipynb):
     Example of training on a single sound.
-*   [4_core_functions](https://colab.research.google.com/github/magenta/ddsp/blob/master/ddsp/colab/tutorials/4_core_functions.ipynb):
+*   [4_core_functions](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/tutorials/4_core_functions.ipynb):
     Extensive examples for most of the core DDSP functions.
 
 
