@@ -42,24 +42,30 @@ import tensorflow as tf
 from tensorflowjs.converters import converter
 
 
-flags.DEFINE_string('model_path', '',
-                    'Path to checkpoint or SavedModel directory. If no '
-                    'SavedModel is found, will search for latest checkpoint '
-                    'use it to create a SavedModel. Can also provide direct '
-                    'path to desired checkpoint. E.g. `/path/to/ckpt-[iter]`.')
-flags.DEFINE_string('save_dir', '',
-                    'Optional directory in which to save converted checkpoint.'
-                    'If none is provided, it will be FLAGS.model_path if it '
-                    'contains a SavedModel, otherwise FLAGS.model_path/export.')
+from tflite_support.metadata.python import metadata as _metadata
+
+
+flags.DEFINE_string(
+    'model_path', '', 'Path to checkpoint or SavedModel directory. If no '
+    'SavedModel is found, will search for latest checkpoint '
+    'use it to create a SavedModel. Can also provide direct '
+    'path to desired checkpoint. E.g. `/path/to/ckpt-[iter]`.')
+flags.DEFINE_string(
+    'save_dir', '', 'Optional directory in which to save converted checkpoint.'
+    'If none is provided, it will be FLAGS.model_path if it '
+    'contains a SavedModel, otherwise FLAGS.model_path/export.')
 
 # Specify model class.
-flags.DEFINE_enum('inference_model', 'streaming_f0_pw',
-                  ['autoencoder',
-                   'streaming_f0_pw',
-                   ],
-                  'Specify the ddsp.training.inference model to use for '
-                  'converting a checkpoint to a SavedModel. Names are '
-                  'snake_case versions of class names.')
+flags.DEFINE_enum(
+    'inference_model',
+    'streaming_f0_pw',
+    [
+        'autoencoder',
+        'streaming_f0_pw',
+    ],
+    'Specify the ddsp.training.inference model to use for '
+    'converting a checkpoint to a SavedModel. Names are '
+    'snake_case versions of class names.')
 
 # Optional flags.
 flags.DEFINE_multi_string('gin_param', [],
@@ -71,7 +77,8 @@ flags.DEFINE_boolean('tfjs', True,
                      'Convert SavedModel to TFJS for deploying on the web.')
 flags.DEFINE_boolean('tflite', True,
                      'Convert SavedModel to TFLite for embedded C++ apps.')
-
+flags.DEFINE_string('metadata_file', None,
+                    'Optional metadata file to pack into TFLite model.')
 
 FLAGS = flags.FLAGS
 
@@ -99,7 +106,7 @@ def get_inference_model(ckpt):
 
 def ckpt_to_saved_model(ckpt, save_dir):
   """Convert Checkpoint to SavedModel."""
-  print(f'\nConverting to SavedModel:'f'\nInput: {ckpt}\nOutput: {save_dir}\n')
+  print(f'\nConverting to SavedModel:' f'\nInput: {ckpt}\nOutput: {save_dir}\n')
   model = get_inference_model(ckpt)
   print('Finshed Loading Model!')
   if not FLAGS.debug:
@@ -110,18 +117,15 @@ def ckpt_to_saved_model(ckpt, save_dir):
 def saved_model_to_tfjs(input_dir, save_dir):
   """Convert SavedModel to TFJS model."""
   print(f'\nConverting to TFJS:\nInput:{input_dir}\nOutput:{save_dir}\n')
-  converter.convert(['--input_format=tf_saved_model',
-                     '--signature_name=serving_default',
-                     '--control_flow_v2=True',
-                     '--skip_op_check',
-                     '--quantize_float16=True',
-                     '--experiments=True',
-                     input_dir,
-                     save_dir])
+  converter.convert([
+      '--input_format=tf_saved_model', '--signature_name=serving_default',
+      '--control_flow_v2=True', '--skip_op_check', '--quantize_float16=True',
+      '--experiments=True', input_dir, save_dir
+  ])
   print('TFJS Conversion Success!')
 
 
-def saved_model_to_tflite(input_dir, save_dir):
+def saved_model_to_tflite(input_dir, save_dir, metadata_file=None):
   """Convert SavedModel to TFLite model."""
   print(f'\nConverting to TFLite:\nInput:{input_dir}\nOutput:{save_dir}\n')
   # Convert the model.
@@ -135,6 +139,11 @@ def saved_model_to_tflite(input_dir, save_dir):
   save_path = os.path.join(save_dir, 'model.tflite')
   with tf.io.gfile.GFile(save_path, 'wb') as f:
     f.write(tflite_model)
+
+  if metadata_file is not None:
+    populator = _metadata.MetadataPopulator.with_model_file(save_path)
+    populator.load_associated_files([metadata_file])
+    populator.populate()
   print('TFLite Conversion Success!')
 
 
@@ -183,7 +192,7 @@ def main(unused_argv):
   if FLAGS.tflite:
     tflite_dir = os.path.join(save_dir, 'tflite')
     ensure_exits(tflite_dir)
-    saved_model_to_tflite(save_dir, tflite_dir)
+    saved_model_to_tflite(save_dir, tflite_dir, FLAGS.metadata_file)
 
 
 def console_entry_point():

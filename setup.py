@@ -58,10 +58,13 @@ setuptools.setup(
         'tensorflow-probability',
         # TODO(adarob): Switch to tensorflow_datasets once includes nsynth 2.3.
         'tfds-nightly',
+        'tflite_support'
     ],
     extras_require={
-        'gcp': ['gevent', 'google-api-python-client', 'google-compute-engine',
-                'oauth2client'],
+        'gcp': [
+            'gevent', 'google-api-python-client', 'google-compute-engine',
+            'oauth2client'
+        ],
         'data_preparation': [
             # TODO(adarob): Remove next line once avro-python3 is fixed.
             'avro-python3!=1.9.2',
