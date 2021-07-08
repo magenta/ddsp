@@ -14,7 +14,8 @@
 
 """Utilites for postprocessing datasets."""
 
-import ddsp
+from ddsp import spectral_ops
+from ddsp.core import hz_to_midi
 import numpy as np
 from scipy import stats
 import tensorflow.compat.v2 as tf
@@ -278,8 +279,8 @@ def compute_dataset_statistics(data_provider,
 
   for batch in data_iter:
     loudness.append(batch['loudness_db'])
-    power.append(ddsp.spectral_ops.compute_power(batch['audio'],
-                                                 frame_size=power_frame_size))
+    power.append(
+        spectral_ops.compute_power(batch['audio'], frame_size=power_frame_size))
     f0.append(batch['f0_hz'])
     f0_conf.append(batch['f0_confidence'])
     audio.append(batch['audio'])
@@ -296,7 +297,7 @@ def compute_dataset_statistics(data_provider,
   # Fit the transform.
   trim_end = 20
   f0_trimmed = f0[:, :-trim_end]
-  pitch_trimmed = ddsp.core.hz_to_midi(f0_trimmed)
+  pitch_trimmed = hz_to_midi(f0_trimmed)
   power_trimmed = power[:, :-trim_end]
   loudness_trimmed = loudness[:, :-trim_end]
   f0_conf_trimmed = f0_conf[:, :-trim_end]
