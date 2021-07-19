@@ -42,7 +42,7 @@ import tensorflow as tf
 from tensorflowjs.converters import converter
 
 
-from tflite_support.metadata.python import metadata as _metadata
+from tflite_support import metadata as _metadata
 
 
 flags.DEFINE_string(
