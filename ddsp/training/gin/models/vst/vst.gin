@@ -1,0 +1,87 @@
+# -*-Python-*-
+# Autoencoder that decodes from (power, f0).
+
+import ddsp
+import ddsp.training
+
+# =====
+# Model
+# =====
+get_model.model = @models.Autoencoder()
+
+# Preprocessor
+Autoencoder.preprocessor = @preprocessing.F0PowerPreprocessor()
+F0PowerPreprocessor.time_steps = 1000
+F0PowerPreprocessor.frame_rate = 250
+F0PowerPreprocessor.frame_size = 256
+F0PowerPreprocessor.sample_rate = 16000
+
+
+# Encoder
+Autoencoder.encoder = None
+
+
+# Decoder
+Autoencoder.decoder = @decoders.RnnFcDecoder()
+RnnFcDecoder.rnn_channels = 256
+RnnFcDecoder.rnn_type = 'lstm'
+RnnFcDecoder.ch = 256
+RnnFcDecoder.layers_per_stack = 1
+RnnFcDecoder.input_keys = ('pw_scaled', 'f0_scaled')
+RnnFcDecoder.output_splits = (('amps', 1),
+                              ('harmonic_distribution', 60),
+                              ('noise_magnitudes', 65))
+
+
+# Losses
+Autoencoder.losses = [
+    @losses.SpectralLoss(),
+]
+SpectralLoss.loss_type = 'L1'
+SpectralLoss.mag_weight = 1.0
+SpectralLoss.logmag_weight = 1.0
+
+# ==============
+# ProcessorGroup
+# ==============
+
+Autoencoder.processor_group = @processors.ProcessorGroup()
+
+# ==============
+# ProcessorGroup
+# ==============
+
+ProcessorGroup.dag = [
+  (@synths.Harmonic(),
+    ['amps', 'harmonic_distribution', 'f0_hz']),
+  (@synths.FilteredNoise(),
+    ['noise_magnitudes']),
+  (@processors.Add(),
+    ['filtered_noise/signal', 'harmonic/signal']),
+  (@effects.FilteredNoiseReverb(),
+    ['add/signal']),
+]
+
+# Reverb
+FilteredNoiseReverb.name = 'reverb'
+FilteredNoiseReverb.reverb_length = 24000
+FilteredNoiseReverb.n_frames = 500
+FilteredNoiseReverb.n_filter_banks = 32
+FilteredNoiseReverb.trainable = True
+
+# Harmonic Synthesizer
+Harmonic.name = 'harmonic'
+Harmonic.n_samples = 64000
+Harmonic.sample_rate = 16000
+Harmonic.normalize_below_nyquist = True
+Harmonic.scale_fn = @core.exp_sigmoid
+Harmonic.amp_resample_method = 'linear'
+
+# Filtered Noise Synthesizer
+FilteredNoise.name = 'filtered_noise'
+FilteredNoise.n_samples = 64000
+FilteredNoise.window_size = 0
+FilteredNoise.scale_fn = @core.exp_sigmoid
+
+# Add
+processors.Add.name = 'add'
