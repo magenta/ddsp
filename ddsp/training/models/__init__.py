@@ -22,7 +22,6 @@ from ddsp.training.models.midi_autoencoder import ZMidiAutoencoder
 from ddsp.training.models.model import Model
 import gin
 
-
 _configurable = lambda cls: gin.configurable(cls, module=__name__)
 
 Autoencoder = _configurable(Autoencoder)
