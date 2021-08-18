@@ -120,7 +120,8 @@ class NSynthTfds(TfdsProvider):
                split='train',
                data_dir='gs://tfds-data/datasets',
                sample_rate=16000,
-               frame_rate=250):
+               frame_rate=250,
+               include_note_labels=True):
     """TfdsProvider constructor.
 
     Args:
@@ -130,7 +131,10 @@ class NSynthTfds(TfdsProvider):
         to the public TFDS GCS bucket.
       sample_rate: Sample rate of audio in the dataset.
       frame_rate: Frame rate of features in the dataset.
+      include_note_labels: Return dataset without note-level labels
+        (pitch, instrument).
     """
+    self._include_note_labels = include_note_labels
     if data_dir == 'gs://tfds-data/datasets':
       logging.warning(
           'Using public TFDS GCS bucket to load NSynth. If not running on '
@@ -141,17 +145,9 @@ class NSynthTfds(TfdsProvider):
   def get_dataset(self, shuffle=True):
     """Returns dataset with slight restructuring of feature dictionary."""
     def preprocess_ex(ex):
-      return {
-          'pitch':
-              ex['pitch'],
+      ex_out = {
           'audio':
               ex['audio'],
-          'instrument_source':
-              ex['instrument']['source'],
-          'instrument_family':
-              ex['instrument']['family'],
-          'instrument':
-              ex['instrument']['label'],
           'f0_hz':
               ex['f0']['hz'],
           'f0_confidence':
@@ -159,6 +155,19 @@ class NSynthTfds(TfdsProvider):
           'loudness_db':
               ex['loudness']['db'],
       }
+      if self._include_note_labels:
+        ex_out.update({
+            'pitch':
+                ex['pitch'],
+            'instrument_source':
+                ex['instrument']['source'],
+            'instrument_family':
+                ex['instrument']['family'],
+            'instrument':
+                ex['instrument']['label'],
+        })
+      return ex_out
+
     dataset = super().get_dataset(shuffle)
     dataset = dataset.map(preprocess_ex, num_parallel_calls=_AUTOTUNE)
     return dataset
@@ -237,11 +246,11 @@ class TFRecordProvider(RecordProvider):
 
 
 # ------------------------------------------------------------------------------
-# Zipped DataProvider
+# Multi-dataset DataProviders
 # ------------------------------------------------------------------------------
 @gin.register
-class ZippedProvider(DataProvider):
-  """Combines datasets from two providers with zip."""
+class BaseMultiProvider(DataProvider):
+  """Base class for providers that combine multiple datasets."""
 
   def __init__(self, data_providers, batch_size_ratios=()):
     """Constructor.
@@ -252,7 +261,6 @@ class ZippedProvider(DataProvider):
         These do not need to sum to 1. For example, [2, 1] will produce batches
         with a size ratio of 2 to 1.
     """
-    # Normalize the ratios.
     if batch_size_ratios:
       # Check lengths match.
       if len(batch_size_ratios) != len(data_providers):
@@ -260,8 +268,12 @@ class ZippedProvider(DataProvider):
                          'length as the list of data providers ({}) for varying'
                          'batch sizes.'.format(
                              len(batch_size_ratios), len(data_providers)))
+      # Normalize the ratios.
       total = sum(batch_size_ratios)
       batch_size_ratios = [float(bsr) / total for bsr in batch_size_ratios]
+    else:
+      # Sample evenly from each.
+      batch_size_ratios = [1.0 for _ in data_providers]
 
     # Make sure all sample rates are the same.
     sample_rates = [dp.sample_rate for dp in data_providers]
@@ -276,6 +288,11 @@ class ZippedProvider(DataProvider):
     super().__init__(sample_rate, frame_rate)
     self._data_providers = data_providers
     self._batch_size_ratios = batch_size_ratios
+
+
+@gin.register
+class ZippedProvider(BaseMultiProvider):
+  """Combines datasets from two providers with zip."""
 
   def get_dataset(self, shuffle=True):
     """Read dataset.
@@ -314,6 +331,24 @@ class ZippedProvider(DataProvider):
       dataset = dataset.repeat(repeats)
       dataset = dataset.prefetch(buffer_size=_AUTOTUNE)
       return dataset
+
+
+@gin.register
+class MixedProvider(BaseMultiProvider):
+  """Combines datasets from two providers mixed with sampling."""
+
+  def get_dataset(self, shuffle=True):
+    """Read dataset.
+
+    Args:
+      shuffle: Whether to shuffle the input files.
+
+    Returns:
+      dataset: A tf.data.Dataset mixed from multiple datasets.
+    """
+    datasets = tuple(dp.get_dataset(shuffle) for dp in self._data_providers)
+    return tf.data.experimental.sample_from_datasets(
+        datasets, self._batch_size_ratios)
 
 
 # ------------------------------------------------------------------------------

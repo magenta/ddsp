@@ -15,8 +15,9 @@
 # Lint as: python3
 """Library of performance metrics relevant to DDSP training."""
 
-from absl import logging
 import dataclasses
+
+from absl import logging
 import ddsp
 import librosa
 import mir_eval
