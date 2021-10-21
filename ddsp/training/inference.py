@@ -143,16 +143,22 @@ class StreamingF0PwInference(models.Autoencoder):
     parse_operative_config(ckpt)
 
     # Set streaming specific params.
-    time_steps = gin.query_parameter('F0PowerPreprocessor.time_steps')
+    preprocessor_ref = gin.query_parameter('Autoencoder.preprocessor')
+    preprocessor_str = preprocessor_ref.scoped_selector
+    time_steps = gin.query_parameter(f'{preprocessor_str}.time_steps')
     n_samples = gin.query_parameter('Harmonic.n_samples')
+    if not isinstance(n_samples, int):
+      n_samples = gin.query_parameter('%n_samples')
     samples_per_frame = int(n_samples / time_steps)
+
     config = [
+        'Autoencoder.preprocessor = @F0PowerPreprocessor()',
         'F0PowerPreprocessor.time_steps = 1',
         f'Harmonic.n_samples = {samples_per_frame}',
         f'FilteredNoise.n_samples = {samples_per_frame}',
     ]
 
-    # Remove reverb processor.
+    # Remove reverb and crop processors.
     processor_group_string = """ProcessorGroup.dag = [
     (@synths.Harmonic(),
       ['amps', 'harmonic_distribution', 'f0_hz']),

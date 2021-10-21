@@ -631,6 +631,41 @@ def upsample_with_windows(inputs: tf.Tensor,
   return x[:, hop_size:-hop_size, :]
 
 
+# TODO(jesseengel): Axis param, don't assume axis=1.
+def center_pad(audio, frame_size, mode='CONSTANT'):
+  """Pad an audio signal such that timestamps align to the center of frames.
+
+  Without centering, timestamps align to the front of frames.
+  Args:
+    audio: Input, shape [batch, time, ...].
+    frame_size: Size of each frame.
+    mode: Padding mode for tf.pad. One of "CONSTANT", "REFLECT", or
+      "SYMMETRIC" (case-insensitive).
+
+  Returns:
+    audio_padded: Shape [batch, time + (frame_size // 2) * 2, ...].
+  """
+  pad_amount = int(frame_size // 2)  # Symmetric even padding like librosa.
+  pads = [[0, 0] for _ in range(len(audio.shape))]
+  pads[1] = [pad_amount, pad_amount]
+  return tf.pad(audio, pads, mode=mode)
+
+
+def center_crop(audio, frame_size):
+  """Remove padding introduced from centering frames.
+
+  Inverse of center_pad().
+  Args:
+    audio: Input, shape [batch, time, ...].
+    frame_size: Size of each frame.
+
+  Returns:
+    audio_cropped: Shape [batch, time - (frame_size // 2) * 2, ...].
+  """
+  pad_amount = int(frame_size // 2)  # Symmetric even padding like librosa.
+  return audio[:, pad_amount:-pad_amount]
+
+
 # Synth conversions ------------------------------------------------------------
 def sinusoidal_to_harmonic(sin_amps,
                            sin_freqs,

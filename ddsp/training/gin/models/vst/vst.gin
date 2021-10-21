@@ -9,12 +9,29 @@ import ddsp.training
 # =====
 get_model.model = @models.Autoencoder()
 
+# Globals
+frame_rate = 250
+frame_size = 1024
+sample_rate = 16000
+n_samples = 64064  # Extra frame for center padding.
+
+
 # Preprocessor
-Autoencoder.preprocessor = @preprocessing.F0PowerPreprocessor()
-F0PowerPreprocessor.time_steps = 1000
-F0PowerPreprocessor.frame_rate = 250
-F0PowerPreprocessor.frame_size = 256
-F0PowerPreprocessor.sample_rate = 16000
+# Constructor requires path to a SavedModel of the base CREPE
+# models. Available on GCS at gs://crepe-models/saved_models/[full,large,small].
+Autoencoder.preprocessor = @preprocessing.OnlineF0PowerPreprocessor()
+OnlineF0PowerPreprocessor:
+  time_steps = 1001  # Extra frame added for center padding.
+  sample_rate = %sample_rate
+  compute_power = True
+  center_power = True
+  power_frame_rate = %frame_rate
+  power_frame_size = %frame_size
+  compute_f0 = True
+  center_f0 = True
+  f0_frame_rate = %frame_rate
+  f0_frame_size = %frame_size
+  crepe_saved_model_path = ''
 
 
 # Encoder
@@ -23,23 +40,25 @@ Autoencoder.encoder = None
 
 # Decoder
 Autoencoder.decoder = @decoders.RnnFcDecoder()
-RnnFcDecoder.rnn_channels = 256
-RnnFcDecoder.rnn_type = 'lstm'
-RnnFcDecoder.ch = 256
-RnnFcDecoder.layers_per_stack = 1
-RnnFcDecoder.input_keys = ('pw_scaled', 'f0_scaled')
-RnnFcDecoder.output_splits = (('amps', 1),
-                              ('harmonic_distribution', 60),
-                              ('noise_magnitudes', 65))
+RnnFcDecoder:
+    rnn_channels = 256
+    rnn_type = 'lstm'
+    ch = 256
+    layers_per_stack = 1
+    input_keys = ('pw_scaled', 'f0_scaled')
+    output_splits = (('amps', 1),
+                     ('harmonic_distribution', 60),
+                     ('noise_magnitudes', 65))
 
 
 # Losses
 Autoencoder.losses = [
     @losses.SpectralLoss(),
 ]
-SpectralLoss.loss_type = 'L1'
-SpectralLoss.mag_weight = 1.0
-SpectralLoss.logmag_weight = 1.0
+SpectralLoss:
+    loss_type = 'L1'
+    mag_weight = 1.0
+    logmag_weight = 1.0
 
 # ==============
 # ProcessorGroup
@@ -51,6 +70,8 @@ Autoencoder.processor_group = @processors.ProcessorGroup()
 # ProcessorGroup
 # ==============
 
+# Has a "Crop" processor to remove the padding from centered frames.
+
 ProcessorGroup.dag = [
   (@synths.Harmonic(),
     ['amps', 'harmonic_distribution', 'f0_hz']),
@@ -60,28 +81,40 @@ ProcessorGroup.dag = [
     ['filtered_noise/signal', 'harmonic/signal']),
   (@effects.FilteredNoiseReverb(),
     ['add/signal']),
+  (@processors.Crop(),
+    ['reverb/signal'])
 ]
 
 # Reverb
-FilteredNoiseReverb.name = 'reverb'
-FilteredNoiseReverb.reverb_length = 24000
-FilteredNoiseReverb.n_frames = 500
-FilteredNoiseReverb.n_filter_banks = 32
-FilteredNoiseReverb.trainable = True
+FilteredNoiseReverb:
+    name = 'reverb'
+    reverb_length = 24000
+    n_frames = 500
+    n_filter_banks = 32
+    trainable = True
 
 # Harmonic Synthesizer
-Harmonic.name = 'harmonic'
-Harmonic.n_samples = 64000
-Harmonic.sample_rate = 16000
-Harmonic.normalize_below_nyquist = True
-Harmonic.scale_fn = @core.exp_sigmoid
-Harmonic.amp_resample_method = 'linear'
+Harmonic:
+    name = 'harmonic'
+    n_samples = %n_samples
+    sample_rate = %sample_rate
+    normalize_below_nyquist = True
+    scale_fn = @core.exp_sigmoid
+    amp_resample_method = 'linear'
 
 # Filtered Noise Synthesizer
-FilteredNoise.name = 'filtered_noise'
-FilteredNoise.n_samples = 64000
-FilteredNoise.window_size = 0
-FilteredNoise.scale_fn = @core.exp_sigmoid
+FilteredNoise:
+    name = 'filtered_noise'
+    n_samples = %n_samples
+    window_size = 0
+    scale_fn = @core.exp_sigmoid
 
 # Add
 processors.Add.name = 'add'
+
+# Remove the extra frame of synthesis from centering.
+# Since generation is forward.
+# Frame size is the frame of the "synthesis" which is just the hop size.
+Crop:
+    frame_size = 64
+    crop_location = 'back'

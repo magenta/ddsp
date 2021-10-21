@@ -232,3 +232,33 @@ class Mix(Processor):
     mix_level_one = tf.sqrt(tf.abs(mix_level))
     mix_level_two = 1.0 - tf.sqrt(tf.abs(mix_level - 1.0))
     return mix_level_one * signal_one + mix_level_two * signal_two
+
+
+@gin.register
+class Crop(Processor):
+  """Remove audio generated from padding frames."""
+
+  def __init__(self,
+               frame_size: int,
+               crop_location: Text = 'back',
+               name: Text = 'crop'):
+    super().__init__(name=name)
+    self.frame_size = frame_size
+    self.crop_location = crop_location
+
+  def get_controls(self, audio: tf.Tensor) -> TensorDict:
+    """Just pass signals through."""
+    return {'audio': audio}
+
+  def get_signal(self, audio: tf.Tensor) -> tf.Tensor:
+    half_pad_amount = int(self.frame_size // 2)  # Symmetric even.
+    pad_amount = 2 * half_pad_amount
+    if self.crop_location == 'front':
+      return audio[:, pad_amount:]
+    elif self.crop_location == 'center':
+      return audio[:, half_pad_amount:-half_pad_amount]
+    elif self.crop_location == 'back':
+      return audio[:, :-pad_amount]
+    else:
+      raise ValueError(f'Crop_location: ({self.crop_location}), must be '
+                       '"front", "center", or "back".')

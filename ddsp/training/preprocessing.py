@@ -20,7 +20,6 @@ from ddsp.training import nn
 import gin
 import tensorflow as tf
 
-hz_to_midi = ddsp.core.hz_to_midi
 F0_RANGE = ddsp.spectral_ops.F0_RANGE
 LD_RANGE = ddsp.spectral_ops.LD_RANGE
 
@@ -34,6 +33,26 @@ def at_least_3d(x):
   x = x[tf.newaxis, :] if len(x.shape) == 1 else x
   x = x[:, :, tf.newaxis] if len(x.shape) == 2 else x
   return x
+
+
+def scale_db(db):
+  """Scales [-LD_RANGE, 0] to [0, 1]."""
+  return (db / LD_RANGE) + 1.0
+
+
+def inv_scale_db(db_scaled):
+  """Scales [0, 1] to [-LD_RANGE, 0]."""
+  return (db_scaled - 1.0) * LD_RANGE
+
+
+def scale_f0_hz(f0_hz):
+  """Scales [0, Nyquist] Hz to [0, 1.0] MIDI-scaled."""
+  return ddsp.core.hz_to_midi(f0_hz) / F0_RANGE
+
+
+def inv_scale_f0_hz(f0_scaled):
+  """Scales [0, 1.0] MIDI-scaled to [0, Nyquist] Hz."""
+  return ddsp.core.midi_to_hz(f0_scaled * F0_RANGE)
 
 
 # ---------------------- Preprocess objects ------------------------------------
@@ -52,15 +71,15 @@ class F0LoudnessPreprocessor(nn.DictLayer):
     loudness_db = self.resample(loudness_db)
     # For NN training, scale frequency and loudness to the range [0, 1].
     # Log-scale f0 features. Loudness from [-1, 0] to [1, 0].
-    f0_scaled = hz_to_midi(f0_hz) / F0_RANGE
-    ld_scaled = (loudness_db / LD_RANGE) + 1.0
+    f0_scaled = scale_f0_hz(f0_hz)
+    ld_scaled = scale_db(loudness_db)
     return f0_hz, loudness_db, f0_scaled, ld_scaled
 
   @staticmethod
   def invert_scaling(f0_scaled, ld_scaled):
     """Takes in scaled f0 and loudness, and puts them back to hz & db scales."""
-    f0_hz = ddsp.core.midi_to_hz(F0_RANGE * f0_scaled)
-    loudness_db = (ld_scaled - 1.0) * LD_RANGE
+    f0_hz = inv_scale_f0_hz(f0_scaled)
+    loudness_db = inv_scale_db(ld_scaled)
     return f0_hz, loudness_db
 
   def resample(self, x):
@@ -88,7 +107,7 @@ class F0PowerPreprocessor(F0LoudnessPreprocessor):
     """Compute power on the fly if it's not in the inputs."""
     # For NN training, scale frequency and loudness to the range [0, 1].
     f0_hz = self.resample(f0_hz)
-    f0_scaled = hz_to_midi(f0_hz) / F0_RANGE
+    f0_scaled = scale_f0_hz(f0_hz)
 
     if power_db is not None:
       # Use dataset values if present.
@@ -106,15 +125,15 @@ class F0PowerPreprocessor(F0LoudnessPreprocessor):
     # Resample.
     pw_db = self.resample(pw_db)
     # Scale power.
-    pw_scaled = (pw_db / LD_RANGE) + 1.0
+    pw_scaled = scale_db(pw_db)
 
     return f0_hz, pw_db, f0_scaled, pw_scaled
 
   @staticmethod
   def invert_scaling(f0_scaled, pw_scaled):
     """Puts scaled f0, loudness, and power back to hz & db scales."""
-    f0_hz = ddsp.core.midi_to_hz(F0_RANGE * f0_scaled)
-    power_db = (pw_scaled - 1.0) * LD_RANGE
+    f0_hz = inv_scale_f0_hz(f0_scaled)
+    power_db = inv_scale_db(pw_scaled)
     return f0_hz, power_db
 
 

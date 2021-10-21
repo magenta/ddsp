@@ -193,7 +193,8 @@ def compute_loudness(audio,
                      n_fft=2048,
                      range_db=LD_RANGE,
                      ref_db=20.7,
-                     use_tf=False):
+                     use_tf=False,
+                     pad_end=True):
   """Perceptual loudness in dB, relative to white noise, amplitude=1.
 
   Function is differentiable if use_tf=True.
@@ -211,6 +212,7 @@ def compute_loudness(audio,
       slight dependence on fft_size due to different granularity of perceptual
       weighting.
     use_tf: Make function differentiable by using tensorflow.
+    pad_end: Add zero padding at end of audio (like `same` convolution).
 
   Returns:
     Loudness in decibels. Shape [batch_size, n_frames] or [n_frames,].
@@ -235,7 +237,7 @@ def compute_loudness(audio,
   hop_size = sample_rate // frame_rate
   overlap = 1 - hop_size / n_fft
   stft_fn = stft if use_tf else stft_np
-  s = stft_fn(audio, frame_size=n_fft, overlap=overlap, pad_end=True)
+  s = stft_fn(audio, frame_size=n_fft, overlap=overlap, pad_end=pad_end)
 
   # Compute power.
   amplitude = lib.abs(s)
@@ -312,18 +314,20 @@ def compute_f0(audio, sample_rate, frame_rate, viterbi=True):
 def compute_rms_energy(audio,
                        sample_rate=16000,
                        frame_rate=250,
-                       frame_size=2048):
+                       frame_size=2048,
+                       pad_end=True):
   """Compute root mean squared energy of audio."""
-  n_samples = audio.shape[0] if len(audio.shape) == 1 else audio.shape[1]
-  n_secs = n_samples / float(sample_rate)  # `n_secs` can have milliseconds
-  expected_len = int(n_secs * frame_rate)
-
   audio = tf_float32(audio)
-
   hop_size = sample_rate // frame_rate
-  audio_frames = tf.signal.frame(audio, frame_size, hop_size, pad_end=True)
+  audio_frames = tf.signal.frame(audio, frame_size, hop_size, pad_end=pad_end)
   rms_energy = tf.reduce_mean(audio_frames**2.0, axis=-1)**0.5
-  return pad_or_trim_to_expected_length(rms_energy, expected_len, use_tf=True)
+  if pad_end:
+    n_samples = audio.shape[0] if len(audio.shape) == 1 else audio.shape[1]
+    n_secs = n_samples / float(sample_rate)  # `n_secs` can have milliseconds
+    expected_len = int(n_secs * frame_rate)
+    return pad_or_trim_to_expected_length(rms_energy, expected_len, use_tf=True)
+  else:
+    return rms_energy
 
 
 def compute_power(audio,
@@ -331,10 +335,12 @@ def compute_power(audio,
                   frame_rate=250,
                   frame_size=1024,
                   range_db=LD_RANGE,
-                  ref_db=20.7):
+                  ref_db=20.7,
+                  pad_end=True):
   """Compute power of audio in dB."""
   # TODO(hanoih@): enable `use_tf` to be True or False like `compute_loudness`
-  rms_energy = compute_rms_energy(audio, sample_rate, frame_rate, frame_size)
+  rms_energy = compute_rms_energy(
+      audio, sample_rate, frame_rate, frame_size, pad_end)
   power_db = amplitude_to_db(rms_energy**2, use_tf=True)
   # Set dynamic range.
   power_db -= ref_db
@@ -405,3 +411,83 @@ def reset_crepe():
   """Reset the global state of CREPE to force model re-building."""
   for k in crepe.core.models:
     crepe.core.models[k] = None
+
+
+class PretrainedCREPE(tf.keras.Model):
+  """A wrapper around a pretrained CREPE model, for pitch prediction.
+
+  Enables predicting pitch and confidence entirely in TF for running in batch
+  on accelerators. Constructor requires path to a SavedModel of the base CREPE
+  models. Available on GCS at gs://crepe-models/saved_models/[full,large,small].
+  """
+
+  def __init__(self,
+               saved_model_path,
+               hop_size=160,
+               **kwargs):
+    super().__init__(**kwargs)
+    self.hop_size = hop_size
+    self.frame_size = 1024
+    self.sample_rate = 16000
+    # Load the crepe model.
+    self.saved_model_path = saved_model_path
+    self.core_model = tf.keras.models.load_model(self.saved_model_path)
+
+  @classmethod
+  def activations_to_f0_and_confidence(cls, activations):
+    """Convert network outputs (activations) to f0 predictions."""
+    cent_mapping = tf.cast(
+        tf.linspace(0, 7180, 360) + 1997.3794084376191, tf.float32)
+
+    # The confidence of voicing activity and the argmax bin.
+    confidence = tf.reduce_max(activations, axis=-1, keepdims=True)
+    center = tf.cast(tf.math.argmax(activations, axis=-1), tf.int32)
+
+    # Slice the local neighborhood around the argmax bin.
+    start = center - 4
+    idx_list = tf.range(0, 10)
+    idx_list = start[:, None] + idx_list[None, :]
+
+    # Bound to [0, 359].
+    idx_list = tf.where(idx_list > 0, idx_list, 0)
+    idx_list = tf.where(idx_list < 359, idx_list, 359)
+
+    # Gather and weight activations.
+    weights = tf.gather(activations, idx_list, batch_dims=1)
+    cents = tf.gather(cent_mapping, idx_list, batch_dims=0)
+    f0_cent = tf.reduce_sum(weights * cents, axis=-1) / tf.reduce_sum(
+        weights, axis=-1)
+    f0_hz = 10 * 2**(f0_cent / 1200.)
+
+    return f0_hz, confidence
+
+  def batch_frames(self, audio):
+    """Chop audio into overlapping frames, and push to batch dimension."""
+    if audio.shape[-1] == self.frame_size:
+      return audio
+    else:
+      frames = tf.signal.frame(audio, self.frame_size, self.hop_size)
+      frames = tf.reshape(frames, [-1, self.frame_size])
+      return frames
+
+  def normalize_frames(self, frames):
+    """Normalize each frame -- this is expected by the model."""
+    mu, var = tf.nn.moments(frames, axes=[-1])
+    std = tf.where(tf.abs(var) > 0, tf.sqrt(var), 1e-8)
+    frames -= mu[:, None]
+    frames /= std[:, None]
+    return frames
+
+  def predict_f0_and_confidence(self, audio):
+    audio = audio[None, :] if len(audio.shape) == 1 else audio
+    batch_size = audio.shape[0]
+
+    frames = self.batch_frames(audio)
+    frames = self.normalize_frames(frames)
+    acts = self.core_model(frames, training=False)
+    f0_hz, confidence = self.activations_to_f0_and_confidence(acts)
+    f0_hz = tf.reshape(f0_hz, [batch_size, -1])
+    confidence = tf.reshape(confidence, [batch_size, -1])
+    return f0_hz, confidence
+
+
