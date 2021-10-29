@@ -828,7 +828,6 @@ def remove_above_nyquist(frequency_envelopes: tf.Tensor,
   return amplitude_envelopes
 
 
-# TODO(jesseengel): Remove reliance on global injection for angular cumsum.
 @gin.configurable
 def oscillator_bank(frequency_envelopes: tf.Tensor,
                     amplitude_envelopes: tf.Tensor,
@@ -909,7 +908,8 @@ def harmonic_synthesis(frequencies: tf.Tensor,
                        harmonic_distribution: Optional[tf.Tensor] = None,
                        n_samples: int = 64000,
                        sample_rate: int = 16000,
-                       amp_resample_method: Text = 'window') -> tf.Tensor:
+                       amp_resample_method: Text = 'window',
+                       use_angular_cumsum: bool = False) -> tf.Tensor:
   """Generate audio from frame-wise monophonic harmonic oscillator bank.
 
   Args:
@@ -926,6 +926,8 @@ def harmonic_synthesis(frequencies: tf.Tensor,
     n_samples: Total length of output audio. Interpolates and crops to this.
     sample_rate: Sample rate.
     amp_resample_method: Mode with which to resample amplitude envelopes.
+    use_angular_cumsum: Use angular cumulative sum on accumulating phase
+      instead of tf.cumsum.
 
   Returns:
     audio: Output audio. Shape [batch_size, n_samples, 1]
@@ -961,7 +963,8 @@ def harmonic_synthesis(frequencies: tf.Tensor,
   # Synthesize from harmonics [batch_size, n_samples].
   audio = oscillator_bank(frequency_envelopes,
                           amplitude_envelopes,
-                          sample_rate=sample_rate)
+                          sample_rate=sample_rate,
+                          use_angular_cumsum=use_angular_cumsum)
   return audio
 
 
