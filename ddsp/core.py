@@ -732,7 +732,6 @@ def harmonic_to_sinusoidal(harm_amp, harm_dist, f0_hz, sample_rate=16000):
 
 
 # Harmonic Synthesizer ---------------------------------------------------------
-# TODO(jesseengel): Remove reliance on global injection for angular cumsum.
 @gin.configurable
 def angular_cumsum(angular_frequency, chunk_size=1000):
   """Get phase by cumulative sumation of angular frequency.
