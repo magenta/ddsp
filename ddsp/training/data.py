@@ -53,20 +53,22 @@ class DataProvider(object):
     """A method that returns a tf.data.Dataset."""
     raise NotImplementedError
 
-  def get_batch(self, batch_size, shuffle=True, repeats=-1):
+  def get_batch(self, batch_size, shuffle=True, repeats=-1,
+                drop_remainder=True):
     """Read dataset.
 
     Args:
       batch_size: Size of batch.
       shuffle: Whether to shuffle the examples.
       repeats: Number of times to repeat dataset. -1 for endless repeats.
+      drop_remainder: Whether the last batch should be dropped.
 
     Returns:
       A batched tf.data.Dataset.
     """
     dataset = self.get_dataset(shuffle)
     dataset = dataset.repeat(repeats)
-    dataset = dataset.batch(batch_size, drop_remainder=True)
+    dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
     dataset = dataset.prefetch(buffer_size=_AUTOTUNE)
     return dataset
 
@@ -306,13 +308,15 @@ class ZippedProvider(BaseMultiProvider):
     datasets = tuple(dp.get_dataset(shuffle) for dp in self._data_providers)
     return tf.data.Dataset.zip(datasets)
 
-  def get_batch(self, batch_size, shuffle=True, repeats=-1):
+  def get_batch(self, batch_size, shuffle=True, repeats=-1,
+                drop_remainder=True):
     """Read dataset.
 
     Args:
       batch_size: Size of batches, can be a list to have varying batch_sizes.
       shuffle: Whether to shuffle the examples.
       repeats: Number of times to repeat dataset. -1 for endless repeats.
+      drop_remainder: Whether the last batch should be dropped.
 
     Returns:
       A batched tf.data.Dataset.
@@ -325,7 +329,7 @@ class ZippedProvider(BaseMultiProvider):
       # Varying batch sizes (Integer batch shape for each).
       batch_sizes = [int(batch_size * bsr) for bsr in self._batch_size_ratios]
       datasets = tuple(
-          dp.get_dataset(shuffle).batch(bs, drop_remainder=True)
+          dp.get_dataset(shuffle).batch(bs, drop_remainder=drop_remainder)
           for bs, dp in zip(batch_sizes, self._data_providers))
       dataset = tf.data.Dataset.zip(datasets)
       dataset = dataset.repeat(repeats)
