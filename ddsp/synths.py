@@ -62,6 +62,7 @@ class Harmonic(processors.Processor):
                sample_rate=16000,
                scale_fn=core.exp_sigmoid,
                normalize_below_nyquist=True,
+               use_angular_cumsum=False,
                amp_resample_method='window',
                name='harmonic'):
     """Constructor.
@@ -72,6 +73,11 @@ class Harmonic(processors.Processor):
       scale_fn: Scale function for amplitude and harmonic distribution inputs.
       normalize_below_nyquist: Remove harmonics above the nyquist frequency
         and normalize the remaining harmonic distribution to sum to 1.0.
+      use_angular_cumsum: Use angular cumulative sum on accumulating phase
+        instead of tf.cumsum. If synthesized examples are longer than ~100k
+        audio samples, consider use_angular_cumsum to avoid accumulating
+        noticible phase errors due to the limited precision of tf.cumsum.
+        However, using angular cumulative sum is slower on accelerators.
       amp_resample_method: Mode with which to resample amplitude envelopes.
         Must be in ['nearest', 'linear', 'cubic', 'window']. 'window' uses
         overlapping windows (only for upsampling) which is smoother
@@ -84,6 +90,7 @@ class Harmonic(processors.Processor):
     self.scale_fn = scale_fn
     self.normalize_below_nyquist = normalize_below_nyquist
     self.amp_resample_method = amp_resample_method
+    self.use_angular_cumsum = use_angular_cumsum
 
   def get_controls(self,
                    amplitudes,
@@ -145,7 +152,8 @@ class Harmonic(processors.Processor):
         harmonic_distribution=harmonic_distribution,
         n_samples=self.n_samples,
         sample_rate=self.sample_rate,
-        amp_resample_method=self.amp_resample_method)
+        amp_resample_method=self.amp_resample_method,
+        use_angular_cumsum=self.use_angular_cumsum)
     return signal
 
 
