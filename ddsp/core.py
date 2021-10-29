@@ -208,7 +208,7 @@ def gradient_reversal(x):
 
 
 # Unit Conversions -------------------------------------------------------------
-def midi_to_hz(notes: Number, zero_silence: bool = False):
+def midi_to_hz(notes: Number, zero_silence: bool = False) -> Number:
   """TF-compatible midi_to_hz function."""
   notes = tf_float32(notes)
   hz = 440.0 * (2.0 ** ((notes - 69.0) / 12.0))
