@@ -363,8 +363,8 @@ def straight_through_int_quantization(x):
 def get_note_mask(q_pitch, max_regions=100, note_on_only=True):
   """Get a binary mask for each note from a monophonic instrument.
 
-  Each transition of the value creates a new region. Returns the mask of each
-  region.
+  Each transition of the q_pitch value creates a new region. Returns the mask of
+  each region.
   Args:
     q_pitch: A quantized value, such as pitch or velocity. Shape
       [batch, n_timesteps] or [batch, n_timesteps, 1].
@@ -416,8 +416,7 @@ def get_note_mask_from_onset(q_pitch, onset, max_regions=100,
                              note_on_only=True):
   """Get a binary mask for each note from a monophonic instrument.
 
-  Each transition of the value creates a new region. Returns the mask of each
-  region.
+  Each onset creates a new region. Returns the mask of each region.
   Args:
     q_pitch: A quantized value, such as pitch or velocity. Shape
       [batch, n_timesteps] or [batch, n_timesteps, 1].
