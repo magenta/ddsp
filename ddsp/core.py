@@ -213,11 +213,11 @@ def midi_to_hz(notes: Number, midi_zero_silence: bool = False) -> Number:
 
   Args:
     notes: Tensor containing encoded pitch in MIDI scale.
-    midi_zero_silence: Whether to output 0 hz for midi 0, which would be convenient
-    when midi 0 represents silence.
+    midi_zero_silence: Whether to output 0 hz for midi 0, which would be
+    convenient when midi 0 represents silence.
 
   Returns:
-    hz: frequency of MIDI in hz
+    hz: Frequency of MIDI in hz.
   """
   notes = tf_float32(notes)
   hz = 440.0 * (2.0 ** ((notes - 69.0) / 12.0))
