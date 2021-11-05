@@ -54,7 +54,7 @@ class DataProvider(object):
     raise NotImplementedError
 
   def get_batch(self, batch_size, shuffle=True, repeats=-1,
-                drop_remainder=True):
+                drop_remainder=False):
     """Read dataset.
 
     Args:
@@ -309,7 +309,7 @@ class ZippedProvider(BaseMultiProvider):
     return tf.data.Dataset.zip(datasets)
 
   def get_batch(self, batch_size, shuffle=True, repeats=-1,
-                drop_remainder=True):
+                drop_remainder=False):
     """Read dataset.
 
     Args:
