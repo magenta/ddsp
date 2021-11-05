@@ -209,7 +209,16 @@ def gradient_reversal(x):
 
 # Unit Conversions -------------------------------------------------------------
 def midi_to_hz(notes: Number, zero_silence: bool = False) -> Number:
-  """TF-compatible midi_to_hz function."""
+  """TF-compatible midi_to_hz function.
+
+  Args:
+    notes: Tensor containing encoded pitch in MIDI scale.
+    zero_silence: Whether to output 0 hz for midi 0, which would be convenient
+    when midi 0 represents silence.
+
+  Returns:
+    hz: frequency of MIDI in hz
+  """
   notes = tf_float32(notes)
   hz = 440.0 * (2.0 ** ((notes - 69.0) / 12.0))
   # Map MIDI 0 as 0 hz when MIDI 0 is silence
