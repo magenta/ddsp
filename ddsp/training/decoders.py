@@ -163,7 +163,7 @@ class MidiToHarmonicDecoder(nn.DictLayer):
       outputs['f0_midi'] += z_pitch
 
     outputs['f0_hz'] = core.midi_to_hz(outputs['f0_midi'],
-                                       zero_silence=self.midi_zero_silence)
+                                       midi_zero_silence=self.midi_zero_silence)
     return outputs
 
 
