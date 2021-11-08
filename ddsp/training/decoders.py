@@ -76,7 +76,7 @@ class MidiDecoder(nn.DictLayer):
     self.dense_out = tfkl.Dense(2)
     self.norm = nn.Normalize('layer') if norm else None
 
-  def call(self, z_pitch, z_vel, z=None) -> ['f0_midi', 'loudness']:
+  def call(self, z_pitch, z_vel=None, z=None) -> ['f0_midi', 'loudness']:
     """Forward pass for the MIDI decoder.
 
     Args:
@@ -121,6 +121,7 @@ class MidiToHarmonicDecoder(nn.DictLayer):
                               ('amplitudes', 1),
                               ('harmonic_distribution', 60),
                               ('magnitudes', 65)),
+               midi_zero_silence=True,
                **kwargs):
     """Constructor."""
     self.output_splits = output_splits
@@ -133,8 +134,9 @@ class MidiToHarmonicDecoder(nn.DictLayer):
     self.f0_residual = f0_residual
     self.dense_out = tfkl.Dense(self.n_out)
     self.norm = nn.Normalize('layer') if norm else None
+    self.midi_zero_silence = midi_zero_silence
 
-  def call(self, z_pitch, z_vel, z=None):
+  def call(self, z_pitch, z_vel=None, z=None):
     """Forward pass for the MIDI decoder.
 
     Args:
@@ -160,7 +162,8 @@ class MidiToHarmonicDecoder(nn.DictLayer):
     if self.f0_residual:
       outputs['f0_midi'] += z_pitch
 
-    outputs['f0_hz'] = core.midi_to_hz(outputs['f0_midi'])
+    outputs['f0_hz'] = core.midi_to_hz(outputs['f0_midi'],
+                                       midi_zero_silence=self.midi_zero_silence)
     return outputs
 
 

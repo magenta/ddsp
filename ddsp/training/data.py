@@ -53,20 +53,25 @@ class DataProvider(object):
     """A method that returns a tf.data.Dataset."""
     raise NotImplementedError
 
-  def get_batch(self, batch_size, shuffle=True, repeats=-1):
+  def get_batch(self,
+                batch_size,
+                shuffle=True,
+                repeats=-1,
+                drop_remainder=True):
     """Read dataset.
 
     Args:
       batch_size: Size of batch.
       shuffle: Whether to shuffle the examples.
       repeats: Number of times to repeat dataset. -1 for endless repeats.
+      drop_remainder: Whether the last batch should be dropped.
 
     Returns:
       A batched tf.data.Dataset.
     """
     dataset = self.get_dataset(shuffle)
     dataset = dataset.repeat(repeats)
-    dataset = dataset.batch(batch_size, drop_remainder=True)
+    dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
     dataset = dataset.prefetch(buffer_size=_AUTOTUNE)
     return dataset
 
@@ -306,13 +311,18 @@ class ZippedProvider(BaseMultiProvider):
     datasets = tuple(dp.get_dataset(shuffle) for dp in self._data_providers)
     return tf.data.Dataset.zip(datasets)
 
-  def get_batch(self, batch_size, shuffle=True, repeats=-1):
+  def get_batch(self,
+                batch_size,
+                shuffle=True,
+                repeats=-1,
+                drop_remainder=False):
     """Read dataset.
 
     Args:
       batch_size: Size of batches, can be a list to have varying batch_sizes.
       shuffle: Whether to shuffle the examples.
       repeats: Number of times to repeat dataset. -1 for endless repeats.
+      drop_remainder: Whether the last batch should be dropped.
 
     Returns:
       A batched tf.data.Dataset.
@@ -325,7 +335,7 @@ class ZippedProvider(BaseMultiProvider):
       # Varying batch sizes (Integer batch shape for each).
       batch_sizes = [int(batch_size * bsr) for bsr in self._batch_size_ratios]
       datasets = tuple(
-          dp.get_dataset(shuffle).batch(bs, drop_remainder=True)
+          dp.get_dataset(shuffle).batch(bs, drop_remainder=drop_remainder)
           for bs, dp in zip(batch_sizes, self._data_providers))
       dataset = tf.data.Dataset.zip(datasets)
       dataset = dataset.repeat(repeats)
@@ -443,8 +453,15 @@ class UrmpMidi(Urmp):
         'note_active_frame_indices':
             tf.io.FixedLenFeature([self._feature_length * 128], tf.float32),
         'instrument_id': tf.io.FixedLenFeature([], tf.string),
+        'recording_id': tf.io.FixedLenFeature([], tf.string),
         'power_db':
             tf.io.FixedLenFeature([self._feature_length], dtype=tf.float32),
+        'note_onsets':
+            tf.io.FixedLenFeature([self._feature_length * 128],
+                                  dtype=tf.float32),
+        'note_offsets':
+            tf.io.FixedLenFeature([self._feature_length * 128],
+                                  dtype=tf.float32),
     })
     return base_features
 
@@ -461,6 +478,16 @@ class UrmpMidi(Urmp):
       data['note_active_velocities'] = tf.reshape(
           data['note_active_velocities'], (-1, 128))
       data['instrument_id'] = inst_vocab.lookup(data['instrument_id'])
+      data['midi'] = tf.argmax(data['note_active_frame_indices'], axis=-1)
+      data['f0_hz'] = data['f0_hz'][..., tf.newaxis]
+      data['loudness_db'] = data['loudness_db'][..., tf.newaxis]
+      onsets = tf.reduce_sum(
+          tf.reshape(data['note_onsets'], (-1, 128)), axis=-1)
+      data['onsets'] = tf.cast(onsets > 0, tf.int64)
+      offsets = tf.reduce_sum(
+          tf.reshape(data['note_offsets'], (-1, 128)), axis=-1)
+      data['offsets'] = tf.cast(offsets > 0, tf.int64)
+
       return data
 
     ds = super().get_dataset(shuffle)

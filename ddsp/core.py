@@ -208,10 +208,24 @@ def gradient_reversal(x):
 
 
 # Unit Conversions -------------------------------------------------------------
-def midi_to_hz(notes: Number) -> Number:
-  """TF-compatible midi_to_hz function."""
+def midi_to_hz(notes: Number, midi_zero_silence: bool = False) -> Number:
+  """TF-compatible midi_to_hz function.
+
+  Args:
+    notes: Tensor containing encoded pitch in MIDI scale.
+    midi_zero_silence: Whether to output 0 hz for midi 0, which would be
+      convenient when midi 0 represents silence. By defualt (False), midi 0.0
+      corresponds to 8.18 Hz.
+
+  Returns:
+    hz: Frequency of MIDI in hz, same shape as input.
+  """
   notes = tf_float32(notes)
-  return 440.0 * (2.0**((notes - 69.0) / 12.0))
+  hz = 440.0 * (2.0 ** ((notes - 69.0) / 12.0))
+  # Map MIDI 0 as 0 hz when MIDI 0 is silence.
+  if midi_zero_silence:
+    hz = tf.where(tf.equal(notes, 0.0), 0.0, hz)
+  return hz
 
 
 def hz_to_midi(frequencies: Number) -> Number:
@@ -909,7 +923,8 @@ def harmonic_synthesis(frequencies: tf.Tensor,
                        harmonic_distribution: Optional[tf.Tensor] = None,
                        n_samples: int = 64000,
                        sample_rate: int = 16000,
-                       amp_resample_method: Text = 'window') -> tf.Tensor:
+                       amp_resample_method: Text = 'window',
+                       use_angular_cumsum: bool = False) -> tf.Tensor:
   """Generate audio from frame-wise monophonic harmonic oscillator bank.
 
   Args:
@@ -926,6 +941,8 @@ def harmonic_synthesis(frequencies: tf.Tensor,
     n_samples: Total length of output audio. Interpolates and crops to this.
     sample_rate: Sample rate.
     amp_resample_method: Mode with which to resample amplitude envelopes.
+    use_angular_cumsum: Use angular cumulative sum on accumulating phase
+      instead of tf.cumsum. More accurate for inference.
 
   Returns:
     audio: Output audio. Shape [batch_size, n_samples, 1]
@@ -961,7 +978,8 @@ def harmonic_synthesis(frequencies: tf.Tensor,
   # Synthesize from harmonics [batch_size, n_samples].
   audio = oscillator_bank(frequency_envelopes,
                           amplitude_envelopes,
-                          sample_rate=sample_rate)
+                          sample_rate=sample_rate,
+                          use_angular_cumsum=use_angular_cumsum)
   return audio
 
 

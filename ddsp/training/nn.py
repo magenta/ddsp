@@ -363,8 +363,8 @@ def straight_through_int_quantization(x):
 def get_note_mask(q_pitch, max_regions=100, note_on_only=True):
   """Get a binary mask for each note from a monophonic instrument.
 
-  Each transition of the value creates a new region. Returns the mask of each
-  region.
+  Each transition of the q_pitch value creates a new region. Returns the mask of
+  each region.
   Args:
     q_pitch: A quantized value, such as pitch or velocity. Shape
       [batch, n_timesteps] or [batch, n_timesteps, 1].
@@ -407,6 +407,57 @@ def get_note_mask(q_pitch, max_regions=100, note_on_only=True):
     note_pitches = get_note_moments(q_pitch, note_mask, return_std=False)
     # [batch, time, notes]
     note_on = tf.cast(note_pitches > 0.0, tf.float32)[:, None, :]
+    # [batch, time, notes]
+    note_mask *= note_on
+
+  return note_mask
+
+
+def get_note_mask_from_onset(q_pitch, onset, max_regions=100,
+                             note_on_only=True):
+  """Get a binary mask for each note from a monophonic instrument.
+
+  Each onset creates a new region. Returns the mask of each region.
+  Args:
+    q_pitch: A quantized value, such as pitch or velocity. Shape
+      [batch, n_timesteps] or [batch, n_timesteps, 1].
+    onset: Binary onset in shape [batch, n_timesteps] or
+    [batch, n_timesteps, 1]. 1 represents onset.
+    max_regions: Maximum number of note regions to consider in the sequence.
+      Also, the channel dimension of the output mask. Each value transition
+      defines a new region, e.g. each note-on and note-off count as a separate
+      region.
+    note_on_only: Return a mask that is true only for regions where the pitch
+      is greater than 0.
+
+  Returns:
+    A binary mask of each region [batch, n_timesteps, max_regions].
+  """
+  # Only batch and time dimensions.
+  if len(q_pitch.shape) == 3:
+    q_pitch = q_pitch[:, :, 0]
+  if len(onset.shape) == 3:
+    onset = onset[:, :, 0]
+
+  edges = onset
+  # Count endpoints as starts/ends of regions.
+  edges = edges[:, 1:, ...]
+  edges = tf.pad(edges,
+                 [[0, 0], [1, 0]], mode='constant', constant_values=True)
+  edges = tf.cast(edges, tf.int32)
+
+  # Count up onset and offsets for each timestep.
+  # Assumes each onset has a corresponding offset.
+  # The -1 ensures that the 0th index is the first note.
+  edge_idx = tf.cumsum(edges, axis=1) - 1
+
+  # Create masks of shape [batch, n_timesteps, max_regions].
+  note_mask = edge_idx[..., None] == tf.range(max_regions)[None, None, :]
+  note_mask = tf.cast(note_mask, tf.float32)
+
+  if note_on_only:
+    # [batch, time, notes]
+    note_on = tf.cast(q_pitch > 0.0, tf.float32)[:, :, None]
     # [batch, time, notes]
     note_mask *= note_on
 
@@ -457,20 +508,31 @@ def get_note_moments(x, note_mask, return_std=True):
     return x_mean
 
 
-def pool_over_notes(x, note_mask):
+def pool_over_notes(x, note_mask, return_std=True):
   """Return the time-distributed average value of x pooled over the note.
 
   Args:
     x: Value to be pooled, [batch, time, dims].
     note_mask: Binary mask of notes [batch, time, notes].
+    return_std: Also return the standard deviation for each note.
 
   Returns:
     Values pooled over each note region, [batch, time, dims].
+    Returns only mean if return_std=False, else mean and std.
   """
-  x_notes = get_note_moments(x, note_mask, return_std=False)  # [b, n, d]
-  x_time_notes = (x_notes[:, tf.newaxis, ...] *
-                  note_mask[..., tf.newaxis])  # [b, t, n, d]
-  return tf.reduce_sum(x_time_notes, axis=2)  # [b, t, d]
+  x_notes, x_notes_std = get_note_moments(x, note_mask,
+                                          return_std=True)  # [b, n, d]
+  x_time_notes_mean = (x_notes[:, tf.newaxis, ...] *
+                       note_mask[..., tf.newaxis])  # [b, t, n, d]
+  pooled_mean = tf.reduce_sum(x_time_notes_mean, axis=2)  # [b, t, d]
+
+  if return_std:
+    x_time_notes_std = (x_notes_std[:, tf.newaxis, ...] *
+                        note_mask[..., tf.newaxis])  # [b, t, n, d]
+    pooled_std = tf.reduce_sum(x_time_notes_std, axis=2)  # [b, t, d]
+    return pooled_mean, pooled_std
+  else:
+    return pooled_mean
 
 
 def get_short_note_loss_mask(note_mask, note_lengths,
