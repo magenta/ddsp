@@ -15,7 +15,6 @@
 # Lint as: python3
 """Library of functions for differentiable digital signal processing (DDSP)."""
 
-
 import collections
 import copy
 from typing import Any, Dict, Optional, Sequence, Text, TypeVar
