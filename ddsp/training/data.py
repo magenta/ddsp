@@ -426,7 +426,7 @@ class Urmp(TFRecordProvider):
       split: Choices include ['train', 'test'].
       suffix: Choices include [None, 'batched', 'unbatched'], but broadly
         applies to any suffix adding to the file pattern.
-        When suffix is not None, will add "_suffix" to the file pattern.
+        When suffix is not None, will add "_{suffix}" to the file pattern.
         This option is used in gs://magentadata/datasets/urmp/urmp_20210324.
         With the "batched" suffix, the dataloader will load tfrecords
         containing segmented audio samples in 4 seconds. With the "unbatched"
@@ -437,7 +437,7 @@ class Urmp(TFRecordProvider):
     self.instrument_key = instrument_key
     self.split = split
     self.base_dir = base_dir
-    self.suffix = suffix if suffix is None else '_' + suffix
+    self.suffix = '' if suffix is None else '_' + suffix
     super().__init__()
 
   @property
