@@ -1,0 +1,210 @@
+# -*-Python-*-
+# FIXED FRAME RATE EXPERIMENTS.
+# Fixed frame rate (more downsampling for higher frequency bands).
+# VQ Autoencoder with dilated convolutional decoder that generates waveforms.
+# Wavelet Decomposition for multiple stages / scales.
+# Local copy of 'models/google/vqvae/multi_scale/7band_2scale_ds_np.gin'
+
+import ddsp
+import ddsp.training
+
+include 'eval/google/ms_vq.gin'
+
+
+# =======
+# Globals
+# =======
+get_model.model = @models.MultiScaleVQGAN()
+get_trainer_class.trainer_class = @trainers.GANTrainer
+
+
+# =====
+# Model
+# =====
+
+# Multiple of 1024.
+MultiScaleVQGAN.input_length = 63488
+
+# Wavelet Decomposition.
+MultiScaleVQGAN.wavelet_decomposition = @WaveletDecomposition()
+WaveletDecomposition.scale_factor = 2
+MultiScaleVQEvaluator.n_bands = 7
+WaveletDecomposition.n_bands = 7
+
+
+# Encoders.
+MultiScaleVQGAN.encoders = [
+    @l1/encoders.DilatedConvPoolEncoder(),
+    @l2/encoders.DilatedConvPoolEncoder(),
+    @l3/encoders.DilatedConvPoolEncoder(),
+    @l4/encoders.DilatedConvPoolEncoder(),
+    @l5/encoders.DilatedConvPoolEncoder(),
+    @l6/encoders.DilatedConvPoolEncoder(),
+    @l7/encoders.DilatedConvPoolEncoder(),
+]
+
+DilatedConvPoolEncoder.output_splits = (('z', 128),)
+DilatedConvPoolEncoder.ch = 128
+DilatedConvPoolEncoder.dilation = 1
+DilatedConvPoolEncoder.norm_type = 'layer'
+DilatedConvPoolEncoder.resample_stride = 2
+DilatedConvPoolEncoder.spectral_norm = True
+DilatedConvPoolEncoder.ortho_init = True
+
+# Encoder Layers.
+DilatedConvPoolEncoder.layers_per_stack = 1
+DilatedConvPoolEncoder.stacks = 21
+
+
+# Total downsample = 2**10 = 1024.
+
+# 0 Wave, 10 Net, 0 Pool.
+l1/DilatedConvPoolEncoder.stacks_per_resample = 2
+l1/DilatedConvPoolEncoder.pool_size = 1
+
+# 1 Wave, 7 Net, 2 Pool.
+l2/DilatedConvPoolEncoder.stacks_per_resample = 3
+l2/DilatedConvPoolEncoder.pool_size = 4
+
+# 2 Wave, 7 Net, 1 Pool.
+l3/DilatedConvPoolEncoder.stacks_per_resample = 3
+l3/DilatedConvPoolEncoder.pool_size = 2
+
+# 3 Wave, 7 Net, 0 Pool.
+l4/DilatedConvPoolEncoder.stacks_per_resample = 3
+l4/DilatedConvPoolEncoder.pool_size = 1
+
+# 4 Wave, 5 Net, 1 Pool.
+l5/DilatedConvPoolEncoder.stacks_per_resample = 4
+l5/DilatedConvPoolEncoder.pool_size = 2
+
+# 5 Wave, 5 Net, 0 Pool.
+l6/DilatedConvPoolEncoder.stacks_per_resample = 4
+l6/DilatedConvPoolEncoder.pool_size = 1
+
+# 6 Wave, 4 Net, 0 Pool.
+l7/DilatedConvPoolEncoder.stacks_per_resample = 5
+l7/DilatedConvPoolEncoder.pool_size = 1
+
+# Quantizers.
+MultiScaleVQGAN.quantizers = [
+    @l1/nn.VectorQuantization(),
+    @l2/nn.VectorQuantization(),
+    @l3/nn.VectorQuantization(),
+    @l4/nn.VectorQuantization(),
+    @l5/nn.VectorQuantization(),
+    @l6/nn.VectorQuantization(),
+    @l7/nn.VectorQuantization(),
+]
+
+# Vector Quantization.
+MultiScaleVQEvaluator.k = 2048
+VectorQuantization.k = 2048                  # number of centroids
+VectorQuantization.gamma = 0.99              # EMA inertia
+VectorQuantization.restart_threshold = 0.01  # minimum centroid usage
+VectorQuantization.num_heads = 1             # number of quantization heads
+VectorQuantization.commitment_loss_weight = 0.2
+
+
+# Decoders.
+MultiScaleVQGAN.decoders = [
+    @l1/decoders.UnpoolDilatedConvDecoder(),
+    @l2/decoders.UnpoolDilatedConvDecoder(),
+    @l3/decoders.UnpoolDilatedConvDecoder(),
+    @l4/decoders.UnpoolDilatedConvDecoder(),
+    @l5/decoders.UnpoolDilatedConvDecoder(),
+    @l6/decoders.UnpoolDilatedConvDecoder(),
+    @l7/decoders.UnpoolDilatedConvDecoder(),
+]
+
+
+UnpoolDilatedConvDecoder.input_keys = ('z_q',)
+UnpoolDilatedConvDecoder.conditioning_keys = ()
+UnpoolDilatedConvDecoder.output_splits = (('samples', 1),)
+UnpoolDilatedConvDecoder.ch = 128
+UnpoolDilatedConvDecoder.dilation = 1
+UnpoolDilatedConvDecoder.norm_type = 'layer'
+UnpoolDilatedConvDecoder.resample_stride = 2
+UnpoolDilatedConvDecoder.spectral_norm = True
+UnpoolDilatedConvDecoder.ortho_init = True
+
+# Decoder Layers.
+UnpoolDilatedConvDecoder.layers_per_stack = 1
+UnpoolDilatedConvDecoder.stacks = 21
+
+
+# Total upsample = 2**10 = 1024.
+
+# 0 Wave, 10 Net, 0 Pool.
+l1/UnpoolDilatedConvDecoder.stacks_per_resample = 2
+l1/UnpoolDilatedConvDecoder.unpool_size = 1
+
+# 1 Wave, 7 Net, 2 Pool.
+l2/UnpoolDilatedConvDecoder.stacks_per_resample = 3
+l2/UnpoolDilatedConvDecoder.unpool_size = 4
+
+# 2 Wave, 7 Net, 1 Pool.
+l3/UnpoolDilatedConvDecoder.stacks_per_resample = 3
+l3/UnpoolDilatedConvDecoder.unpool_size = 2
+
+# 3 Wave, 7 Net, 0 Pool.
+l4/UnpoolDilatedConvDecoder.stacks_per_resample = 3
+l4/UnpoolDilatedConvDecoder.unpool_size = 1
+
+# 4 Wave, 5 Net, 1 Pool.
+l5/UnpoolDilatedConvDecoder.stacks_per_resample = 4
+l5/UnpoolDilatedConvDecoder.unpool_size = 2
+
+# 5 Wave, 5 Net, 0 Pool.
+l6/UnpoolDilatedConvDecoder.stacks_per_resample = 4
+l6/UnpoolDilatedConvDecoder.unpool_size = 1
+
+# 6 Wave, 4 Net, 0 Pool.
+l7/UnpoolDilatedConvDecoder.stacks_per_resample = 5
+l7/UnpoolDilatedConvDecoder.unpool_size = 1
+
+
+# Audio Losses
+MultiScaleVQGAN.audio_losses = [
+    @losses.SpectralLoss(),
+]
+SpectralLoss.loss_type = 'L1'
+SpectralLoss.mag_weight = 1.0
+SpectralLoss.logmag_weight = 1.0
+
+
+### GAN STUFF ###
+# Discriminators.
+MultiScaleVQGAN.discriminators = [
+    @disc/encoders.DilatedConvPoolEncoder(),
+    @disc/encoders.DilatedConvPoolEncoder(),
+    @disc/encoders.DilatedConvPoolEncoder(),
+    @disc/encoders.DilatedConvPoolEncoder(),
+    @disc/encoders.DilatedConvPoolEncoder(),
+    @disc/encoders.DilatedConvPoolEncoder(),
+    @disc/encoders.DilatedConvPoolEncoder(),
+]
+
+# Total downsample = 2**3 = 8.
+disc/DilatedConvPoolEncoder.output_splits = (('logits', 1),)
+disc/DilatedConvPoolEncoder.layers_per_stack = 3
+disc/DilatedConvPoolEncoder.stacks = 3
+disc/DilatedConvPoolEncoder.stacks_per_resample = 1
+disc/DilatedConvPoolEncoder.pool_size = 1
+disc/DilatedConvPoolEncoder.spectral_norm = True
+disc/DilatedConvPoolEncoder.ortho_init = True
+
+
+
+# GAN Losses
+MultiScaleVQGAN.gan_losses = [
+    @losses.HingeGANLoss(),
+    @losses.HingeGANLoss(),
+    @losses.HingeGANLoss(),
+    @losses.HingeGANLoss(),
+    @losses.HingeGANLoss(),
+    @losses.HingeGANLoss(),
+    @losses.HingeGANLoss(),
+]
+
+HingeGANLoss.weight = 0.1

@@ -173,6 +173,94 @@ class Trainer(object):
 
 
 @gin.configurable
+class GANTrainer(Trainer):
+  """Trainer specialized for GAN training."""
+
+  def __init__(self,
+               model,
+               strategy,
+               checkpoints_to_keep=100,
+               learning_rate=0.001,
+               g_learning_rate=0.001,
+               d_learning_rate=0.001,
+               lr_decay_steps=10000,
+               lr_decay_rate=0.98,
+               grad_clip_norm=3.0,
+               restore_keys=None):
+    """Constructor.
+
+    Args:
+      model: Model to train.
+      strategy: A distribution strategy.
+      checkpoints_to_keep: Max number of checkpoints before deleting oldest.
+      learning_rate: Scalar initial learning rate for non GAN loss.
+      g_learning_rate: Scalar initial learning rate for generator GAN loss.
+      d_learning_rate: Scalar initial learning rate for discriminator GAN loss.
+      lr_decay_steps: Exponential decay timescale.
+      lr_decay_rate: Exponential decay magnitude.
+      grad_clip_norm: Norm level by which to clip gradients.
+      restore_keys: List of names of model properties to restore. If no keys are
+        passed, restore the whole model.
+    """
+    # Parent learning rate and optimizer are for non-GAN losses.
+    super().__init__(model, strategy, checkpoints_to_keep, learning_rate,
+                     lr_decay_steps, lr_decay_rate, grad_clip_norm,
+                     restore_keys)
+    # self.gan_loss_ratio = gan_loss_ratio
+    # self.max_gan_loss = max_gan_loss
+
+    # Create generator optimizer.
+    g_lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+        initial_learning_rate=g_learning_rate,
+        decay_steps=lr_decay_steps,
+        decay_rate=lr_decay_rate)
+
+    d_lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+        initial_learning_rate=d_learning_rate,
+        decay_steps=lr_decay_steps,
+        decay_rate=lr_decay_rate)
+
+    with self.strategy.scope():
+      self.g_optimizer = tf.keras.optimizers.Adam(g_lr_schedule)
+      self.d_optimizer = tf.keras.optimizers.Adam(d_lr_schedule)
+
+  @tf.function
+  def step_fn(self, batch):
+    """Per-Replica training step."""
+    with tf.GradientTape(persistent=True) as tape:
+      _, losses = self.model(batch, return_losses=True, training=True)
+
+    # Get separate generator and discriminator vars and losses.
+    g_vars = self.model.generator_variables
+    d_vars = self.model.discriminator_variables
+    other_vars = self.model.other_variables
+
+    # Clip and apply gradients.
+    g_grads = tape.gradient(losses['total_g_loss'], g_vars)
+    d_grads = tape.gradient(losses['total_d_loss'], d_vars)
+    other_grads = tape.gradient(losses['total_other_loss'], other_vars)
+
+    g_grads, _ = tf.clip_by_global_norm(g_grads, self.grad_clip_norm)
+    d_grads, _ = tf.clip_by_global_norm(d_grads, self.grad_clip_norm)
+    other_grads, _ = tf.clip_by_global_norm(other_grads, self.grad_clip_norm)
+
+    self.g_optimizer.apply_gradients(zip(g_grads, g_vars))
+    self.d_optimizer.apply_gradients(zip(d_grads, d_vars))
+    self.optimizer.apply_gradients(zip(other_grads, other_vars))
+    return losses
+
+  def get_checkpoint(self, model=None):
+    """Model arg can also be a tf.train.Checkpoint(**dict(submodules))."""
+    model = model or self.model  # Default to full model.
+    return tf.train.Checkpoint(
+        model=model,
+        optimizer=self.optimizer,
+        g_optimizer=self.g_optimizer,
+        d_optimizer=self.d_optimizer,
+    )
+
+
+@gin.configurable
 def get_trainer_class(trainer_class=Trainer):
   """Gin configurable function get a 'global' trainer for use in ddsp_run.py.
 
