@@ -1,0 +1,5 @@
+ddsp
+pretty_midi
+music21
+librosa
+pandas
