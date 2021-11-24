@@ -140,6 +140,7 @@ def saved_model_to_tflite(input_dir, save_dir, metadata_file=None):
       tf.lite.OpsSet.TFLITE_BUILTINS,  # Enable TensorFlow Lite ops.
       tf.lite.OpsSet.SELECT_TF_OPS,  # Enable extended TensorFlow ops.
   ]
+  tflite_converter.experimental_enable_resource_variables = True
   tflite_model = tflite_converter.convert()  # Byte string.
   # Save the model.
   save_path = os.path.join(save_dir, 'model.tflite')

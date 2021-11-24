@@ -15,11 +15,13 @@
 # Lint as: python3
 """Library of neural network functions."""
 
+import functools
 import inspect
 
 from ddsp import core
 from ddsp import losses
 from ddsp import spectral_ops
+from ddsp.training import stream
 import gin
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -1166,6 +1168,85 @@ class DilatedConvStack(tfkl.Layer):
         x = self.resample_layers[i // self.layers_per_resample](x)
 
     return x[:, :, 0, :]  # Convert back to 3-D.
+
+
+@gin.register
+class CausalDilatedConvStack(tfkl.Layer):
+  """Simplified stack of causal dilated 1-D convolutions, no resampling."""
+
+  def __init__(self,
+               ch=256,
+               layers_per_stack=5,
+               stacks=2,
+               kernel_size=3,
+               dilation=2,
+               norm_type=None,
+               training=True,
+               inference_batch_size=1,
+               **kwargs):
+    """Constructor.
+
+    Args:
+      ch: Number of channels in each convolution layer.
+      layers_per_stack: Convolution layers in each 'stack'. Dilation increases
+        exponentially with layer depth inside a stack.
+      stacks: Number of convolutions stacks.
+      kernel_size: Size of convolution kernel.
+      dilation: Exponent base of dilation factor within a stack.
+      norm_type: Type of normalization before each nonlinearity, choose from
+        'layer', 'instance', or 'group'.
+      training: Bool, whether in training or inference mode.
+      inference_batch_size: Fixed batch size for inference mode.
+      **kwargs: Other keras kwargs.
+
+    Returns:
+      Convolved and resampled signal. If inputs shape is [batch, time, ch_in],
+      output shape is [batch, time_out, ch], where `ch` is the class kwarg, and
+      `time_out` is (stacks // stacks_per_resample) * resample_stride times
+      smaller or larger than `time` depending on whether `resample_type` is
+      upsampling or downsampling.
+    """
+    super().__init__(**kwargs)
+
+    conv = functools.partial(stream.streaming_conv_1d,
+                             training=training,
+                             inference_batch_size=inference_batch_size)
+
+    def dilated_conv(i):
+      """Generates a dilated convolution layer, based on `i` depth in stack."""
+      if dilation > 0:
+        dilation_rate = int(dilation ** i)
+      else:
+        # If dilation is negative, decrease dilation with depth instead of
+        # increasing.
+        dilation_rate = int((-dilation) ** (layers_per_stack - i - 1))
+      layers = tf.keras.Sequential(name='dilated_conv')
+      layers.add(tfkl.Activation(tf.nn.relu))
+      layers.add(conv(ch, kernel_size, 1, dilation_rate))
+      layers.add(Normalize(norm_type=norm_type))
+      return layers
+
+    # Layers.
+    self.conv_in = conv(ch, kernel_size)
+    self.layers = []
+
+    # Stacks.
+    for _ in range(stacks):
+      # Convolve.
+      for j in range(layers_per_stack):
+        # Add to the stack.
+        self.layers.append(dilated_conv(j))
+
+  def call(self, x):
+    """Forward pass."""
+    # Run them through the network.
+    x = self.conv_in(x)
+
+    # Stacks.
+    for layer in self.layers:
+      x += layer(x)
+
+    return x
 
 
 @gin.register

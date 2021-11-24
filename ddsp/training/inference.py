@@ -151,8 +151,13 @@ class VSTBaseModule(models.Autoencoder):
     self.sample_rate = gin.query_parameter('%sample_rate')
     self.hop_size = self.sample_rate // frame_rate
 
+    # Get decoder_type.
+    ref = gin.query_parameter('Autoencoder.decoder')
+    self.decoder_type = ref.config_key[-1].split('.')[-1]
+
     # Get number of outputs.
-    output_splits = dict(gin.query_parameter('RnnFcDecoder.output_splits'))
+    output_splits = dict(
+        gin.query_parameter(f'{self.decoder_type}.output_splits'))
     self.n_harmonics = output_splits['harmonic_distribution']
     self.n_noise = output_splits['noise_magnitudes']
 
@@ -249,7 +254,13 @@ class VSTPredictControls(VSTBaseModule):
 
   def configure_gin(self):
     """Parse the model operative config with special streaming parameters."""
-    pass
+    # Change causal conv params. No-op for other architectures.
+    config = [
+        'CausalDilatedConvDecoder.training = False',
+        'CausalDilatedConvDecoder.inference_batch_size = 1',
+    ]
+    with gin.unlock_config():
+      gin.parse_config(config, skip_unknown=True)
 
   @property
   def _signatures(self):

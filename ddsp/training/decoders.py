@@ -234,3 +234,38 @@ class DilatedConvDecoder(nn.OutputSplitsLayer):
     return self.dilated_conv_stack(stack_inputs)
 
 
+@gin.register
+class CausalDilatedConvDecoder(nn.OutputSplitsLayer):
+  """Simplified WaveNet style 1-D dilated convolution, with streaming conv."""
+
+  def __init__(self,
+               ch=256,
+               kernel_size=3,
+               layers_per_stack=5,
+               stacks=2,
+               dilation=2,
+               norm_type='layer',
+               input_keys=('ld_scaled', 'f0_scaled'),
+               output_splits=(('amps', 1), ('harmonic_distribution', 60)),
+               training=True,
+               inference_batch_size=1,
+               **kwargs):
+    """Constructor, combines input_keys and conditioning_keys."""
+    super().__init__(input_keys, output_splits, **kwargs)
+
+    # Layers.
+    self.dilated_conv_stack = nn.CausalDilatedConvStack(
+        ch=ch,
+        kernel_size=kernel_size,
+        layers_per_stack=layers_per_stack,
+        stacks=stacks,
+        dilation=dilation,
+        norm_type=norm_type,
+        training=training,
+        inference_batch_size=inference_batch_size)
+
+  def compute_output(self, *inputs):
+    x = tf.concat(inputs, axis=-1)
+    return self.dilated_conv_stack(x)
+
+
