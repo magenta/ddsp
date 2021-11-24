@@ -62,6 +62,9 @@ flags.DEFINE_enum(
     [
         'autoencoder',
         'streaming_f0_pw',
+        'vst_extract_features',
+        'vst_predict_controls',
+        'vst_synthesize',
     ],
     'Specify the ddsp.training.inference model to use for '
     'converting a checkpoint to a SavedModel. Names are '
@@ -94,12 +97,15 @@ def get_inference_model(ckpt):
     Inference model, built and restored from checkpoint.
   """
   # Parse model kwargs from --gin_param.
+  print('Parsing --gin_param flags:', FLAGS.gin_param)
   with gin.unlock_config():
     gin.parse_config_files_and_bindings(None, FLAGS.gin_param)
 
   models = {
       'autoencoder': inference.AutoencoderInference,
-      'streaming_f0_pw': inference.StreamingF0PwInference,
+      'vst_extract_features': inference.VSTExtractFeatures,
+      'vst_predict_controls': inference.VSTPredictControls,
+      'vst_synthesize': inference.VSTSynthesize,
   }
   return models[FLAGS.inference_model](ckpt)
 

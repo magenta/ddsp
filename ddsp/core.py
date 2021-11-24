@@ -896,6 +896,74 @@ def oscillator_bank(frequency_envelopes: tf.Tensor,
   return audio
 
 
+# TODO(jesseengel): Remove reliance on global injection for angular cumsum.
+@gin.configurable
+def harmonic_oscillator_bank(
+    frequency: tf.Tensor,
+    amplitude_envelopes: tf.Tensor,
+    initial_phase: Optional[tf.Tensor] = None,
+    sample_rate: int = 16000,
+    use_angular_cumsum: bool = True) -> tf.Tensor:
+  """Special oscillator bank for harmonic frequencies and streaming synthesis.
+
+
+  Args:
+    frequency: Sample-wise oscillator frequencies (Hz). Shape
+      [batch_size, n_samples, 1].
+    amplitude_envelopes: Sample-wise oscillator amplitude. Shape [batch_size,
+      n_samples, n_sinusoids].
+    initial_phase: Starting phase. Shape [batch_size, 1, 1].
+    sample_rate: Sample rate in samples per a second.
+    use_angular_cumsum: If synthesized examples are longer than ~100k audio
+      samples, consider use_angular_cumsum to avoid accumulating noticible phase
+      errors due to the limited precision of tf.cumsum. Unlike the rest of the
+      library, this property can be set with global dependency injection with
+      gin. Set the gin parameter `oscillator_bank.use_angular_cumsum=True`
+      to activate. Avoids accumulation of errors for generation, but don't use
+      usually for training because it is slower on accelerators.
+
+  Returns:
+    wav: Sample-wise audio. Shape [batch_size, n_samples, n_sinusoids] if
+      sum_sinusoids=False, else shape is [batch_size, n_samples].
+  """
+  frequency = tf_float32(frequency)
+  amplitude_envelopes = tf_float32(amplitude_envelopes)
+
+  # Don't exceed Nyquist.
+  amplitude_envelopes = remove_above_nyquist(frequency,
+                                             amplitude_envelopes,
+                                             sample_rate)
+
+  # Angular frequency, Hz -> radians per sample.
+  omega = frequency * (2.0 * np.pi)  # rad / sec
+  omega = omega / float(sample_rate)  # rad / sample
+
+  # Accumulate phase and synthesize.
+  if use_angular_cumsum:
+    # Avoids accumulation errors.
+    phases = angular_cumsum(omega)
+  else:
+    phases = tf.cumsum(omega, axis=1)
+
+  if initial_phase is None:
+    initial_phase = tf.zeros([phases.shape[0], 1, 1])
+
+  phases += initial_phase
+  final_phase = phases[:, -1:, 0:1]
+
+  n_harmonics = int(amplitude_envelopes.shape[-1])
+  f_ratios = tf.linspace(1.0, float(n_harmonics), int(n_harmonics))
+  f_ratios = f_ratios[tf.newaxis, tf.newaxis, :]
+  phases = phases * f_ratios
+
+  # Convert to waveforms.
+  wavs = tf.sin(phases)
+  audio = amplitude_envelopes * wavs  # [mb, n_samples, n_sinusoids]
+  audio = tf.reduce_sum(audio, axis=-1)  # [mb, n_samples]
+
+  return audio, final_phase
+
+
 def get_harmonic_frequencies(frequencies: tf.Tensor,
                              n_harmonics: int) -> tf.Tensor:
   """Create integer multiples of the fundamental frequency.
@@ -980,6 +1048,58 @@ def harmonic_synthesis(frequencies: tf.Tensor,
                           sample_rate=sample_rate,
                           use_angular_cumsum=use_angular_cumsum)
   return audio
+
+
+def streaming_harmonic_synthesis(
+    frequencies: tf.Tensor,
+    amplitudes: tf.Tensor,
+    harmonic_distribution: Optional[tf.Tensor] = None,
+    initial_phase: Optional[tf.Tensor] = None,
+    n_samples: int = 64000,
+    sample_rate: int = 16000,
+    amp_resample_method: Text = 'linear') -> tf.Tensor:
+  """Generate audio from frame-wise monophonic harmonic oscillator bank.
+
+  Args:
+    frequencies: Frame-wise fundamental frequency in Hz. Shape [batch_size,
+      n_frames, 1].
+    amplitudes: Frame-wise oscillator peak amplitude. Shape [batch_size,
+      n_frames, 1].
+    harmonic_distribution: Harmonic amplitude variations, ranged zero to one.
+      Total amplitude of a harmonic is equal to (amplitudes *
+      harmonic_distribution). Shape [batch_size, n_frames, n_harmonics].
+    initial_phase: Starting phase. Shape [batch_size, 1, 1].
+    n_samples: Total length of output audio. Interpolates and crops to this.
+    sample_rate: Sample rate.
+    amp_resample_method: Mode with which to resample amplitude envelopes.
+
+  Returns:
+    audio: Output audio. Shape [batch_size, n_samples, 1]
+  """
+  frequencies = tf_float32(frequencies)
+  amplitudes = tf_float32(amplitudes)
+
+  if harmonic_distribution is not None:
+    harmonic_distribution = tf_float32(harmonic_distribution)
+
+  # Create harmonic amplitudes [batch_size, n_frames, n_harmonics].
+  if harmonic_distribution is not None:
+    harmonic_amplitudes = amplitudes * harmonic_distribution
+  else:
+    harmonic_amplitudes = amplitudes
+
+  # Create sample-wise envelopes.
+  frequencies = resample(frequencies, n_samples)  # cycles/sec
+  amplitude_envelopes = resample(harmonic_amplitudes, n_samples,
+                                 method=amp_resample_method)
+
+  # Synthesize from harmonics [batch_size, n_samples].
+  audio, final_phase = harmonic_oscillator_bank(
+      frequencies,
+      amplitude_envelopes,
+      initial_phase,
+      sample_rate=sample_rate)
+  return audio, final_phase
 
 
 # Wavetable Synthesizer --------------------------------------------------------

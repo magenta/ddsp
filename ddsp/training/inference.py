@@ -128,72 +128,258 @@ class AutoencoderInference(models.Autoencoder):
     return super().call(inputs, training=False)
 
 
-@gin.configurable
-class StreamingF0PwInference(models.Autoencoder):
-  """Create an inference-only version of the model."""
+class VSTBaseModule(models.Autoencoder):
+  """VST inference modules, for models trained with `models/vst/vst.gin`."""
 
-  def __init__(self, ckpt, verbose=True, **kwargs):
-    self.configure_gin(ckpt)
+  def __init__(self,
+               ckpt,
+               verbose=True,
+               **kwargs):
+    self.parse_gin(ckpt)
+    self.configure_gin()
     super().__init__(**kwargs)
     self.restore(ckpt, verbose=verbose)
     self.build_network()
 
-  def configure_gin(self, ckpt):
+  def parse_gin(self, ckpt):
     """Parse the model operative config with special streaming parameters."""
     parse_operative_config(ckpt)
 
-    # Set streaming specific params.
-    preprocessor_ref = gin.query_parameter('Autoencoder.preprocessor')
-    preprocessor_str = preprocessor_ref.scoped_selector
-    time_steps = gin.query_parameter(f'{preprocessor_str}.time_steps')
-    n_samples = gin.query_parameter('Harmonic.n_samples')
-    if not isinstance(n_samples, int):
-      n_samples = gin.query_parameter('%n_samples')
-    samples_per_frame = int(n_samples / time_steps)
+    # Get Frame Size / Hop Size.
+    self.frame_size = gin.query_parameter('%frame_size')
+    frame_rate = gin.query_parameter('%frame_rate')
+    self.sample_rate = gin.query_parameter('%sample_rate')
+    self.hop_size = self.sample_rate // frame_rate
 
-    config = [
-        'Autoencoder.preprocessor = @F0PowerPreprocessor()',
-        'F0PowerPreprocessor.time_steps = 1',
-        f'Harmonic.n_samples = {samples_per_frame}',
-        f'FilteredNoise.n_samples = {samples_per_frame}',
-    ]
+    # Get number of outputs.
+    output_splits = dict(gin.query_parameter('RnnFcDecoder.output_splits'))
+    self.n_harmonics = output_splits['harmonic_distribution']
+    self.n_noise = output_splits['noise_magnitudes']
 
-    # Remove reverb and crop processors.
-    processor_group_string = """ProcessorGroup.dag = [
-    (@synths.Harmonic(),
-      ['amps', 'harmonic_distribution', 'f0_hz']),
-    (@synths.FilteredNoise(),
-      ['noise_magnitudes']),
-    (@processors.Add(),
-      ['filtered_noise/signal', 'harmonic/signal']),
-    ]"""
-    config.append(processor_group_string)
+    # Get interpolation method.
+    self.resample_method = gin.query_parameter('Harmonic.amp_resample_method')
 
-    with gin.unlock_config():
-      gin.parse_config(config)
+  def configure_gin(self):
+    raise NotImplementedError
+
+  def restore(self, checkpoint_path, verbose=True):
+    # Leave out preprocessor to allow loading different CREPE models.
+    restore_keys = ['decoder']
+    super().restore(checkpoint_path, verbose=verbose, restore_keys=restore_keys)
 
   def save_model(self, save_dir):
     """Saves a SavedModel after initialization."""
-    self.save(save_dir)
+    # self.save(save_dir)
+    tf.saved_model.save(self, save_dir, signatures=self._signatures)
+
+  @property
+  def _signatures(self):
+    raise NotImplementedError
+
+  def _build_network(self, *dummy_inputs):
+    """Helper function to build the network with dummy input args."""
+    print('Inputs to Model:', ddsp.core.map_shape(dummy_inputs))
+    unused_outputs = self(*dummy_inputs)
+    print('Outputs from Model:', ddsp.core.map_shape(unused_outputs))
+
+  def call(self):
+    raise NotImplementedError
+
+
+class VSTExtractFeatures(VSTBaseModule):
+  """VST inference modules, for models trained with `models/vst/vst.gin`."""
+
+  def __init__(self,
+               ckpt,
+               crepe_saved_model_path=None,
+               verbose=True,
+               **kwargs):
+    self.crepe_saved_model_path = crepe_saved_model_path
+    super().__init__(ckpt, **kwargs)
+
+  def configure_gin(self):
+    """Parse the model operative config with special streaming parameters."""
+    # Customize config.
+    config = [
+        'OnlineF0PowerPreprocessor.time_steps = 1',
+        'OnlineF0PowerPreprocessor.center_power = False',
+        'OnlineF0PowerPreprocessor.center_f0 = False',
+    ]
+    if self.crepe_saved_model_path is not None:
+      config.append('OnlineF0PowerPreprocessor.crepe_saved_model_path = '
+                    f'\'{self.crepe_saved_model_path}\'')
+    with gin.unlock_config():
+      gin.parse_config(config)
+
+  @property
+  def _signatures(self):
+    return {'call': self.call.get_concrete_function(
+        audio=tf.TensorSpec(shape=[self.frame_size], dtype=tf.float32)
+        )}
 
   def build_network(self):
     """Run a fake batch through the network."""
-    input_dict = {
-        'f0_hz': tf.zeros([1]),
-        'power_db': tf.zeros([1]),
-    }
-    print('Inputs to Model:', ddsp.core.map_shape(input_dict))
-    unused_outputs = self(input_dict)
-    print('Outputs from Model:', ddsp.core.map_shape(unused_outputs))
+    # Need two frames because of interpolation.
+    audio = tf.zeros([self.frame_size])
+    self._build_network(audio)
 
   @tf.function
-  def call(self, inputs, **unused_kwargs):
+  def call(self, audio):
     """Convert f0 and loudness to synthesizer parameters."""
-    inputs = ddsp.core.copy_if_tf_function(inputs)
-    controls = super().call(inputs, training=False)
-    amps = controls['harmonic']['controls']['amplitudes']
-    hd = controls['harmonic']['controls']['harmonic_distribution']
-    noise = controls['filtered_noise']['controls']['magnitudes']
+    audio = tf.reshape(audio, [1, self.frame_size])
+
+    inputs = {
+        'audio': audio,
+        'f0_hz': tf.zeros([1, 1]),  # Dummy.
+        'f0_confidence': tf.zeros([1, 1]),  # Dummy.
+    }
+    outputs = self.preprocessor(inputs)
+
+    # Return 1-D tensors.
+    # All shapes are [1, 1, 1].
+    f0_hz = outputs['f0_hz'][0, 0]
+    f0_scaled = outputs['f0_scaled'][0, 0]
+    pw_db = outputs['pw_db'][0, 0]
+    pw_scaled = outputs['pw_scaled'][0, 0]
+    return f0_hz, f0_scaled, pw_db, pw_scaled
+
+
+class VSTPredictControls(VSTBaseModule):
+  """VST inference modules, for models trained with `models/vst/vst.gin`."""
+
+  def configure_gin(self):
+    """Parse the model operative config with special streaming parameters."""
+    pass
+
+  @property
+  def _signatures(self):
+    return {'call': self.call.get_concrete_function(
+        f0_scaled=tf.TensorSpec(shape=[1], dtype=tf.float32),
+        pw_scaled=tf.TensorSpec(shape=[1], dtype=tf.float32),
+    )}
+
+  def build_network(self):
+    """Run a fake batch through the network."""
+    # Need two frames because of interpolation.
+    f0_scaled = tf.zeros([1])
+    pw_scaled = tf.zeros([1])
+    self._build_network(f0_scaled, pw_scaled)
+
+  @tf.function
+  def call(self, f0_scaled, pw_scaled):
+    """Convert f0 and loudness to synthesizer parameters."""
+    f0_scaled = tf.reshape(f0_scaled, [1, 1, 1])
+    pw_scaled = tf.reshape(pw_scaled, [1, 1, 1])
+
+    f0_hz = ddsp.training.preprocessing.inv_scale_f0_hz(f0_scaled)
+
+    inputs = {
+        'f0_scaled': f0_scaled,
+        'pw_scaled': pw_scaled,
+    }
+
+    # Run through the model.
+    outputs = self.decoder(inputs, training=False)
+
+    # Apply the nonlinearities.
+    harm_controls = self.processor_group.harmonic.get_controls(
+        outputs['amps'], outputs['harmonic_distribution'], f0_hz)
+
+    noise_controls = self.processor_group.filtered_noise.get_controls(
+        outputs['noise_magnitudes']
+    )
+
+    # Return 1-D tensors.
+    amps = harm_controls['amplitudes'][0, 0]
+    hd = harm_controls['harmonic_distribution'][0, 0]
+    noise = noise_controls['magnitudes'][0, 0]
     return amps, hd, noise
+
+
+@gin.configurable
+class VSTSynthesize(VSTBaseModule):
+  """VST inference modules, for models trained with `models/vst/vst.gin`."""
+
+  def __init__(self,
+               ckpt,
+               new_hop_size=None,
+               verbose=True,
+               **kwargs):
+    self.new_hop_size = new_hop_size
+    super().__init__(ckpt, **kwargs)
+
+  def configure_gin(self):
+    """Parse the model operative config with special streaming parameters."""
+    # Customize config.
+    self.hop_size = self.new_hop_size if self.new_hop_size else self.hop_size
+    config = [
+        f'FilteredNoise.n_samples = {self.hop_size}',
+        'harmonic_oscillator_bank.use_angular_cumsum = True',
+    ]
+    with gin.unlock_config():
+      gin.parse_config(config)
+
+  @property
+  def _signatures(self):
+    return {'call': self.call.get_concrete_function(
+        amps=tf.TensorSpec(shape=[1], dtype=tf.float32),
+        prev_amps=tf.TensorSpec(shape=[1], dtype=tf.float32),
+        hd=tf.TensorSpec(shape=[self.n_harmonics], dtype=tf.float32),
+        prev_hd=tf.TensorSpec(shape=[self.n_harmonics], dtype=tf.float32),
+        f0=tf.TensorSpec(shape=[1], dtype=tf.float32),
+        prev_f0=tf.TensorSpec(shape=[1], dtype=tf.float32),
+        noise=tf.TensorSpec(shape=[self.n_noise], dtype=tf.float32),
+        prev_phase=tf.TensorSpec(shape=[1], dtype=tf.float32),
+    )}
+
+  def build_network(self):
+    """Run a fake batch through the network."""
+    # Need two frames because of interpolation.
+    amps = tf.zeros([1])
+    prev_amps = tf.zeros([1])
+    hd = tf.zeros([self.n_harmonics])
+    prev_hd = tf.zeros([self.n_harmonics])
+    f0 = tf.zeros([1])
+    prev_f0 = tf.zeros([1])
+    noise = tf.zeros([self.n_noise])
+    prev_phase = tf.zeros([1])
+    self._build_network(
+        amps, prev_amps, hd, prev_hd, f0, prev_f0, noise, prev_phase)
+
+  @tf.function
+  def call(self, amps, prev_amps, hd, prev_hd,
+           f0, prev_f0, noise, prev_phase):
+    """Compute a frame of audio, single example, single frame."""
+    # Make 3-D tensors, two frames for interpolation.
+    amps = tf.reshape(
+        tf.concat([prev_amps[None, :], amps[None, :]], axis=0),
+        [1, 2, 1])
+    hd = tf.reshape(
+        tf.concat([prev_hd[None, :], hd[None, :]], axis=0),
+        [1, 2, self.n_harmonics])
+    f0 = tf.reshape(
+        tf.concat([prev_f0[None, :], f0[None, :]], axis=0),
+        [1, 2, 1])
+    noise = tf.reshape(
+        tf.concat([noise[None, :], noise[None, :]], axis=0),
+        [1, 2, self.n_noise])
+    prev_phase = tf.reshape(prev_phase, [1, 1, 1])
+
+    harm_audio, final_phase = ddsp.core.streaming_harmonic_synthesis(
+        frequencies=f0,
+        amplitudes=amps,
+        harmonic_distribution=hd,
+        initial_phase=prev_phase,
+        n_samples=self.hop_size,
+        sample_rate=self.sample_rate,
+        amp_resample_method=self.resample_method)
+
+    noise_audio = self.processor_group.filtered_noise.get_signal(noise)
+    audio_out = harm_audio + noise_audio
+
+    # Return 1-D outputs.
+    audio_out = audio_out[0]
+    final_phase = final_phase[0, 0]
+    return audio_out, final_phase
 
 

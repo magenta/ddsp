@@ -71,23 +71,42 @@ class Model(tf.keras.Model):
         losses_dict = loss_obj.get_losses_dict(*args, **kwargs)
         self._losses_dict.update(losses_dict)
 
-  def restore(self, checkpoint_path, verbose=True):
+  def restore(self, checkpoint_path, verbose=True, restore_keys=None):
     """Restore model and optimizer from a checkpoint.
 
     Args:
       checkpoint_path: Path to checkpoint file or directory.
       verbose: Warn about missing variables.
+      restore_keys: Optional list of strings for submodules to restore.
 
     Raises:
       FileNotFoundError: If no checkpoint is found.
     """
     start_time = time.time()
     latest_checkpoint = train_util.get_latest_checkpoint(checkpoint_path)
-    checkpoint = tf.train.Checkpoint(model=self)
-    if verbose:
-      checkpoint.restore(latest_checkpoint)
+
+    if restore_keys is None:
+      # If no keys are passed, restore the whole model.
+      checkpoint = tf.train.Checkpoint(model=self)
+      logging.info('Model restoring all components.')
+      if verbose:
+        checkpoint.restore(latest_checkpoint)
+      else:
+        checkpoint.restore(latest_checkpoint).expect_partial()
+
     else:
-      checkpoint.restore(latest_checkpoint).expect_partial()
+      # Restore only sub-modules by building a new subgraph.
+      # Following https://www.tensorflow.org/guide/checkpoint#loading_mechanics.
+      logging.info('Trainer restoring model subcomponents:')
+      for k in restore_keys:
+        to_restore = {k: getattr(self, k)}
+        log_str = 'Restoring {}'.format(to_restore)
+        logging.info(log_str)
+        fake_model = tf.train.Checkpoint(**to_restore)
+        new_root = tf.train.Checkpoint(model=fake_model)
+        status = new_root.restore(latest_checkpoint)
+        status.assert_existing_objects_matched()
+
     logging.info('Loaded checkpoint %s', latest_checkpoint)
     logging.info('Loading model took %.1f seconds', time.time() - start_time)
 
