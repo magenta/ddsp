@@ -454,7 +454,10 @@ class Urmp(TFRecordProvider):
 
 @gin.register
 class UrmpMidi(Urmp):
-  """Urmp training set with midi note data."""
+  """Urmp training set with midi note data. This class loads the segmented
+  data in tfrecord that contains 4-second audio clips of the URMP dataset.
+  To load tfrecord that contains unsegmented full piece of URMP recording,
+  please use "UrmpMidiUnsegmented" class instead."""
 
   _INSTRUMENTS = ['vn', 'va', 'vc', 'db', 'fl', 'ob', 'cl', 'sax', 'bn', 'tpt',
                   'hn', 'tbn', 'tba']
@@ -509,8 +512,8 @@ class UrmpMidi(Urmp):
     ds = ds.map(_reshape_tensors, num_parallel_calls=_AUTOTUNE)
     return ds
 
-class UrmpMidiUnbatched(Urmp):
-  """Urmp dataset using unsegmented data. "Unsegmented" here means that the data
+class UrmpMidiUnsegmented(Urmp):
+  """Urmp dataset using unsegmented data. Unsegmented here means that the data
   samples are not segmented to 4-second chunks as in UrmpMidi dataset.
   """
 
