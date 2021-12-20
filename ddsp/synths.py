@@ -113,19 +113,9 @@ class Harmonic(processors.Processor):
       amplitudes = self.scale_fn(amplitudes)
       harmonic_distribution = self.scale_fn(harmonic_distribution)
 
-    # Bandlimit the harmonic distribution.
-    if self.normalize_below_nyquist:
-      n_harmonics = int(harmonic_distribution.shape[-1])
-      harmonic_frequencies = core.get_harmonic_frequencies(f0_hz,
-                                                           n_harmonics)
-      harmonic_distribution = core.remove_above_nyquist(harmonic_frequencies,
-                                                        harmonic_distribution,
-                                                        self.sample_rate)
-
-    # Normalize
-    harmonic_distribution /= tf.reduce_sum(harmonic_distribution,
-                                           axis=-1,
-                                           keepdims=True)
+    harmonic_distribution = core.normalize_harmonics(
+        harmonic_distribution, f0_hz,
+        self.sample_rate if self.normalize_below_nyquist else None)
 
     return {'amplitudes': amplitudes,
             'harmonic_distribution': harmonic_distribution,

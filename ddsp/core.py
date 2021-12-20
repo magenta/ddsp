@@ -841,6 +841,22 @@ def remove_above_nyquist(frequency_envelopes: tf.Tensor,
   return amplitude_envelopes
 
 
+def normalize_harmonics(harmonic_distribution, f0_hz=None, sample_rate=None):
+  """Normalize the harmonic distribution, optionally removing above nyquist."""
+  # Bandlimit the harmonic distribution.
+  if sample_rate is not None and f0_hz is not None:
+    n_harmonics = int(harmonic_distribution.shape[-1])
+    harmonic_frequencies = get_harmonic_frequencies(f0_hz, n_harmonics)
+    harmonic_distribution = remove_above_nyquist(
+        harmonic_frequencies, harmonic_distribution, sample_rate)
+
+  # Normalize
+  harmonic_distribution = safe_divide(
+      harmonic_distribution,
+      tf.reduce_sum(harmonic_distribution, axis=-1, keepdims=True))
+  return harmonic_distribution
+
+
 # TODO(jesseengel): Remove reliance on global injection for angular cumsum.
 @gin.configurable
 def oscillator_bank(frequency_envelopes: tf.Tensor,
@@ -928,11 +944,6 @@ def harmonic_oscillator_bank(
   """
   frequency = tf_float32(frequency)
   amplitude_envelopes = tf_float32(amplitude_envelopes)
-
-  # Don't exceed Nyquist.
-  amplitude_envelopes = remove_above_nyquist(frequency,
-                                             amplitude_envelopes,
-                                             sample_rate)
 
   # Angular frequency, Hz -> radians per sample.
   omega = frequency * (2.0 * np.pi)  # rad / sec
@@ -1080,10 +1091,11 @@ def streaming_harmonic_synthesis(
   amplitudes = tf_float32(amplitudes)
 
   if harmonic_distribution is not None:
+    # Create harmonic amplitudes [batch_size, n_frames, n_harmonics].
     harmonic_distribution = tf_float32(harmonic_distribution)
-
-  # Create harmonic amplitudes [batch_size, n_frames, n_harmonics].
-  if harmonic_distribution is not None:
+    # Don't exceed Nyquist.
+    harmonic_distribution = normalize_harmonics(
+        harmonic_distribution, frequencies, sample_rate)
     harmonic_amplitudes = amplitudes * harmonic_distribution
   else:
     harmonic_amplitudes = amplitudes
