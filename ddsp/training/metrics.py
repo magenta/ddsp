@@ -55,7 +55,7 @@ def is_outlier(ground_truth_f0_conf):
 
 
 def compute_audio_features(audio,
-                           n_fft=2048,
+                           n_fft=512,
                            sample_rate=16000,
                            frame_rate=250):
   """Compute features from audio."""

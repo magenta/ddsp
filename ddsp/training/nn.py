@@ -19,7 +19,6 @@ import inspect
 
 from ddsp import core
 from ddsp import losses
-from ddsp import spectral_ops
 import gin
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -383,7 +382,7 @@ def get_note_mask(q_pitch, max_regions=100, note_on_only=True):
     q_pitch = q_pitch[:, :, 0]
 
   # Get onset and offset points.
-  edges = tf.abs(spectral_ops.diff(q_pitch, axis=1)) > 0
+  edges = tf.abs(core.diff(q_pitch, axis=1)) > 0
 
   # Count endpoints as starts/ends of regions.
   edges = edges[:, :-1, ...]

@@ -19,6 +19,7 @@ import functools
 from typing import Dict, Text
 
 import crepe
+from ddsp import core
 from ddsp import dags
 from ddsp import spectral_ops
 from ddsp.core import hz_to_midi
@@ -194,7 +195,7 @@ class SpectralLoss(Loss):
   def call(self, target_audio, audio, weights=None):
     loss = 0.0
 
-    diff = spectral_ops.diff
+    diff = core.diff
     cumsum = tf.math.cumsum
 
     # Compute loss for each fft size.
@@ -498,9 +499,8 @@ def amp_loss(amp,
   """Loss comparing two amplitudes (scale logarithmically)."""
   if log:
     # Put in a log scale (psychophysically appropriate for audio).
-    log10 = lambda x: tf.math.log(x) / tf.math.log(10.0)
-    amp = log10(tf.maximum(amin, amp))
-    amp_target = log10(tf.maximum(amin, amp_target))
+    amp = core.log10(tf.maximum(amin, amp))
+    amp_target = core.log10(tf.maximum(amin, amp_target))
   # Take the difference.
   return mean_difference(amp, amp_target, loss_type, weights)
 
@@ -651,7 +651,7 @@ def wasserstein_distance(u_values, v_values, u_weights, v_weights, p=1.0):
   all_values = tf.sort(all_values, axis=-1)
 
   # Compute the differences between pairs of successive values of u and v.
-  deltas = spectral_ops.diff(all_values, axis=-1)
+  deltas = core.diff(all_values, axis=-1)
 
   # Get the respective positions of the values of u and v among the values of
   # both distributions.

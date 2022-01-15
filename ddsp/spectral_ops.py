@@ -16,6 +16,7 @@
 """Library of FFT operations for loss functions and conditioning."""
 
 import crepe
+from ddsp import core
 from ddsp.core import safe_log
 from ddsp.core import tf_float32
 import gin
@@ -27,8 +28,8 @@ import tensorflow_probability as tfp
 CREPE_SAMPLE_RATE = 16000
 _CREPE_FRAME_SIZE = 1024
 
-F0_RANGE = 127.0  # MIDI
-LD_RANGE = 120.0  # dB
+F0_RANGE = 127.0  # MIDI.
+DB_RANGE = core.DB_RANGE  # dB (80.0).
 
 
 def stft(audio, frame_size=2048, overlap=0.75, pad_end=True):
@@ -142,61 +143,55 @@ def compute_mfcc(audio,
   return mfccs[..., :mfcc_bins]
 
 
-def diff(x, axis=-1):
-  """Take the finite difference of a tensor along an axis.
+def compute_rms_energy(audio,
+                       sample_rate=16000,
+                       frame_rate=250,
+                       frame_size=512,
+                       pad_end=True):
+  """Compute root mean squared energy of audio."""
+  n_samples = audio.shape[0] if len(audio.shape) == 1 else audio.shape[1]
+  n_secs = n_samples / float(sample_rate)  # `n_secs` can have milliseconds
+  expected_len = int(n_secs * frame_rate)
 
-  Args:
-    x: Input tensor of any dimension.
-    axis: Axis on which to take the finite difference.
+  audio = tf_float32(audio)
 
-  Returns:
-    d: Tensor with size less than x by 1 along the difference dimension.
-
-  Raises:
-    ValueError: Axis out of range for tensor.
-  """
-  shape = x.shape.as_list()
-  ndim = len(shape)
-  if axis >= ndim:
-    raise ValueError('Invalid axis index: %d for tensor with only %d axes.' %
-                     (axis, ndim))
-
-  begin_back = [0 for _ in range(ndim)]
-  begin_front = [0 for _ in range(ndim)]
-  begin_front[axis] = 1
-
-  shape[axis] -= 1
-  slice_front = tf.slice(x, begin_front, shape)
-  slice_back = tf.slice(x, begin_back, shape)
-  d = slice_front - slice_back
-  return d
+  hop_size = sample_rate // frame_rate
+  audio_frames = tf.signal.frame(audio, frame_size, hop_size, pad_end=pad_end)
+  rms_energy = tf.reduce_mean(audio_frames**2.0, axis=-1)**0.5
+  if pad_end:
+    n_samples = audio.shape[0] if len(audio.shape) == 1 else audio.shape[1]
+    n_secs = n_samples / float(sample_rate)  # `n_secs` can have milliseconds
+    expected_len = int(n_secs * frame_rate)
+    return pad_or_trim_to_expected_length(rms_energy, expected_len, use_tf=True)
+  else:
+    return rms_energy
 
 
-def amplitude_to_db(amplitude, use_tf=False):
-  """Converts amplitude to decibels."""
-  lib = tf if use_tf else np
-  log10 = (lambda x: tf.math.log(x) / tf.math.log(10.0)) if use_tf else np.log10
-  amin = 1e-20  # Avoid log(0) instabilities.
-  db = log10(lib.maximum(amin, amplitude))
-  db *= 20.0
-  return db
-
-
-def db_to_amplitude(db):
-  """Converts decibels to amplitude."""
-  return 10.0**(db / 20.0)
+def compute_power(audio,
+                  sample_rate=16000,
+                  frame_rate=250,
+                  frame_size=512,
+                  ref_db=0.0,
+                  range_db=DB_RANGE,
+                  pad_end=True):
+  """Compute power of audio in dB."""
+  rms_energy = compute_rms_energy(
+      audio, sample_rate, frame_rate, frame_size, pad_end=pad_end)
+  power_db = core.amplitude_to_db(
+      rms_energy, ref_db=ref_db, range_db=range_db, use_tf=True)
+  return power_db
 
 
 @gin.register
 def compute_loudness(audio,
                      sample_rate=16000,
                      frame_rate=250,
-                     n_fft=2048,
-                     range_db=LD_RANGE,
-                     ref_db=20.7,
-                     use_tf=False,
+                     n_fft=512,
+                     range_db=DB_RANGE,
+                     ref_db=0.0,
+                     use_tf=True,
                      pad_end=True):
-  """Perceptual loudness in dB, relative to white noise, amplitude=1.
+  """Perceptual loudness (weighted power) in dB.
 
   Function is differentiable if use_tf=True.
   Args:
@@ -208,10 +203,10 @@ def compute_loudness(audio,
     range_db: Sets the dynamic range of loudness in decibles. The minimum
       loudness (per a frequency bin) corresponds to -range_db.
     ref_db: Sets the reference maximum perceptual loudness as given by
-      (A_weighting + 10 * log10(abs(stft(audio))**2.0). The default value
-      corresponds to white noise with amplitude=1.0 and n_fft=2048. There is a
-      slight dependence on fft_size due to different granularity of perceptual
-      weighting.
+      (A_weighting + 10 * log10(abs(stft(audio))**2.0). The old (<v2.0.0)
+      default value corresponded to white noise with amplitude=1.0 and
+      n_fft=2048. With v2.0.0 it was set to 0.0 to be more consistent with power
+      calculations that have a natural scale for 0 dB being amplitude=1.0.
     use_tf: Make function differentiable by using tensorflow.
     pad_end: Add zero padding at end of audio (like `same` convolution).
 
@@ -226,6 +221,8 @@ def compute_loudness(audio,
 
   # Pick tensorflow or numpy.
   lib = tf if use_tf else np
+  reduce_mean = tf.reduce_mean if use_tf else np.mean
+  stft_fn = stft if use_tf else stft_np
 
   # Make inputs tensors for tensorflow.
   audio = tf_float32(audio) if use_tf else audio
@@ -237,37 +234,38 @@ def compute_loudness(audio,
   # Take STFT.
   hop_size = sample_rate // frame_rate
   overlap = 1 - hop_size / n_fft
-  stft_fn = stft if use_tf else stft_np
   s = stft_fn(audio, frame_size=n_fft, overlap=overlap, pad_end=pad_end)
 
   # Compute power.
   amplitude = lib.abs(s)
-  power_db = amplitude_to_db(amplitude, use_tf=use_tf)
+  power = amplitude**2
 
   # Perceptual weighting.
   frequencies = librosa.fft_frequencies(sr=sample_rate, n_fft=n_fft)
   a_weighting = librosa.A_weighting(frequencies)[lib.newaxis, lib.newaxis, :]
-  loudness = power_db + a_weighting
 
-  # Set dynamic range.
-  loudness -= ref_db
-  loudness = lib.maximum(loudness, -range_db)
-  mean = tf.reduce_mean if use_tf else np.mean
+  # Perform weighting in linear scale, a_weighting given in decibels.
+  weighting = 10**(a_weighting/10)
+  power = power * weighting
 
-  # Average over frequency bins.
-  loudness = mean(loudness, axis=-1)
+  # Average over frequencies (weighted power per a bin).
+  avg_power = reduce_mean(power, axis=-1)
+  loudness = core.power_to_db(avg_power,
+                              ref_db=ref_db,
+                              range_db=range_db,
+                              use_tf=use_tf)
 
   # Remove temporary batch dimension.
   loudness = loudness[0] if is_1d else loudness
 
-  # Compute expected length of loudness vector
-  n_secs = audio.shape[-1] / float(
-      sample_rate)  # `n_secs` can have milliseconds
-  expected_len = int(n_secs * frame_rate)
+  # Compute expected length of loudness vector.
+  expected_secs = audio.shape[-1] / float(sample_rate)
+  expected_len = int(expected_secs * frame_rate)
 
-  # Pad with `-range_db` noise floor or trim vector
+  # Pad with `-range_db` noise floor or trim vector.
   loudness = pad_or_trim_to_expected_length(
       loudness, expected_len, -range_db, use_tf=use_tf)
+
   return loudness
 
 
@@ -310,43 +308,6 @@ def compute_f0(audio, sample_rate, frame_rate, viterbi=True):
   f0_confidence = np.nan_to_num(f0_confidence)   # Set nans to 0 in confidence
   f0_confidence = f0_confidence.astype(np.float32)
   return f0_hz, f0_confidence
-
-
-def compute_rms_energy(audio,
-                       sample_rate=16000,
-                       frame_rate=250,
-                       frame_size=2048,
-                       pad_end=True):
-  """Compute root mean squared energy of audio."""
-  audio = tf_float32(audio)
-  hop_size = sample_rate // frame_rate
-  audio_frames = tf.signal.frame(audio, frame_size, hop_size, pad_end=pad_end)
-  rms_energy = tf.reduce_mean(audio_frames**2.0, axis=-1)**0.5
-  if pad_end:
-    n_samples = audio.shape[0] if len(audio.shape) == 1 else audio.shape[1]
-    n_secs = n_samples / float(sample_rate)  # `n_secs` can have milliseconds
-    expected_len = int(n_secs * frame_rate)
-    return pad_or_trim_to_expected_length(rms_energy, expected_len, use_tf=True)
-  else:
-    return rms_energy
-
-
-def compute_power(audio,
-                  sample_rate=16000,
-                  frame_rate=250,
-                  frame_size=1024,
-                  range_db=LD_RANGE,
-                  ref_db=20.7,
-                  pad_end=True):
-  """Compute power of audio in dB."""
-  # TODO(hanoih@): enable `use_tf` to be True or False like `compute_loudness`
-  rms_energy = compute_rms_energy(
-      audio, sample_rate, frame_rate, frame_size, pad_end)
-  power_db = amplitude_to_db(rms_energy**2, use_tf=True)
-  # Set dynamic range.
-  power_db -= ref_db
-  power_db = tf.maximum(power_db, -range_db)
-  return power_db
 
 
 def pad_or_trim_to_expected_length(vector,

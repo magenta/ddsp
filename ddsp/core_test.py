@@ -907,5 +907,56 @@ class FiniteImpulseResponseTest(parameterized.TestCase, tf.test.TestCase):
     self.assertEqual(audio_out_size, self.audio_size)
 
 
+class DiffTest(tf.test.TestCase):
+
+  def test_shape_is_correct(self):
+    """Tests the finite difference function."""
+    n_batch = 2
+    n_time = 125
+    n_freq = 100
+    mag = tf.ones([n_batch, n_time, n_freq])
+
+    diff = core.diff
+    delta_t = diff(mag, axis=1)
+    self.assertEqual(delta_t.shape[1], mag.shape[1] - 1)
+    delta_delta_t = diff(delta_t, axis=1)
+    self.assertEqual(delta_delta_t.shape[1], mag.shape[1] - 2)
+    delta_f = diff(mag, axis=2)
+    self.assertEqual(delta_f.shape[2], mag.shape[2] - 1)
+    delta_delta_f = diff(delta_f, axis=2)
+    self.assertEqual(delta_delta_f.shape[2], mag.shape[2] - 2)
+
+
+class DecibelsConversionTest(parameterized.TestCase, tf.test.TestCase):
+
+  @parameterized.named_parameters(
+      ('range_db_100', 100.0),
+      ('range_db_1', 1.0),
+  )
+  def test_equivalent_with_librosa(self, range_db):
+    """Tests the finite difference function."""
+    x = tf.sin(tf.linspace(0.0, 100 * np.pi, 16000))**2.0
+
+    # Amplitude.
+    librosa_db = librosa.amplitude_to_db(x, top_db=range_db)
+    ddsp_db = core.amplitude_to_db(x, range_db=range_db)
+    self.assertAllClose(librosa_db, ddsp_db, rtol=1e-6, atol=1e-6)
+
+    # Back to linear.
+    librosa_x = librosa.db_to_amplitude(librosa_db)
+    ddsp_x = core.db_to_amplitude(ddsp_db)
+    self.assertAllClose(librosa_x, ddsp_x, rtol=1e-6, atol=1e-6)
+
+    # Power.
+    librosa_power_db = librosa.power_to_db(x, top_db=range_db)
+    ddsp_power_db = core.power_to_db(x, range_db=range_db)
+    self.assertAllClose(librosa_power_db, ddsp_power_db, rtol=1e-6, atol=1e-6)
+
+    # Back to linear.
+    librosa_power_x = librosa.db_to_power(librosa_power_db)
+    ddsp_power_x = core.db_to_power(ddsp_power_db)
+    self.assertAllClose(librosa_power_x, ddsp_power_x, rtol=1e-6, atol=1e-6)
+
+
 if __name__ == '__main__':
   tf.test.main()

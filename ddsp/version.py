@@ -19,4 +19,4 @@ Stored in a separate file so that setup.py can reference the version without
 pulling in all the dependencies in __init__.py.
 """
 
-__version__ = '1.9.0'
+__version__ = '2.0.0'

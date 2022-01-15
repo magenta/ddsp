@@ -66,7 +66,8 @@ def add_loudness(ex, sample_rate, frame_rate, n_fft=2048):
   beam.metrics.Metrics.counter('prepare-tfrecord', 'compute-loudness').inc()
   audio = ex['audio']
   mean_loudness_db = spectral_ops.compute_loudness(audio, sample_rate,
-                                                   frame_rate, n_fft)
+                                                   frame_rate, n_fft,
+                                                   use_tf=False)
   ex = dict(ex)
   ex['loudness_db'] = mean_loudness_db.astype(np.float32)
   return ex

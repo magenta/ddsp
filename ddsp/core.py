@@ -25,6 +25,7 @@ from scipy import fftpack
 import tensorflow.compat.v2 as tf
 
 Number = TypeVar('Number', int, float, np.ndarray, tf.Tensor)
+DB_RANGE = 80.0
 
 
 # Utility Functions ------------------------------------------------------------
@@ -168,6 +169,36 @@ def pad_axis(x, padding=(0, 0), axis=0, **pad_kwargs):
   return tf.pad(x, paddings, **pad_kwargs)
 
 
+def diff(x, axis=-1):
+  """Take the finite difference of a tensor along an axis.
+
+  Args:
+    x: Input tensor of any dimension.
+    axis: Axis on which to take the finite difference.
+
+  Returns:
+    d: Tensor with size less than x by 1 along the difference dimension.
+
+  Raises:
+    ValueError: Axis out of range for tensor.
+  """
+  shape = x.shape.as_list()
+  ndim = len(shape)
+  if axis >= ndim:
+    raise ValueError('Invalid axis index: %d for tensor with only %d axes.' %
+                     (axis, ndim))
+
+  begin_back = [0 for _ in range(ndim)]
+  begin_front = [0 for _ in range(ndim)]
+  begin_front[axis] = 1
+
+  shape[axis] -= 1
+  slice_front = tf.slice(x, begin_front, shape)
+  slice_back = tf.slice(x, begin_back, shape)
+  d = slice_front - slice_back
+  return d
+
+
 # Math -------------------------------------------------------------------------
 def safe_divide(numerator, denominator, eps=1e-7):
   """Avoid dividing by zero by adding a small epsilon."""
@@ -177,16 +208,18 @@ def safe_divide(numerator, denominator, eps=1e-7):
 
 def safe_log(x, eps=1e-5):
   """Avoid taking the log of a non-positive number."""
-  safe_x = tf.where(x <= eps, eps, x)
+  safe_x = tf.where(x <= 0.0, eps, x)
   return tf.math.log(safe_x)
 
 
-def logb(x, base=2.0, safe=True):
+def logb(x, base=2.0, eps=1e-5):
   """Logarithm with base as an argument."""
-  if safe:
-    return safe_divide(safe_log(x), safe_log(base))
-  else:
-    return tf.math.log(x) / tf.math.log(base)
+  return safe_divide(safe_log(x, eps), safe_log(base, eps), eps)
+
+
+def log10(x, eps=1e-5):
+  """Logarithm with base 10."""
+  return logb(x, base=10, eps=eps)
 
 
 def log_scale(x, min_x, max_x):
@@ -207,6 +240,39 @@ def gradient_reversal(x):
 
 
 # Unit Conversions -------------------------------------------------------------
+def amplitude_to_db(amplitude, ref_db=0.0, range_db=DB_RANGE, use_tf=True):
+  """Converts amplitude in linear scale to power in decibels."""
+  power = amplitude**2.0
+  return power_to_db(power, ref_db=ref_db, range_db=range_db, use_tf=use_tf)
+
+
+def power_to_db(power, ref_db=0.0, range_db=DB_RANGE, use_tf=True):
+  """Converts power from linear scale to decibels."""
+  # Choose library.
+  maximum = tf.maximum if use_tf else np.maximum
+  log_base10 = log10 if use_tf else np.log10
+
+  # Convert to decibels.
+  pmin = 10**-(range_db / 10.0)
+  power = maximum(pmin, power)
+  db = 10.0 * log_base10(power)
+
+  # Set dynamic range.
+  db -= ref_db
+  db = maximum(db, -range_db)
+  return db
+
+
+def db_to_amplitude(db):
+  """Converts power in decibels to amplitude in linear scale."""
+  return db_to_power(db / 2.0)
+
+
+def db_to_power(db):
+  """Converts power from decibels to linear scale."""
+  return 10.0**(db / 10.0)
+
+
 def midi_to_hz(notes: Number, midi_zero_silence: bool = False) -> Number:
   """TF-compatible midi_to_hz function.
 

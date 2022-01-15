@@ -208,8 +208,8 @@ class MidiAutoencoder(Model):
     noise = synth_params['filtered_noise']['controls']['magnitudes']
 
     if log_scale:
-      amps = ddsp.spectral_ops.amplitude_to_db(amps, use_tf=True)
-      noise = ddsp.spectral_ops.amplitude_to_db(noise, use_tf=True)
+      amps = ddsp.core.amplitude_to_db(amps, use_tf=True)
+      noise = ddsp.core.amplitude_to_db(noise, use_tf=True)
 
     if stop_gradient:
       amps = tf.stop_gradient(amps)

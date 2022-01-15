@@ -122,12 +122,14 @@ class MetricsObjectsTest(parameterized.TestCase, tf.test.TestCase):
   def test_loudness_metrics_has_expected_values(self):
     loudness_metrics = ddsp_metrics.LoudnessMetrics(self.sample_rate,
                                                     self.frame_rate)
-    # Dummy batch 1: known noise features vs. known noise audio
+    # Dummy batch 1: known noise features vs. known noise audio.
+    # Since audio is the same, loudness distance should be 0.
     loudness_metrics.update_state(self.batch_of_noise_feats,
                                   self.batch_of_noise)
     self.assertAllClose(loudness_metrics.metrics['loudness_db'].result(), 0)
 
     # Dummy batch 2: known noise features vs. quiet batch of sin audio
+    # Since audio is different, loudness distance should greater than 0.
     loudness_metrics.update_state(self.batch_of_noise_feats, self.batch_of_sin)
     self.assertGreater(loudness_metrics.metrics['loudness_db'].result(), 0)
 
