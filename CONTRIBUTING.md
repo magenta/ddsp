@@ -7,7 +7,7 @@ mistakes we may have made 😄.
 
 # Versioning
 
-We'll do our best to keep the verison updated. This repo contains two code bases
+We'll do our best to keep the version updated. This repo contains two code bases
 which makes versioning a bit tricky. The core code base `ddsp/` and a more
 experimental training code base `ddsp/training/` that is used for active
 research. We will thus adopt the following scheme for incrementing version:
