@@ -68,9 +68,6 @@ By default, the program searches for gin files in the installed `ddsp/training/g
 flags. Individual parameters can also be set with multiple `--gin_param` flags.
 
 This example below streams a version of the NSynth dataset from GCS.
-If not running on GCP, it is much faster to first download the dataset with
-[tensorflow_datasets](https://www.tensorflow.org/datasets), and add the flag
-`--gin_param="NSynthTfds.data_dir='/path/to/tfds/dir'"`:
 
 ### Train
 ```bash
@@ -128,6 +125,28 @@ Second, you will need to add the following flag:
 
 The TPU internal IP address can be found in the Cloud Console.
 
+### Running on local machine
+If not running on GCP, it is much faster to first download the dataset with
+[tensorflow_datasets](https://www.tensorflow.org/datasets).
+
+Before downloading, it's important to make a hierarchical folder, as the `tfds.load(name, data_dir)` automatically find the dataset with `name` and `data_dir`.
+```
+mkdir -p datasets/nsynth/gansynth_subset.f0_and_loudness/2.3.0/
+```
+Download the NSynth dataset
+```
+gsutil -m cp gs://tfds-data/datasets/nsynth/gansynth_subset.f0_and_loudness/2.3.0/* ./datasets/nsynth/gansynth_subset.f0_and_loudness/2.3.0/
+```
+Train with the `train_data/NSynthTfds.data_dir` flag
+```
+ddsp_run \
+  --mode=train \
+  --save_dir=/tmp/$USER-ddsp-0 \
+  --gin_file=papers/iclr2020/nsynth_ae.gin \
+  --gin_param="batch_size=16" \
+  --gin_param="train_data/NSynthTfds.data_dir='/path/to/datasets'" \
+  --alsologtostderr
+```
 
 ## Training a model on your own data
 ### Prepare dataset
