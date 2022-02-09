@@ -1,4 +1,4 @@
-# Copyright 2021 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -72,7 +72,7 @@ from ddsp.training import train_util
 from ddsp.training import trainers
 import gin
 import pkg_resources
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 
 gfile = tf.io.gfile
 FLAGS = flags.FLAGS

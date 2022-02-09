@@ -1,4 +1,4 @@
-# Copyright 2021 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -54,17 +54,28 @@ flags.DEFINE_float(
     'length using a sliding window. If 0, each full piece of audio will be '
     'used as an example.')
 flags.DEFINE_float(
-    'sliding_window_hop_secs', 1,
-    'The hop size in seconds to use when splitting audio into constant-length '
-    'examples.')
+    'hop_secs', 1,
+    'The hop size between example start points (in seconds), when splitting '
+    'audio into constant-length examples.')
 flags.DEFINE_float(
     'eval_split_fraction', 0.0,
     'Fraction of the dataset to reserve for eval split. If set to 0, no eval '
     'split is created.'
 )
 flags.DEFINE_float(
-    'coarse_chunk_secs', 20.0,
-    'Chunk size in seconds used to split the input audio files.')
+    'chunk_secs', 20.0,
+    'Chunk size in seconds used to split the input audio files. These '
+    'non-overlapping chunks are partitioned into train and eval sets if '
+    'eval_split_fraction > 0. This is used to split large audio files into '
+    'manageable chunks for better parallelization and to enable '
+    'non-overlapping train/eval splits.')
+flags.DEFINE_boolean(
+    'center', False,
+    'Add padding to audio such that frame timestamps are centered. Increases '
+    'number of frames by one.')
+flags.DEFINE_boolean(
+    'viterbi', True,
+    'Use viterbi decoding of pitch.')
 flags.DEFINE_list(
     'pipeline_options', '--runner=DirectRunner',
     'A comma-separated list of command line arguments to be used as options '
@@ -82,10 +93,12 @@ def run():
       num_shards=FLAGS.num_shards,
       sample_rate=FLAGS.sample_rate,
       frame_rate=FLAGS.frame_rate,
-      window_secs=FLAGS.example_secs,
-      hop_secs=FLAGS.sliding_window_hop_secs,
+      example_secs=FLAGS.example_secs,
+      hop_secs=FLAGS.hop_secs,
       eval_split_fraction=FLAGS.eval_split_fraction,
-      coarse_chunk_secs=FLAGS.coarse_chunk_secs,
+      chunk_secs=FLAGS.chunk_secs,
+      center=FLAGS.center,
+      viterbi=FLAGS.viterbi,
       pipeline_options=FLAGS.pipeline_options)
 
 

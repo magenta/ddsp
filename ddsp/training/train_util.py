@@ -1,4 +1,4 @@
-# Copyright 2021 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -111,11 +111,11 @@ def get_latest_file(dir_path, prefix='operative_config-', suffix='.gin'):
     get_iter = lambda fp: abs(int(fp.split(dir_prefix)[-1].split(suffix)[0]))
     latest_file = max(file_paths, key=get_iter)
     return latest_file
-  except ValueError:
+  except ValueError as verror:
     raise FileNotFoundError(
         f'Files found with pattern \'{search_pattern}\' do not match '
         f'the pattern \'{dir_prefix}[iteration_number]{suffix}\'.\n\n'
-        f'Files found:\n{file_paths}')
+        f'Files found:\n{file_paths}') from verror
 
 
 def get_latest_checkpoint(checkpoint_path):

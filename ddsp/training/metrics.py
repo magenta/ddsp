@@ -1,4 +1,4 @@
-# Copyright 2021 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -54,19 +54,18 @@ def is_outlier(ground_truth_f0_conf):
   return np.max(ground_truth_f0_conf) < MIN_F0_CONFIDENCE
 
 
-def compute_audio_features(audio,
-                           n_fft=512,
-                           sample_rate=16000,
-                           frame_rate=250):
+def compute_audio_features(audio, frame_rate=250):
   """Compute features from audio."""
   audio_feats = {'audio': audio}
   audio = squeeze(audio)
 
+  # Requires 16kHz for CREPE.
+  sample_rate = ddsp.spectral_ops.CREPE_SAMPLE_RATE
   audio_feats['loudness_db'] = ddsp.spectral_ops.compute_loudness(
-      audio, sample_rate, frame_rate, n_fft)
+      audio, sample_rate, frame_rate)
 
   audio_feats['f0_hz'], audio_feats['f0_confidence'] = (
-      ddsp.spectral_ops.compute_f0(audio, sample_rate, frame_rate))
+      ddsp.spectral_ops.compute_f0(audio, frame_rate))
 
   return audio_feats
 
@@ -194,12 +193,13 @@ class LoudnessMetrics(BaseMetrics):
       loudness_original = batch['loudness_db']
     else:
       loudness_original = ddsp.spectral_ops.compute_loudness(
-          batch['audio'],
-          sample_rate=self._sample_rate, frame_rate=self._frame_rate)
+          batch['audio'], sample_rate=self._sample_rate,
+          frame_rate=self._frame_rate)
 
     # Compute loudness across entire batch
     loudness_gen = ddsp.spectral_ops.compute_loudness(
-        audio_gen, sample_rate=self._sample_rate, frame_rate=self._frame_rate)
+        audio_gen, sample_rate=self._sample_rate,
+        frame_rate=self._frame_rate)
 
     batch_size = int(audio_gen.shape[0])
     for i in range(batch_size):
@@ -242,7 +242,6 @@ class F0CrepeMetrics(BaseMetrics):
       # Extract f0 from generated audio example.
       f0_hz_gen, _ = ddsp.spectral_ops.compute_f0(
           audio_gen[i],
-          sample_rate=self._sample_rate,
           frame_rate=self._frame_rate,
           viterbi=True)
       if 'f0_hz' in batch and 'f0_confidence' in batch:
@@ -252,7 +251,6 @@ class F0CrepeMetrics(BaseMetrics):
         # Missing f0 in ground truth, extract it.
         f0_hz_gt, f0_conf_gt = ddsp.spectral_ops.compute_f0(
             batch['audio'][i],
-            sample_rate=self._sample_rate,
             frame_rate=self._frame_rate,
             viterbi=True)
 

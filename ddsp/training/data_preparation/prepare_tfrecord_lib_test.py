@@ -1,4 +1,4 @@
-# Copyright 2021 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,13 +21,14 @@ import sys
 from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
+from ddsp import spectral_ops
 from ddsp.training.data_preparation import prepare_tfrecord_lib
 import numpy as np
 import scipy.io.wavfile
 import tensorflow.compat.v2 as tf
 
 
-class ProcessTaskBeamTest(parameterized.TestCase):
+class PrepareTFRecordBeamTest(parameterized.TestCase):
 
   def get_tempdir(self):
     try:
@@ -43,7 +44,7 @@ class ProcessTaskBeamTest(parameterized.TestCase):
 
     # Write test wav file.
     self.wav_sr = 22050
-    self.wav_secs = 2.1
+    self.wav_secs = 0.5
     self.wav_path = os.path.join(self.test_dir, 'test.wav')
     scipy.io.wavfile.write(
         self.wav_path,
@@ -73,109 +74,123 @@ class ProcessTaskBeamTest(parameterized.TestCase):
           raise AssertionError('%s feature: %s' % (e, feat))
         self.assertFalse(any(np.isinf(arr)))
 
-  @parameterized.named_parameters(('16k', 16000), ('24k', 24000),
-                                  ('48k', 48000))
-  def test_prepare_tfrecord(self, sample_rate):
+  def get_expected_length(self, input_length, frame_rate, center=False):
+    sample_rate = 16000  # Features at CREPE_SAMPLE_RATE.
+    frame_size = 1024  # Unused for this calculation.
+    hop_size = sample_rate // frame_rate
+    padding = 'center' if center else 'same'
+    n_frames, _ = spectral_ops.get_framed_lengths(
+        input_length, frame_size, hop_size, padding)
+    return n_frames
+
+  @staticmethod
+  def get_n_per_chunk(chunk_length, example_secs, hop_secs):
+    """Convenience function to calculate number examples from striding."""
+    n = (chunk_length - example_secs) / hop_secs
+    # Deal with limited float precision that causes (.3 / .1) = 2.9999....
+    return int(np.floor(np.round(n, decimals=3))) + 1
+
+  @parameterized.named_parameters(
+      ('chunk_and_split', 0.3, 0.2),
+      ('no_chunk', None, 0.2),
+      ('no_split', 0.3, None),
+      ('no_chunk_no_split', None, None),
+  )
+  def test_prepare_tfrecord(self, chunk_secs, example_secs):
+    sample_rate = 16000
     frame_rate = 250
-    window_secs = 1
-    hop_secs = 0.5
+    hop_secs = 0.1
+
+    # Calculate expected batch size.
+    if example_secs:
+      length = chunk_secs if chunk_secs else self.wav_secs
+      n_per_chunk = self.get_n_per_chunk(length, example_secs, hop_secs)
+    else:
+      n_per_chunk = 1
+
+    n_chunks = int(np.ceil(self.wav_secs / chunk_secs)) if chunk_secs else 1
+    expected_n_batch = n_per_chunk * n_chunks
+    print('n_chunks, n_per_chunk, chunk_secs, example_secs',
+          n_chunks, n_per_chunk, chunk_secs, example_secs)
+
+    # Calculate expected lengths.
+    if example_secs:
+      length = example_secs
+    elif chunk_secs:
+      length = chunk_secs
+    else:
+      length = self.wav_secs
+
+    expected_n_t = int(length * sample_rate)
+    expected_n_frames = self.get_expected_length(expected_n_t, frame_rate)
+
+    # Make the actual records.
     prepare_tfrecord_lib.prepare_tfrecord(
         [self.wav_path],
         os.path.join(self.test_dir, 'output.tfrecord'),
         num_shards=2,
         sample_rate=sample_rate,
         frame_rate=frame_rate,
-        window_secs=window_secs,
+        example_secs=example_secs,
         hop_secs=hop_secs,
-        coarse_chunk_secs=None)
+        chunk_secs=chunk_secs,
+        center=False)
 
-    expected_f0_and_loudness_length = int(window_secs * frame_rate)
     self.validate_outputs(
-        4, {
-            'audio': window_secs * sample_rate,
-            'f0_hz': expected_f0_and_loudness_length,
-            'f0_confidence': expected_f0_and_loudness_length,
-            'loudness_db': expected_f0_and_loudness_length,
+        expected_n_batch,
+        {
+            'audio': expected_n_t,
+            'f0_hz': expected_n_frames,
+            'f0_confidence': expected_n_frames,
+            'loudness_db': expected_n_frames,
         })
 
-  @parameterized.named_parameters(('16k', 16000), ('24k', 24000),
-                                  ('48k', 48000))
-  def test_prepare_tfrecord_no_split(self, sample_rate):
+  @parameterized.named_parameters(('no_center', False), ('center', True))
+  def test_centering(self, center):
     frame_rate = 250
+    sample_rate = 16000
+    example_secs = 0.3
+    hop_secs = 0.1
+    n_batch = self.get_n_per_chunk(self.wav_secs, example_secs, hop_secs)
     prepare_tfrecord_lib.prepare_tfrecord(
         [self.wav_path],
         os.path.join(self.test_dir, 'output.tfrecord'),
         num_shards=2,
         sample_rate=sample_rate,
         frame_rate=frame_rate,
-        window_secs=None,
-        coarse_chunk_secs=None)
+        example_secs=example_secs,
+        hop_secs=hop_secs,
+        center=center,
+        chunk_secs=None)
 
-    expected_f0_and_loudness_length = int(self.wav_secs * frame_rate)
+    n_t = int(example_secs * sample_rate)
+    n_frames = self.get_expected_length(n_t, frame_rate, center)
+    n_expected_frames = 76 if center else 75  # (250 * 0.3) [+1].
+    self.assertEqual(n_frames, n_expected_frames)
     self.validate_outputs(
-        1, {
-            'audio': int(self.wav_secs * sample_rate),
-            'f0_hz': expected_f0_and_loudness_length,
-            'f0_confidence': expected_f0_and_loudness_length,
-            'loudness_db': expected_f0_and_loudness_length,
+        n_batch, {
+            'audio': n_t,
+            'f0_hz': n_frames,
+            'f0_confidence': n_frames,
+            'loudness_db': n_frames,
         })
 
   @parameterized.named_parameters(('16k', 16000), ('24k', 24000),
                                   ('48k', 48000))
-  def test_prepare_tfrecord_chunk(self, sample_rate):
-    frame_rate = 250
-    chunk_secs = 1.5
-    prepare_tfrecord_lib.prepare_tfrecord(
-        [self.wav_path],
-        os.path.join(self.test_dir, 'output.tfrecord'),
-        num_shards=2,
-        sample_rate=sample_rate,
-        frame_rate=frame_rate,
-        window_secs=None,
-        coarse_chunk_secs=chunk_secs)
-
-    expected_f0_and_loudness_length = int(chunk_secs * frame_rate)
-
-    self.validate_outputs(
-        2, {
-            'audio': int(chunk_secs * sample_rate),
-            'f0_hz': expected_f0_and_loudness_length,
-            'f0_confidence': expected_f0_and_loudness_length,
-            'loudness_db': expected_f0_and_loudness_length,
-        })
-
-  @parameterized.named_parameters(('16k', 16000), ('24k', 24000),
-                                  ('48k', 48000))
-  def test_prepare_tfrecord_no_f0_and_loudness(self, sample_rate):
+  def test_audio_only(self, sample_rate):
     prepare_tfrecord_lib.prepare_tfrecord(
         [self.wav_path],
         os.path.join(self.test_dir, 'output.tfrecord'),
         num_shards=2,
         sample_rate=sample_rate,
         frame_rate=None,
-        window_secs=None,
-        coarse_chunk_secs=None)
+        example_secs=None,
+        chunk_secs=None)
 
     self.validate_outputs(
         1, {
             'audio': int(self.wav_secs * sample_rate),
         })
-
-  @parameterized.named_parameters(
-      ('44.1k', 44100),)
-  def test_prepare_tfrecord_at_indivisible_sample_rate_throws_error(
-      self, sample_rate):
-    frame_rate = 250
-    with self.assertRaises(ValueError):
-      prepare_tfrecord_lib.prepare_tfrecord([self.wav_path],
-                                            os.path.join(
-                                                self.test_dir,
-                                                'output.tfrecord'),
-                                            num_shards=2,
-                                            sample_rate=sample_rate,
-                                            frame_rate=frame_rate,
-                                            window_secs=None,
-                                            coarse_chunk_secs=None)
 
 
 if __name__ == '__main__':

@@ -13,11 +13,22 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Tests for ddsp.training.decoders."""
+"""Library of helper functions for testing."""
 
-import tensorflow.compat.v2 as tf
+import numpy as np
 
 
+def gen_np_sinusoid(frequency, amp, sample_rate, audio_len_sec):
+  x = np.linspace(0, audio_len_sec, int(audio_len_sec * sample_rate))
+  audio_sin = amp * (np.sin(2 * np.pi * frequency * x))
+  return audio_sin
 
-if __name__ == '__main__':
-  tf.test.main()
+
+def gen_np_batched_sinusoids(frequency, amp, sample_rate, audio_len_sec,
+                             batch_size):
+  batch_sinusoids = [
+      gen_np_sinusoid(frequency, amp, sample_rate, audio_len_sec)
+      for _ in range(batch_size)
+  ]
+  return np.array(batch_sinusoids)
+
