@@ -200,6 +200,11 @@ def diff(x, axis=-1):
 
 
 # Math -------------------------------------------------------------------------
+def nan_to_num(x, value=0.0):
+  """Replace NaNs with value."""
+  return tf.where(tf.math.is_nan(x), value * tf.ones_like(x), x)
+
+
 def safe_divide(numerator, denominator, eps=1e-7):
   """Avoid dividing by zero by adding a small epsilon."""
   safe_denominator = tf.where(denominator == 0.0, eps, denominator)
@@ -710,26 +715,6 @@ def upsample_with_windows(inputs: tf.Tensor,
   return x[:, hop_size:-hop_size, :]
 
 
-# TODO(jesseengel): Axis param, don't assume axis=1.
-def center_pad(audio, frame_size, mode='CONSTANT'):
-  """Pad an audio signal such that timestamps align to the center of frames.
-
-  Without centering, timestamps align to the front of frames.
-  Args:
-    audio: Input, shape [batch, time, ...].
-    frame_size: Size of each frame.
-    mode: Padding mode for tf.pad. One of "CONSTANT", "REFLECT", or
-      "SYMMETRIC" (case-insensitive).
-
-  Returns:
-    audio_padded: Shape [batch, time + (frame_size // 2) * 2, ...].
-  """
-  pad_amount = int(frame_size // 2)  # Symmetric even padding like librosa.
-  pads = [[0, 0] for _ in range(len(audio.shape))]
-  pads[1] = [pad_amount, pad_amount]
-  return tf.pad(audio, pads, mode=mode)
-
-
 def center_crop(audio, frame_size):
   """Remove padding introduced from centering frames.
 
@@ -852,8 +837,8 @@ def angular_cumsum(angular_frequency, chunk_size=1000):
   # Pad if needed.
   remainder = n_time % chunk_size
   if remainder:
-    pad = chunk_size - remainder
-    angular_frequency = pad_axis(angular_frequency, [0, pad], axis=1)
+    pad_amount = chunk_size - remainder
+    angular_frequency = pad_axis(angular_frequency, [0, pad_amount], axis=1)
 
   # Split input into chunks.
   length = angular_frequency.shape[1]

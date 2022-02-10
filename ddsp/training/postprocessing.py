@@ -27,7 +27,7 @@ def detect_notes(loudness_db,
                  exponent=2.0,
                  smoothing=40,
                  f0_confidence_threshold=0.7,
-                 min_db=-120.):
+                 min_db=-spectral_ops.DB_RANGE):
   """Detect note on-off using loudness and smoothed f0_confidence."""
   mean_db = np.mean(loudness_db)
   db = smooth(f0_confidence**exponent, smoothing) * (loudness_db - min_db)
@@ -253,13 +253,15 @@ class QuantileTransformer:
 
 def compute_dataset_statistics(data_provider,
                                batch_size=1,
-                               power_frame_size=256):
+                               power_frame_size=1024,
+                               power_frame_rate=50):
   """Calculate dataset stats.
 
   Args:
     data_provider: A DataProvider from ddsp.training.data.
     batch_size: Iterate over dataset with this batch size.
     power_frame_size: Calculate power features on the fly with this frame size.
+    power_frame_rate: Calculate power features on the fly with this frame rate.
 
   Returns:
     Dictionary of dataset statistics. This is an overcomplete set of statistics,
@@ -280,7 +282,9 @@ def compute_dataset_statistics(data_provider,
   for batch in data_iter:
     loudness.append(batch['loudness_db'])
     power.append(
-        spectral_ops.compute_power(batch['audio'], frame_size=power_frame_size))
+        spectral_ops.compute_power(batch['audio'],
+                                   frame_size=power_frame_size,
+                                   frame_rate=power_frame_rate))
     f0.append(batch['f0_hz'])
     f0_conf.append(batch['f0_confidence'])
     audio.append(batch['audio'])
@@ -304,6 +308,7 @@ def compute_dataset_statistics(data_provider,
 
   # Detect notes.
   mask_on, _ = detect_notes(loudness_trimmed, f0_conf_trimmed)
+
   quantile_transform = fit_quantile_transform(loudness_trimmed, mask_on)
 
   # Pitch statistics.

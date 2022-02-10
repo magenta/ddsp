@@ -17,6 +17,7 @@
 import os
 
 from absl import logging
+from ddsp.spectral_ops import get_framed_lengths
 import gin
 import tensorflow.compat.v2 as tf
 import tensorflow_datasets as tfds
@@ -186,13 +187,23 @@ class RecordProvider(DataProvider):
                example_secs,
                sample_rate,
                frame_rate,
-               data_format_map_fn):
+               data_format_map_fn,
+               centered=False):
     """RecordProvider constructor."""
     self._file_pattern = file_pattern or self.default_file_pattern
     self._audio_length = example_secs * sample_rate
-    self._feature_length = example_secs * frame_rate
     super().__init__(sample_rate, frame_rate)
+    self._feature_length = self.get_feature_length(centered)
     self._data_format_map_fn = data_format_map_fn
+
+  def get_feature_length(self, centered):
+    """Take into account center padding to get number of frames."""
+    # Number of frames is independent of frame size for "center/same" padding.
+    frame_size = 1024
+    hop_size = self.sample_rate / self.frame_rate
+    padding = 'center' if centered else 'same'
+    return get_framed_lengths(
+        self._audio_length, frame_size, hop_size, padding)[0]
 
   @property
   def default_file_pattern(self):
@@ -244,10 +255,11 @@ class TFRecordProvider(RecordProvider):
                file_pattern=None,
                example_secs=4,
                sample_rate=16000,
-               frame_rate=250):
+               frame_rate=250,
+               centered=False):
     """TFRecordProvider constructor."""
     super().__init__(file_pattern, example_secs, sample_rate,
-                     frame_rate, tf.data.TFRecordDataset)
+                     frame_rate, tf.data.TFRecordDataset, centered=centered)
 
 
 # ------------------------------------------------------------------------------

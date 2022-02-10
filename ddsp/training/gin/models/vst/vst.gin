@@ -17,21 +17,18 @@ n_samples = 64064  # Extra frame for center padding.
 
 
 # Preprocessor
-# Constructor requires path to a SavedModel of the base CREPE
-# models. Available on GCS at gs://crepe-models/saved_models/[full,large,small].
+# Use same preprocessor for creating dataset and for training / inference.
+prepare_tfrecord_lib_vst.prepare_tfrecord.preprocessor = @preprocessing.OnlineF0PowerPreprocessor()
 Autoencoder.preprocessor = @preprocessing.OnlineF0PowerPreprocessor()
 OnlineF0PowerPreprocessor:
-  time_steps = 1001  # Extra frame added for center padding.
-  sample_rate = %sample_rate
+  frame_rate = %frame_rate
+  frame_size = %frame_size
+  padding = 'center'
   compute_power = True
-  center_power = True
-  power_frame_rate = %frame_rate
-  power_frame_size = %frame_size
-  compute_f0 = True
-  center_f0 = True
-  f0_frame_rate = %frame_rate
-  f0_frame_size = %frame_size
-  crepe_saved_model_path = ''
+  compute_f0 = False
+  crepe_saved_model_path = 'full'
+  viterbi = False
+  # time_steps = 1001  # Extra frame added for center padding.
 
 
 # Encoder
