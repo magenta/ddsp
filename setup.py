@@ -44,7 +44,6 @@ setuptools.setup(
         'future',
         'gin-config>=0.3.0',
         'google-cloud-storage',
-        'httplib2>=0.20.2',   # temporary fix for apache-beam import
         'librosa',
         'pydub',
         'mir_eval',
@@ -57,8 +56,7 @@ setuptools.setup(
         'tensorflow-addons',
         'tensorflowjs',
         'tensorflow-probability',
-        # TODO(adarob): Switch to tensorflow_datasets once includes nsynth 2.3.
-        'tfds-nightly',
+        'tensorflow-datasets',
         'tflite_support'
     ],
     extras_require={
@@ -67,11 +65,9 @@ setuptools.setup(
             'oauth2client'
         ],
         'data_preparation': [
-            # TODO(adarob): Remove next line once avro-python3 is fixed.
-            'avro-python3!=1.9.2',
             'apache_beam',
             # TODO(jesseengel): Remove versioning when beam import is fixed.
-            # 'pyparsing<=2.4.7'
+            'pyparsing<=2.4.7'
         ],
         'test': ['pytest', 'pylint!=2.5.0'],
     },
