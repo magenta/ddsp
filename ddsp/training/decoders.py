@@ -25,7 +25,7 @@ tfkl = tf.keras.layers
 
 # ------------------ Decoders --------------------------------------------------
 @gin.register
-class RnnFcDecoder(nn.OutputSplitsLayer):
+class RnnFcDecoder(nn.DictLayer):
   """RNN and FC stacks for f0 and loudness."""
 
   def __init__(self,
@@ -33,29 +33,81 @@ class RnnFcDecoder(nn.OutputSplitsLayer):
                rnn_type='gru',
                ch=512,
                layers_per_stack=3,
+               stateless=False,
                input_keys=('ld_scaled', 'f0_scaled', 'z'),
                output_splits=(('amps', 1), ('harmonic_distribution', 40)),
                **kwargs):
-    super().__init__(
-        input_keys=input_keys, output_splits=output_splits, **kwargs)
+    """Constructor.
+
+    Args:
+      rnn_channels: Dims for the RNN layer.
+      rnn_type: Either 'gru' or 'lstm'.
+      ch: Dims of the fully connected layers.
+      layers_per_stack: Fully connected layers per a stack.
+      stateless: Change api to explicitly pass in and out RNN state. Needed for
+        SavedModel/TFLite inference. Uses nn.StatelessRnn.
+      input_keys: Create a fully connected stack for each input.
+      output_splits: Splits the outputs into these dimensions.
+      **kwargs: Keras-specific kwargs.
+
+    Returns:
+      Dictionary with keys from output_splits. Also has 'state' key if
+        `stateless=True`, for manually handling state.
+    """
+    # Manually handle state if stateless.
+    self.stateless = stateless
+
+    # Always put state as the last input and output.
+    self.output_splits = output_splits
+    output_keys = [v[0] for v in output_splits]
+    if self.stateless:
+      input_keys = list(input_keys) + ['state']
+      output_keys = list(output_keys) + ['state']
+
+    super().__init__(input_keys=input_keys, output_keys=output_keys, **kwargs)
+
+    # Don't create a stack for manual RNN state.
     stack = lambda: nn.FcStack(ch, layers_per_stack)
+    n_stacks = len(self.input_keys)
+    if self.stateless:
+      n_stacks -= 1
+    rnn_cls = nn.StatelessRnn if stateless else nn.Rnn
 
     # Layers.
-    self.input_stacks = [stack() for k in self.input_keys]
-    self.rnn = nn.Rnn(rnn_channels, rnn_type)
+    self.input_stacks = [stack() for _ in range(n_stacks)]
+    self.rnn = rnn_cls(rnn_channels, rnn_type)
     self.out_stack = stack()
 
-  def compute_output(self, *inputs):
+    # Copied from OutputSplitsLayer to handle stateless logic.
+    n_out = sum([v[1] for v in output_splits])
+    self.dense_out = tfkl.Dense(n_out)
+
+  def call(self, *inputs, **unused_kwargs):
+    # Last input is always carried state for stateless RNN.
+    inputs = list(inputs)
+    if self.stateless:
+      state = inputs.pop()
+
     # Initial processing.
     inputs = [stack(x) for stack, x in zip(self.input_stacks, inputs)]
 
     # Run an RNN over the latents.
     x = tf.concat(inputs, axis=-1)
-    x = self.rnn(x)
+    if self.stateless:
+      x, new_state = self.rnn(x, state)
+    else:
+      x = self.rnn(x)
     x = tf.concat(inputs + [x], axis=-1)
 
     # Final processing.
-    return self.out_stack(x)
+    x = self.out_stack(x)
+    x = self.dense_out(x)
+
+    output_dict = nn.split_to_dict(x, self.output_splits)
+    if self.stateless:
+      output_dict['state'] = new_state
+
+    return output_dict
 
 
 @gin.register

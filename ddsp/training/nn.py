@@ -856,13 +856,39 @@ class Rnn(tfkl.Layer):
   def __init__(self, dims, rnn_type, return_sequences=True, bidir=False,
                **kwargs):
     super().__init__(**kwargs)
-    rnn_class = {'lstm': tfkl.LSTM, 'gru': tfkl.GRU}[rnn_type]
+    rnn_class = {'lstm': tfkl.LSTM,
+                 'gru': tfkl.GRU}[rnn_type]
     self.rnn = rnn_class(dims, return_sequences=return_sequences)
     if bidir:
       self.rnn = tfkl.Bidirectional(self.rnn)
 
   def call(self, x):
     return self.rnn(x)
+
+
+@gin.register
+class StatelessRnn(tfkl.Layer):
+  """Stateless unidirectional RNN for streaming models."""
+
+  def __init__(self, dims, rnn_type, **kwargs):
+    super().__init__(**kwargs)
+    rnn_class = {'lstm': tfkl.LSTM,
+                 'gru': tfkl.GRU}[rnn_type]
+    self.rnn = rnn_class(dims, return_sequences=True, return_state=True)
+
+  def call(self, x, state):
+    """Make a call with explicit carrying of state.
+
+    Args:
+      x: Input, shape [batch, T, dims_in].
+      state: Last output, shape [batch, dims].
+
+    Returns:
+      y: Output, shape [batch, T, dims].
+      new_state: Carried state, shape [batch, dims]
+    """
+    y, new_state = self.rnn(x, initial_state=state)
+    return y, new_state
 
 
 @gin.register

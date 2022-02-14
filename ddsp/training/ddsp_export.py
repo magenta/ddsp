@@ -64,6 +64,7 @@ flags.DEFINE_enum(
         'streaming_f0_pw',
         'vst_extract_features',
         'vst_predict_controls',
+        'vst_stateless_predict_controls',
         'vst_synthesize',
     ],
     'Specify the ddsp.training.inference model to use for '
@@ -105,6 +106,7 @@ def get_inference_model(ckpt):
       'autoencoder': inference.AutoencoderInference,
       'vst_extract_features': inference.VSTExtractFeatures,
       'vst_predict_controls': inference.VSTPredictControls,
+      'vst_stateless_predict_controls': inference.VSTStatelessPredictControls,
       'vst_synthesize': inference.VSTSynthesize,
   }
   return models[FLAGS.inference_model](ckpt)

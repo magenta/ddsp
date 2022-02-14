@@ -156,6 +156,9 @@ class VSTBaseModule(models.Autoencoder):
     self.n_harmonics = output_splits['harmonic_distribution']
     self.n_noise = output_splits['noise_magnitudes']
 
+    # Get RNN dimesnions.
+    self.state_size = gin.query_parameter('RnnFcDecoder.rnn_channels')
+
     # Get interpolation method.
     self.resample_method = gin.query_parameter('Harmonic.amp_resample_method')
 
@@ -201,9 +204,10 @@ class VSTExtractFeatures(VSTBaseModule):
     """Parse the model operative config with special streaming parameters."""
     # Customize config.
     config = [
-        'OnlineF0PowerPreprocessor.time_steps = 1',
-        'OnlineF0PowerPreprocessor.center_power = False',
-        'OnlineF0PowerPreprocessor.center_f0 = False',
+        'OnlineF0PowerPreprocessor.padding = "valid"',
+        'OnlineF0PowerPreprocessor.compute_f0 = True',
+        'OnlineF0PowerPreprocessor.compute_power = True',
+        'OnlineF0PowerPreprocessor.viterbi = False',
     ]
     if self.crepe_saved_model_path is not None:
       config.append('OnlineF0PowerPreprocessor.crepe_saved_model_path = '
@@ -294,6 +298,67 @@ class VSTPredictControls(VSTBaseModule):
     hd = harm_controls['harmonic_distribution'][0, 0]
     noise = noise_controls['magnitudes'][0, 0]
     return amps, hd, noise
+
+
+class VSTStatelessPredictControls(VSTBaseModule):
+  """Predict VST controls, but explicitly handle RNN state."""
+
+  def configure_gin(self):
+    """Parse the model operative config with special streaming parameters."""
+    config = [
+        'RnnFcDecoder.stateless = True',
+    ]
+    with gin.unlock_config():
+      gin.parse_config(config)
+
+  @property
+  def _signatures(self):
+    return {'call': self.call.get_concrete_function(
+        f0_scaled=tf.TensorSpec(shape=[1], dtype=tf.float32),
+        pw_scaled=tf.TensorSpec(shape=[1], dtype=tf.float32),
+        state=tf.TensorSpec(shape=[self.state_size], dtype=tf.float32),
+    )}
+
+  def build_network(self):
+    """Run a fake batch through the network."""
+    # Need two frames because of interpolation.
+    f0_scaled = tf.zeros([1])
+    pw_scaled = tf.zeros([1])
+    state = tf.zeros([self.state_size])
+    self._build_network(f0_scaled, pw_scaled, state)
+
+  @tf.function
+  def call(self, f0_scaled, pw_scaled, state):
+    """Convert f0 and loudness to synthesizer parameters."""
+    f0_scaled = tf.reshape(f0_scaled, [1, 1, 1])
+    pw_scaled = tf.reshape(pw_scaled, [1, 1, 1])
+    state = tf.reshape(state, [1, self.state_size])
+
+    f0_hz = ddsp.training.preprocessing.inv_scale_f0_hz(f0_scaled)
+
+    inputs = {
+        'f0_scaled': f0_scaled,
+        'pw_scaled': pw_scaled,
+        'state': state,
+    }
+
+    # Run through the model.
+    outputs = self.decoder(inputs, training=False)
+
+    # Apply the nonlinearities.
+    harm_controls = self.processor_group.harmonic.get_controls(
+        outputs['amps'], outputs['harmonic_distribution'], f0_hz)
+
+    noise_controls = self.processor_group.filtered_noise.get_controls(
+        outputs['noise_magnitudes']
+    )
+
+    # Return 1-D tensors.
+    amps = harm_controls['amplitudes'][0, 0]
+    hd = harm_controls['harmonic_distribution'][0, 0]
+    noise = noise_controls['magnitudes'][0, 0]
+    state = outputs['state'][0]
+    return amps, hd, noise, state
 
 
 @gin.configurable
