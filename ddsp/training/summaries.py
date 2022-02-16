@@ -400,7 +400,7 @@ def midiae_sp_summary(outputs, step):
 
 def pianoroll_summary(batch, step, name, frame_rate, pred_key,
                       gt_key='note_active_velocities', ch=None,
-                      threshold=0.0):
+                      threshold=0.0, tb_name='pianoroll'):
   """Plots ground truth pianoroll against predicted MIDI."""
   batch_size = batch[gt_key].shape[0]
   for i in range(batch_size):
@@ -457,6 +457,6 @@ def pianoroll_summary(batch, step, name, frame_rate, pred_key,
     ]
     patches = [mpatches.Patch(label=l, color=c) for l, c in labels_and_colors]
     fig.legend(handles=patches)
-    fig_summary(f'pianoroll/{name}_{i + 1}', fig, step)
+    fig_summary(f'{tb_name}/{name}_{i + 1}', fig, step)
 
 
