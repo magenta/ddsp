@@ -12,11 +12,3 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
-r"""Separate file for storing the current version of DDSP.
-
-Stored in a separate file so that setup.py can reference the version without
-pulling in all the dependencies in __init__.py.
-"""
-
-__version__ = '3.2.1'

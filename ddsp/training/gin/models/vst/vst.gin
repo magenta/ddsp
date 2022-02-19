@@ -10,15 +10,14 @@ import ddsp.training
 get_model.model = @models.Autoencoder()
 
 # Globals
-frame_rate = 250
+frame_rate = 50
 frame_size = 1024
 sample_rate = 16000
-n_samples = 64064  # Extra frame for center padding.
+n_samples = 64320  # Extra frame for center padding.
 
 
 # Preprocessor
 # Use same preprocessor for creating dataset and for training / inference.
-prepare_tfrecord_lib_vst.prepare_tfrecord.preprocessor = @preprocessing.OnlineF0PowerPreprocessor()
 Autoencoder.preprocessor = @preprocessing.OnlineF0PowerPreprocessor()
 OnlineF0PowerPreprocessor:
   frame_rate = %frame_rate
@@ -27,8 +26,6 @@ OnlineF0PowerPreprocessor:
   compute_power = True
   compute_f0 = False
   crepe_saved_model_path = 'full'
-  viterbi = False
-  # time_steps = 1001  # Extra frame added for center padding.
 
 
 # Encoder
@@ -38,15 +35,14 @@ Autoencoder.encoder = None
 # Decoder
 Autoencoder.decoder = @decoders.RnnFcDecoder()
 RnnFcDecoder:
-    rnn_channels = 256
-    rnn_type = 'lstm'
+    rnn_channels = 512
+    rnn_type = 'gru'
     ch = 256
     layers_per_stack = 1
     input_keys = ('pw_scaled', 'f0_scaled')
     output_splits = (('amps', 1),
                      ('harmonic_distribution', 60),
                      ('noise_magnitudes', 65))
-
 
 # Losses
 Autoencoder.losses = [
@@ -113,5 +109,6 @@ processors.Add.name = 'add'
 # Since generation is forward.
 # Frame size is the frame of the "synthesis" which is just the hop size.
 Crop:
-    frame_size = 64
+    frame_size = 320
     crop_location = 'back'
+

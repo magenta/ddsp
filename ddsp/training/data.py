@@ -77,6 +77,27 @@ class DataProvider(object):
     return dataset
 
 
+@gin.register
+class ExperimentalDataProvider(DataProvider):
+  """Use the new tf.data.experimental.save/load() interface."""
+
+  def __init__(self, data_dir, sample_rate, frame_rate):
+    """RecordProvider constructor."""
+    super().__init__(sample_rate, frame_rate)
+    self.data_dir = data_dir
+
+  def get_dataset(self, shuffle=True):
+    """Read dataset direct from disk.
+
+    Args:
+      shuffle: Unused.
+
+    Returns:
+      dataset: A tf.dataset that reads from new experimental format.
+    """
+    return tf.data.experimental.load(self.data_dir)
+
+
 class TfdsProvider(DataProvider):
   """Base class for reading datasets from TensorFlow Datasets (TFDS)."""
 
