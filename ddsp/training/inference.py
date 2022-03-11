@@ -362,27 +362,59 @@ class VSTStatelessPredictControls(VSTBaseModule):
 
 
 @gin.configurable
-class VSTSynthesize(VSTBaseModule):
+class VSTSynthesize(tf.keras.Model):
   """VST inference modules, for models trained with `models/vst/vst.gin`."""
 
   def __init__(self,
                ckpt,
                new_hop_size=None,
-               verbose=True,
                **kwargs):
+    super().__init__(**kwargs)
     self.new_hop_size = new_hop_size
-    super().__init__(ckpt, **kwargs)
+    self.parse_gin(ckpt)
+    self.build_network()
 
-  def configure_gin(self):
+  # Carried over from VSTBaseModule. Need separate class to not include vars.
+  def save_model(self, save_dir):
+    """Saves a SavedModel after initialization."""
+    # self.save(save_dir)
+    tf.saved_model.save(self, save_dir, signatures=self._signatures)
+
+  def _build_network(self, *dummy_inputs):
+    """Helper function to build the network with dummy input args."""
+    print('Inputs to Model:', ddsp.core.map_shape(dummy_inputs))
+    unused_outputs = self(*dummy_inputs)
+    print('Outputs from Model:', ddsp.core.map_shape(unused_outputs))
+
+  def parse_gin(self, ckpt):
     """Parse the model operative config with special streaming parameters."""
-    # Customize config.
-    self.hop_size = self.new_hop_size if self.new_hop_size else self.hop_size
+    parse_operative_config(ckpt)
+
+    # Get Frame Size / Hop Size.
+    self.frame_size = gin.query_parameter('%frame_size')
+    frame_rate = gin.query_parameter('%frame_rate')
+    self.sample_rate = gin.query_parameter('%sample_rate')
+    self.hop_size = self.sample_rate // frame_rate
+
+    # Get number of outputs.
+    output_splits = dict(gin.query_parameter('RnnFcDecoder.output_splits'))
+    self.n_harmonics = output_splits['harmonic_distribution']
+    self.n_noise = output_splits['noise_magnitudes']
+
+    # Get interpolation method.
+    self.resample_method = gin.query_parameter('Harmonic.amp_resample_method')
+
     config = [
-        f'FilteredNoise.n_samples = {self.hop_size}',
         'harmonic_oscillator_bank.use_angular_cumsum = True',
     ]
     with gin.unlock_config():
       gin.parse_config(config)
+
+    self.hop_size = self.new_hop_size if self.new_hop_size else self.hop_size
+    self.filtered_noise = ddsp.synths.FilteredNoise(
+        n_samples=self.hop_size,
+        window_size=gin.query_parameter('FilteredNoise.window_size'),
+    )
 
   @property
   def _signatures(self):
@@ -439,7 +471,7 @@ class VSTSynthesize(VSTBaseModule):
         sample_rate=self.sample_rate,
         amp_resample_method=self.resample_method)
 
-    noise_audio = self.processor_group.filtered_noise.get_signal(noise)
+    noise_audio = self.filtered_noise.get_signal(noise)
     audio_out = harm_audio + noise_audio
 
     # Return 1-D outputs.
