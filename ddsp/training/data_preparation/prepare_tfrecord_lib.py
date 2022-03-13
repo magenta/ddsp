@@ -69,7 +69,7 @@ def _chunk_audio(ex, sample_rate, chunk_secs):
   chunks = tf.signal.frame(audio, chunk_size, chunk_size, pad_end=True)
   n_chunks = chunks.shape[0]
   for i in range(n_chunks):
-    yield {'audio': chunks[i]}
+    yield {'audio': chunks[i].numpy()}
 
 
 def _add_f0_estimate(ex, frame_rate, center, viterbi):
