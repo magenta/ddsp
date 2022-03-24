@@ -152,3 +152,88 @@ class F0PowerPreprocessor(F0LoudnessPreprocessor):
     return f0_hz, power_db
 
 
+@gin.register
+class OnlineF0PowerPreprocessor(nn.DictLayer):
+  """Dynamically compute power_db and f0_hz with optional centered frames."""
+
+  def __init__(self,
+               frame_rate=250,
+               frame_size=1024,
+               padding='center',
+               compute_power=True,
+               compute_f0=True,
+               crepe_saved_model_path='full',
+               viterbi=False,
+               **kwargs):
+    super().__init__(**kwargs)
+    # Preprocessing must happen at 16kHz because CREPE trained at 16kHz.
+    self.sample_rate = ddsp.spectral_ops.CREPE_SAMPLE_RATE
+    self.frame_rate = frame_rate
+    self.frame_size = frame_size
+    self.hop_size = self.sample_rate // frame_rate
+
+    self.compute_f0 = compute_f0
+    self.compute_power = compute_power
+
+    self.padding = padding
+
+    # Crepe model, must either be a model size or path to SavedModel.
+    if crepe_saved_model_path:
+      self.crepe_model = ddsp.spectral_ops.PretrainedCREPE(
+          model_size_or_path=crepe_saved_model_path, hop_size=self.hop_size)
+
+    # Use viterbi decoding.
+    self.viterbi = viterbi
+
+  def call(self, audio, f0_hz=None, f0_confidence=None) -> [
+      'f0_hz', 'pw_db', 'f0_scaled', 'pw_scaled', 'f0_confidence']:
+    """Compute power on the fly if it's not in the inputs."""
+    # Compute power and f0 on the fly.
+    if self.compute_power:
+      pw_db = ddsp.spectral_ops.compute_power(audio,
+                                              sample_rate=self.sample_rate,
+                                              frame_rate=self.frame_rate,
+                                              frame_size=self.frame_size,
+                                              padding=self.padding)
+
+    if self.compute_f0:
+      f0_hz, f0_confidence = self.crepe_model.predict_f0_and_confidence(
+          audio, viterbi=self.viterbi, padding=self.padding)
+      # Stop gradients from flowing to CREPE.
+      f0_hz = tf.stop_gradient(f0_hz)
+      f0_confidence = tf.stop_gradient(f0_confidence)
+    elif f0_hz is None or f0_confidence is None:
+      raise ValueError('Preprocessor must either have `compute_f0=True`, or'
+                       '__call__ must be supplied 3 arguments, '
+                       '[audio, f0, and f0_confidence].')
+
+    # For NN training, scale frequency and loudness to the range [0, 1].
+    pw_db = at_least_3d(pw_db)
+    f0_hz = at_least_3d(f0_hz)
+
+    pw_scaled = scale_db(pw_db)
+    f0_scaled = scale_f0_hz(f0_hz)
+
+    # For sanity checking.
+    # You need to define time_steps correctly just to make sure you know what
+    # you're doing, and what the model output shape is (no interpolation).
+    n_t = audio.shape[1]
+    time_steps, _ = ddsp.spectral_ops.get_framed_lengths(
+        n_t, self.frame_size, self.hop_size, self.padding)
+    for k, output in {
+        'f0_hz': f0_hz,
+        'pw_db': pw_db,
+        'f0_scaled': f0_scaled,
+        'pw_scaled': pw_scaled,
+        'f0_confidence': f0_confidence}.items():
+      if output.shape[1] != time_steps:
+        raise ValueError(
+            f'OnlineF0PowerPreprocessor output: ({k}) does not have '
+            f'{time_steps} timesteps. Output shape: {output.shape}. '
+            f'\nInputs: seconds ({n_t/self.sample_rate}), '
+            f'frame_rate ({self.frame_rate}), '
+            f'padding ("{self.padding}").')
+
+    return f0_hz, pw_db, f0_scaled, pw_scaled, f0_confidence
+
+
