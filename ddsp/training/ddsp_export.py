@@ -30,12 +30,17 @@ ddsp_export --model_path=/path/to/model --inference_model=[model_type] \
 --tflite=false --tfjs=false
 """
 
+import datetime
+import json
 import os
 
 from absl import app
 from absl import flags
 
+import ddsp
+from ddsp.training import data
 from ddsp.training import inference
+from ddsp.training import postprocessing
 from ddsp.training import train_util
 import gin
 import tensorflow as tf
@@ -85,6 +90,89 @@ flags.DEFINE_string('metadata_file', None,
                     'Optional metadata file to pack into TFLite model.')
 
 FLAGS = flags.FLAGS
+
+# Metadata.
+flags.DEFINE_boolean('metadata', True, 'Save metadata for model as a json.')
+flags.DEFINE_string(
+    'dataset_path', None,
+    'Only required if FLAGS.metadata=True. Path to TF Records containing '
+    'training examples. Only used if no binding to train.data_provider can '
+    'be found.')
+
+FLAGS = flags.FLAGS
+
+
+def get_data_provider(dataset_path, model_path):
+  """Get the data provider for dataset for statistics.
+
+  Read TF examples from specified path if provided, else use the
+  data provider specified in the gin config.
+  Args:
+    dataset_path: Path to an sstable of TF Examples.
+    model_path: Path to the model checkpoint dir containing the gin config.
+  Returns:
+    Data provider to calculate statistics over.
+  """
+  # First, see if the dataset path is specified
+  if dataset_path is not None:
+    dataset_path = train_util.expand_path(dataset_path)
+    return data.TFRecordProvider(dataset_path)
+  else:
+    inference.parse_operative_config(model_path)
+    try:
+      dp_binding = gin.query_parameter('train.data_provider')
+      return dp_binding.scoped_configurable_fn()
+
+    except ValueError as e:
+      raise Exception(
+          'Failed to parse dataset from gin. Either --dataset_path '
+          'or train.data_provider gin param must be set.') from e
+
+
+def get_metadata_dict(data_provider, model_path):
+  """Compute metadata using compute_dataset_statistics and add version/date."""
+
+  # Parse gin for num_harmonics and num_noise_amps.
+  inference.parse_operative_config(model_path)
+
+  # Get number of outputs.
+  ref = gin.query_parameter('Autoencoder.decoder')
+  decoder_type = ref.config_key[-1].split('.')[-1]
+  output_splits = dict(gin.query_parameter(f'{decoder_type}.output_splits'))
+
+  # Get power rate and size.
+  frame_size = gin.query_parameter('%frame_size')
+  frame_rate = gin.query_parameter('%frame_rate')
+
+  # Compute stats.
+  full_metadata = postprocessing.compute_dataset_statistics(
+      data_provider,
+      power_frame_size=frame_size,
+      power_frame_rate=frame_rate)
+
+  lite_metadata = {
+      'mean_min_pitch_note':
+          float(full_metadata['mean_min_pitch_note']),
+      'mean_max_pitch_note':
+          float(full_metadata['mean_max_pitch_note']),
+      'mean_min_pitch_note_hz':
+          float(ddsp.core.midi_to_hz(full_metadata['mean_min_pitch_note'])),
+      'mean_max_pitch_note_hz':
+          float(ddsp.core.midi_to_hz(full_metadata['mean_max_pitch_note'])),
+      'mean_min_power_note':
+          float(full_metadata['mean_min_power_note']),
+      'mean_max_power_note':
+          float(full_metadata['mean_max_power_note']),
+      'version':
+          ddsp.__version__,
+      'export_time':
+          datetime.datetime.now().isoformat(),
+      'num_harmonics':
+          output_splits['harmonic_distribution'],
+      'num_noise_amps':
+          output_splits['noise_magnitudes'],
+  }
+  return lite_metadata
 
 
 def get_inference_model(ckpt):
@@ -187,6 +275,14 @@ def main(unused_argv):
   save_dir = train_util.expand_path(save_dir)
   ensure_exits(save_dir)
 
+  # Save metadata.
+  if FLAGS.metadata:
+    metadata_path = os.path.join(save_dir, 'metadata.json')
+    data_provider = get_data_provider(FLAGS.dataset_path, model_path)
+    metadata = get_metadata_dict(data_provider, model_path)
+    with tf.io.gfile.GFile(metadata_path, 'w') as f:
+      f.write(json.dumps(metadata))
+
   # Create SavedModel if none already exists.
   if not is_saved_model:
     ckpt_to_saved_model(model_path, save_dir)
@@ -200,7 +296,8 @@ def main(unused_argv):
   if FLAGS.tflite:
     tflite_dir = os.path.join(save_dir, 'tflite')
     ensure_exits(tflite_dir)
-    saved_model_to_tflite(save_dir, tflite_dir, FLAGS.metadata_file)
+    saved_model_to_tflite(save_dir, tflite_dir,
+                          metadata_path if FLAGS.metadata else '')
 
 
 def console_entry_point():
