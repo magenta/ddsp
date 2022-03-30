@@ -43,6 +43,8 @@ from ddsp.training import inference
 from ddsp.training import postprocessing
 from ddsp.training import train_util
 import gin
+import librosa
+import note_seq
 import tensorflow as tf
 from tensorflowjs.converters import converter
 
@@ -99,6 +101,12 @@ flags.DEFINE_string(
     'training examples. Only used if no binding to train.data_provider can '
     'be found.')
 
+# Reverb Impulse Response.
+flags.DEFINE_boolean('reverb', True,
+                     'Save reverb impulse response as a wav file.')
+flags.DEFINE_integer('reverb_sample_rate', 44100,
+                     'If not None, also save resampled reverb ir.')
+
 FLAGS = flags.FLAGS
 
 
@@ -143,6 +151,7 @@ def get_metadata_dict(data_provider, model_path):
   # Get power rate and size.
   frame_size = gin.query_parameter('%frame_size')
   frame_rate = gin.query_parameter('%frame_rate')
+  sample_rate = gin.query_parameter('%sample_rate')
 
   # Compute stats.
   full_metadata = postprocessing.compute_dataset_statistics(
@@ -171,6 +180,12 @@ def get_metadata_dict(data_provider, model_path):
           output_splits['harmonic_distribution'],
       'num_noise_amps':
           output_splits['noise_magnitudes'],
+      'frame_rate':
+          frame_rate,
+      'frame_size':
+          frame_size,
+      'sample_rate':
+          sample_rate,
   }
   return lite_metadata
 
@@ -243,6 +258,35 @@ def saved_model_to_tflite(input_dir, save_dir, metadata_file=None):
   print('TFLite Conversion Success!')
 
 
+def export_impulse_response(model_path, save_dir, target_sr=None):
+  """Extracts and saves the reverb impulse response."""
+  with gin.unlock_config():
+    ddsp.training.inference.parse_operative_config(model_path)
+    model = ddsp.training.models.Autoencoder()
+    model.restore(model_path)
+  sr = model.processor_group.harmonic.sample_rate
+  reverb = model.processor_group.reverb
+  reverb.build(unused_input_shape=[])
+  ir = reverb.get_controls(audio=tf.zeros([1, 1]))['ir'].numpy()[0]
+  print(f'Reverb Impulse Response is {ir.shape[0] / sr} seconds long')
+
+  def save_ir(ir, sr):
+    """Save the impulse response."""
+    ir_path = os.path.join(save_dir, f'reverb_ir_{sr}_hz.wav')
+    with tf.io.gfile.GFile(ir_path, 'wb') as f:
+      wav_data = note_seq.audio_io.samples_to_wav_data(ir, sr)
+      f.write(wav_data)
+
+  # Save to original impulse response.
+  save_ir(ir, sr)
+
+  # Save the resampled impulse response.
+  if target_sr is not None:
+    sr = target_sr
+    ir = librosa.resample(ir, orig_sr=sr, target_sr=target_sr)
+    save_ir(ir, sr)
+
+
 def ensure_exits(dir_path):
   """Make directory if none exists."""
   if not tf.io.gfile.exists(dir_path):
@@ -274,6 +318,10 @@ def main(unused_argv):
   # Make a new save directory.
   save_dir = train_util.expand_path(save_dir)
   ensure_exits(save_dir)
+
+  # Save reverb impulse response.
+  if FLAGS.reverb:
+    export_impulse_response(model_path, save_dir, FLAGS.reverb_sample_rate)
 
   # Save metadata.
   if FLAGS.metadata:
