@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 # Lint as: python3
 """Library of training functions."""
 
+import inspect
 import json
 import os
 import time
@@ -79,30 +80,94 @@ def get_strategy(tpu='', cluster_config=''):
   return strategy
 
 
-def get_latest_chekpoint(checkpoint_path):
+def expand_path(file_path):
+  return os.path.expanduser(os.path.expandvars(file_path))
+
+
+def get_latest_file(dir_path, prefix='operative_config-', suffix='.gin'):
+  """Returns latest file with pattern '/dir_path/prefix[iteration]suffix'.
+
+  Args:
+    dir_path: Path to the directory.
+    prefix: Filename prefix, not including directory.
+    suffix: Filename suffix, including extension.
+
+  Returns:
+    Path to the latest file
+
+  Raises:
+    FileNotFoundError: If no files match the pattern
+      '/dir_path/prefix[int]suffix'.
+  """
+  dir_path = expand_path(dir_path)
+  dir_prefix = os.path.join(dir_path, prefix)
+  search_pattern = dir_prefix + '*' + suffix
+  file_paths = tf.io.gfile.glob(search_pattern)
+  if not file_paths:
+    raise FileNotFoundError(
+        f'No files found matching the pattern \'{search_pattern}\'.')
+  try:
+    # Filter to get highest iteration, no negative iterations.
+    get_iter = lambda fp: abs(int(fp.split(dir_prefix)[-1].split(suffix)[0]))
+    latest_file = max(file_paths, key=get_iter)
+    return latest_file
+  except ValueError as verror:
+    raise FileNotFoundError(
+        f'Files found with pattern \'{search_pattern}\' do not match '
+        f'the pattern \'{dir_prefix}[iteration_number]{suffix}\'.\n\n'
+        f'Files found:\n{file_paths}') from verror
+
+
+def get_latest_checkpoint(checkpoint_path):
   """Helper function to get path to latest checkpoint.
 
   Args:
     checkpoint_path: Path to the directory containing model checkpoints, or
-      to a specific checkpoint (e.g. `path/to/model.ckpt-iteration`).
+      to a specific checkpoint (e.g. `/path/to/model.ckpt-iteration`).
 
   Returns:
-    Path to latest checkpoint, or None if none exist.
+    Path to latest checkpoint.
+
+  Raises:
+    FileNotFoundError: If no checkpoint is found.
   """
-  checkpoint_path = os.path.expanduser(os.path.expandvars(checkpoint_path))
+  checkpoint_path = expand_path(checkpoint_path)
   is_checkpoint = tf.io.gfile.exists(checkpoint_path + '.index')
   if is_checkpoint:
+    # Return the path if it points to a checkpoint.
     return checkpoint_path
   else:
-    # None if no checkpoints, or directory doesn't exist.
-    return tf.train.latest_checkpoint(checkpoint_path)
+    # Search using 'checkpoints' file.
+    # Returns None if no 'checkpoints' file, or directory doesn't exist.
+    ckpt = tf.train.latest_checkpoint(checkpoint_path)
+    if ckpt:
+      return ckpt
+    else:
+      # Last resort, look for '/path/ckpt-[iter].index' files.
+      ckpt_f = get_latest_file(checkpoint_path, prefix='ckpt-', suffix='.index')
+      return ckpt_f.split('.index')[0]
 
 
+# ---------------------------------- Gin ---------------------------------------
 def get_latest_operative_config(restore_dir):
-  """Finds the most recently saved operative_config in a directory."""
-  file_paths = tf.io.gfile.glob(os.path.join(restore_dir, 'operative_config*'))
-  get_iter = lambda file_path: int(file_path.split('-')[-1].split('.gin')[0])
-  return max(file_paths, key=get_iter) if file_paths else ''
+  """Finds the most recently saved operative_config in a directory.
+
+  Args:
+    restore_dir: Path to directory with gin operative_configs. Will also work
+      if passing a path to a file in that directory such as a checkpoint.
+
+  Returns:
+    Filepath to most recent operative config.
+
+  Raises:
+    FileNotFoundError: If no config is found.
+  """
+  try:
+    return get_latest_file(
+        restore_dir, prefix='operative_config-', suffix='.gin')
+  except FileNotFoundError:
+    return get_latest_file(
+        os.path.dirname(restore_dir), prefix='operative_config-', suffix='.gin')
 
 
 def write_gin_config(summary_writer, save_dir, step):
@@ -142,6 +207,18 @@ def write_gin_config(summary_writer, save_dir, step):
     text_tensor = tf.convert_to_tensor(md_config_str)
     tf.summary.text(name='gin/' + base_name, data=text_tensor, step=step)
     summary_writer.flush()
+
+
+def gin_register_keras_layers():
+  """Registers all keras layers and Sequential to be referenceable in gin."""
+  # Register sequential model.
+  gin.external_configurable(tf.keras.Sequential, 'tf.keras.Sequential')
+
+  # Register all the layers.
+  for k, v in inspect.getmembers(tf.keras.layers):
+    # Duck typing for tf.keras.layers.Layer since keras uses metaclasses.
+    if hasattr(v, 'variables'):
+      gin.external_configurable(v, f'tf.keras.layers.{k}')
 
 
 # ------------------------ Training Loop ---------------------------------------
@@ -184,7 +261,11 @@ def train(data_provider,
   trainer.build(next(dataset_iter))
 
   # Load latest checkpoint if one exists in load directory.
-  trainer.restore(restore_dir)
+  try:
+    trainer.restore(restore_dir)
+  except FileNotFoundError:
+    logging.info('No existing checkpoint found in %s, skipping '
+                 'checkpoint loading.', restore_dir)
 
   if save_dir:
     # Set up the summary writer and metrics.

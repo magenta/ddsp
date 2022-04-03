@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -57,6 +57,8 @@ gfile = io.gfile
 REMOVE = [
     'SpectralLoss.delta_delta_freq_weight',
     'SpectralLoss.delta_delta_time_weight',
+    'DilatedConvEncoder.resample',
+    'DilatedConvDecoder.resample',
 ]
 
 

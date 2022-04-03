@@ -1,6 +1,7 @@
 # -*-Python-*-
 include 'models/ae.gin'
 include 'datasets/nsynth.gin'
+include 'eval/basic_f0_ld.gin'
 
 # To recreate original experiment optimization params, uncomment lines below.
 # learning_rate = 1e-5

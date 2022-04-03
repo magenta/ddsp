@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,9 +15,12 @@
 # Lint as: python3
 """Tests for ddsp.training.eval_util."""
 
+from unittest import mock
+
 from absl.testing import parameterized
-from ddsp.spectral_ops_test import gen_np_batched_sinusoids
-from ddsp.spectral_ops_test import gen_np_sinusoid
+import ddsp
+from ddsp.test_util import gen_np_batched_sinusoids
+from ddsp.test_util import gen_np_sinusoid
 import ddsp.training.metrics as ddsp_metrics
 import numpy as np
 import tensorflow.compat.v2 as tf
@@ -31,6 +34,15 @@ class ComputeAudioFeaturesTest(parameterized.TestCase, tf.test.TestCase):
     self.amp = 0.75
     self.frequency = 440.0
     self.frame_rate = 250
+    self.sample_rate = 16000
+
+  def expected_length(self, audio):
+    n_t = audio.shape[-1]
+    frame_size = ddsp.spectral_ops.CREPE_FRAME_SIZE
+    hop_size = int(self.sample_rate // self.frame_rate)
+    expected_len, _ = ddsp.spectral_ops.get_framed_lengths(
+        n_t, frame_size, hop_size)
+    return expected_len
 
   def validate_output_shapes(self, audio_features, expected_feature_lengths):
     for feat, expected_len in expected_feature_lengths.items():
@@ -38,78 +50,63 @@ class ComputeAudioFeaturesTest(parameterized.TestCase, tf.test.TestCase):
       try:
         self.assertLen(arr, expected_len)
       except AssertionError as e:
-        raise AssertionError('%s feature: %s' % (e, feat))
+        raise AssertionError('%s feature: %s' % (e, feat)) from e
       self.assertTrue(np.all(np.isfinite(arr)))
 
   @parameterized.named_parameters(
-      ('16k_.21secs', 16000, .21),
-      ('24k_.21secs', 24000, .21),
-      ('48k_.21secs', 48000, .21),
-      ('16k_.4secs', 16000, .4),
-      ('24k_.4secs', 24000, .4),
-      ('48k_.4secs', 48000, .4),
+      ('0.21secs', .21),
+      ('0.4secs', .4),
   )
-  def test_correct_shape_compute_af_at_sample_rate(self, sample_rate,
-                                                   audio_len_sec):
-    audio_sin = gen_np_sinusoid(self.frequency, self.amp, sample_rate,
+  def test_correct_shape_compute_af_at_sample_rate(self, audio_len_sec):
+    audio_sin = gen_np_sinusoid(self.frequency, self.amp, self.sample_rate,
                                 audio_len_sec)
+    exp_length = self.expected_length(audio_sin)
     audio_features = ddsp_metrics.compute_audio_features(
-        audio_sin, sample_rate=sample_rate, frame_rate=self.frame_rate)
+        audio_sin, frame_rate=self.frame_rate)
 
-    expected_f0_and_loudness_length = int(audio_len_sec * self.frame_rate)
     self.validate_output_shapes(
         audio_features, {
-            'audio': audio_len_sec * sample_rate,
-            'f0_hz': expected_f0_and_loudness_length,
-            'f0_confidence': expected_f0_and_loudness_length,
-            'loudness_db': expected_f0_and_loudness_length,
+            'audio': audio_len_sec * self.sample_rate,
+            'f0_hz': exp_length,
+            'f0_confidence': exp_length,
+            'loudness_db': exp_length,
         })
-
-  @parameterized.named_parameters(
-      ('44.1k_.21secs', 44100, .21),
-      ('44.1k_.4secs', 44100, .4),
-  )
-  def test_indivisible_rates_raises_error_compute_af(self, sample_rate,
-                                                     audio_len_sec):
-    audio_sin = gen_np_sinusoid(self.frequency, self.amp, sample_rate,
-                                audio_len_sec)
-
-    with self.assertRaises(ValueError):
-      ddsp_metrics.compute_audio_features(
-          audio_sin, sample_rate=sample_rate, frame_rate=self.frame_rate)
 
 
 class MetricsObjectsTest(parameterized.TestCase, tf.test.TestCase):
 
-  def setUp(self):
+  @classmethod
+  def setUpClass(cls):
     """Create common default batch of noise and sinusoids."""
-    super().setUp()
-    self.frequency = 440
-    self.sample_rate = 16000
-    self.frame_rate = 250
-    self.batch_size = 2
-    self.audio_len_sec = 0.25  # To make tests with f0 CREPE run in shorter time
-    self.amp = 0.8
-    self.batch_of_noise = self.gen_batch_of_noise(self.amp)
-    self.batch_of_noise_feats = self.gen_batch_of_features(self.batch_of_noise)
-    self.batch_of_sin = gen_np_batched_sinusoids(self.frequency, self.amp * 0.5,
-                                                 self.sample_rate,
-                                                 self.audio_len_sec,
-                                                 self.batch_size)
-    self.batch_of_sin_feats = self.gen_batch_of_features(self.batch_of_sin)
+    super().setUpClass()
+    cls.frequency = 440
+    cls.sample_rate = 16000
+    cls.frame_rate = 250
+    cls.batch_size = 2
+    cls.audio_len_sec = 0.25  # To make tests with f0 CREPE run in shorter time
+    cls.amp = 0.8
+    cls.batch_of_noise = cls.gen_batch_of_noise(cls.amp)
+    cls.batch_of_noise_feats = cls.gen_batch_of_features(cls.batch_of_noise)
+    cls.batch_of_sin = gen_np_batched_sinusoids(cls.frequency, cls.amp * 0.5,
+                                                cls.sample_rate,
+                                                cls.audio_len_sec,
+                                                cls.batch_size)
+    cls.batch_of_sin_feats = cls.gen_batch_of_features(cls.batch_of_sin)
 
-  def gen_batch_of_noise(self, amp):
+  @classmethod
+  def gen_batch_of_noise(cls, amp):
     noise_audio = np.random.uniform(
         low=-amp,
         high=amp,
-        size=(1, int(self.sample_rate * self.audio_len_sec)))
-    return np.tile(noise_audio, [self.batch_size, 1])
+        size=(1, int(cls.sample_rate * cls.audio_len_sec)))
+    return np.tile(noise_audio, [cls.batch_size, 1])
 
-  def gen_batch_of_features(self, batch_of_audio):
+  @classmethod
+  def gen_batch_of_features(cls, batch_of_audio):
     batch_size = batch_of_audio.shape[0]
     audio = batch_of_audio[0]
     feats = ddsp_metrics.compute_audio_features(
-        audio, sample_rate=self.sample_rate, frame_rate=self.frame_rate)
+        audio, frame_rate=cls.frame_rate)
     for k, v in feats.items():
       feats[k] = np.tile(v[np.newaxis, :], [batch_size, 1])
     return feats
@@ -117,36 +114,57 @@ class MetricsObjectsTest(parameterized.TestCase, tf.test.TestCase):
   def test_loudness_metrics_has_expected_values(self):
     loudness_metrics = ddsp_metrics.LoudnessMetrics(self.sample_rate,
                                                     self.frame_rate)
-    # Dummy batch 1: known noise features vs. known noise audio
+    # Dummy batch 1: known noise features vs. known noise audio.
+    # Since audio is the same, loudness distance should be 0.
     loudness_metrics.update_state(self.batch_of_noise_feats,
                                   self.batch_of_noise)
     self.assertAllClose(loudness_metrics.metrics['loudness_db'].result(), 0)
 
     # Dummy batch 2: known noise features vs. quiet batch of sin audio
+    # Since audio is different, loudness distance should greater than 0.
     loudness_metrics.update_state(self.batch_of_noise_feats, self.batch_of_sin)
     self.assertGreater(loudness_metrics.metrics['loudness_db'].result(), 0)
 
     loudness_metrics.flush(step=1)
 
-  def test_f0_crepe_metrics_has_expected_values(self):
+  @mock.patch('ddsp.spectral_ops.compute_f0')
+  def test_f0_crepe_metrics_has_expected_values(self, mock_compute_f0):
+    """Test F0CrepeMetrics.
+
+    F0CrepeMetrics makes an expensive call to compute_f0 (which in turn calls
+    CREPE) for every generated example during update_state. To avoid this, we
+    mock out compute_f0 and replace the return values (via side_effect) with
+    precomputed f0_hz and confidence values.
+
+    Args:
+      mock_compute_f0: The mock object for compute_f0, automatically injected
+        by mock.patch.
+    """
     f0_crepe_metrics = ddsp_metrics.F0CrepeMetrics(self.sample_rate,
                                                    self.frame_rate)
-    # Batch 1: known sin features vs. known sin audio
+    # Batch 1: correct f0
+    crepe_f0 = self.batch_of_sin_feats['f0_hz']
+    crepe_conf = np.ones_like(crepe_f0)
+    mock_compute_f0.side_effect = zip(crepe_f0, crepe_conf)
     f0_crepe_metrics.update_state(self.batch_of_sin_feats, self.batch_of_sin)
     self.assertAllClose(f0_crepe_metrics.metrics['f0_dist'].result(), 0)
     self.assertAllClose(
         f0_crepe_metrics.metrics['outlier_ratio'].result(), 0)
 
-    # Batch 2: known sin features vs. batch of sin audio at different f0
-    f0_crepe_metrics.update_state(
-        self.batch_of_sin_feats,
-        gen_np_batched_sinusoids(2 * self.frequency, self.amp, self.sample_rate,
-                                 self.audio_len_sec, self.batch_size))
+    # Batch 2: incorrect f0
+    crepe_f0 = self.batch_of_sin_feats['f0_hz'] * 2
+    crepe_conf = np.ones_like(crepe_f0)
+    mock_compute_f0.side_effect = zip(crepe_f0, crepe_conf)
+    f0_crepe_metrics.update_state(self.batch_of_sin_feats, self.batch_of_sin)
+
     self.assertGreater(f0_crepe_metrics.metrics['f0_dist'].result(), 0)
     self.assertAllClose(
         f0_crepe_metrics.metrics['outlier_ratio'].result(), 0)
 
-    # Batch 3: known sin features vs. batch of noise audio
+    # Batch 3: low crepe confidence
+    crepe_f0 = np.zeros_like(self.batch_of_sin_feats['f0_hz'])
+    crepe_conf = np.ones_like(crepe_f0)
+    mock_compute_f0.side_effect = zip(crepe_f0, crepe_conf)
     f0_crepe_metrics.update_state(self.batch_of_sin_feats, self.batch_of_noise)
     self.assertGreater(f0_crepe_metrics.metrics['f0_dist'].result(), 0)
     self.assertGreater(

@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,11 +20,13 @@ from ddsp.training import data
 from ddsp.training import decoders
 from ddsp.training import encoders
 from ddsp.training import eval_util
+from ddsp.training import evaluators
 from ddsp.training import inference
 from ddsp.training import metrics
 from ddsp.training import models
 from ddsp.training import nn
 from ddsp.training import plotting
+from ddsp.training import postprocessing
 from ddsp.training import preprocessing
 from ddsp.training import summaries
 from ddsp.training import train_util

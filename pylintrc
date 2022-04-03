@@ -7,11 +7,11 @@
 
 [MASTER]
 
-# Add files or directories to the blacklist. They should be base names, not
+# Add files or directories to the ignore-list. They should be base names, not
 # paths.
 ignore=third_party
 
-# Add files or directories matching the regex patterns to the blacklist. The
+# Add files or directories matching the regex patterns to the ignore-list. The
 # regex matches against base names, not paths.
 ignore-patterns=
 
@@ -59,12 +59,14 @@ confidence=
 disable=abstract-method,
         apply-builtin,
         arguments-differ,
+        arguments-renamed,
         attribute-defined-outside-init,
         backtick,
         bad-option-value,
         buffer-builtin,
         c-extension-no-member,
         consider-using-enumerate,
+        consider-using-f-string,
         cmp-builtin,
         cmp-method,
         coerce-builtin,
@@ -107,6 +109,7 @@ disable=abstract-method,
         no-member,
         no-name-in-module,
         no-self-use,
+        no-value-for-parameter,
         nonzero-method,
         oct-method,
         old-division,
@@ -151,6 +154,7 @@ disable=abstract-method,
         using-cmp-argument,
         wrong-import-order,
         xrange-builtin,
+        unexpected-keyword-arg,
         zip-builtin-not-iterating,
 
 

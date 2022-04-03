@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -91,6 +91,56 @@ class UtilitiesTest(parameterized.TestCase, tf.test.TestCase):
     np_unit = np.linspace(0.0, 1.0, 128)
     tf_unit = core.hz_to_unit(hz, hz_min, hz_max)
     self.assertAllClose(np_unit, tf_unit)
+
+  def test_harmonic_to_sinusoidal(self):
+    f0_hz = core.midi_to_hz([80, 81, 82, 81, 80])[np.newaxis, :, np.newaxis]
+    harm_amps = np.ones(shape=(1, 5, 3))
+    harm_amps /= np.sum(harm_amps, axis=-1, keepdims=True)
+    amps, sin_freqs = core.harmonic_to_sinusoidal(10, harm_amps, f0_hz)
+    sin_freqs = np.squeeze(sin_freqs)
+    f0_hz = np.squeeze(f0_hz)
+    self.assertAllClose(amps, harm_amps * 10)
+    self.assertAllClose(sin_freqs[..., 0], f0_hz)
+    self.assertAllClose(sin_freqs[..., 1], f0_hz * 2)
+    self.assertAllClose(sin_freqs[..., 2], f0_hz * 3)
+
+  def test_harmonic_to_sinusoidal_removes_nyquist_f0(self):
+    f0_hz = np.asarray([200, 400, 8001])[np.newaxis, :, np.newaxis]
+    harm_amps = np.ones(shape=(1, 3, 3))
+    harm_amps /= np.sum(harm_amps, axis=-1, keepdims=True)
+    amps, sin_freqs = core.harmonic_to_sinusoidal(10, harm_amps, f0_hz)
+    sin_freqs = np.squeeze(sin_freqs)
+    f0_hz = np.squeeze(f0_hz)
+    expected_amps_f0 = harm_amps[..., 0] * 10
+    expected_amps_f0[:, 2] = 0
+    self.assertAllClose(amps[..., 0], expected_amps_f0)
+    self.assertAllClose(sin_freqs[..., 0], f0_hz)
+    self.assertAllClose(sin_freqs[..., 1], f0_hz * 2)
+    self.assertAllClose(sin_freqs[..., 2], f0_hz * 3)
+
+  def test_harmonic_to_sinusoidal_removes_nyquist_harmonics(self):
+    f0_hz = np.asarray([50, 3001, 4001, 3001, 50])[np.newaxis, :, np.newaxis]
+    orig_harm_amps = np.ones(shape=(1, 5, 3))
+    harm_amps = orig_harm_amps /  np.sum(orig_harm_amps, axis=-1, keepdims=True)
+    amps, sin_freqs = core.harmonic_to_sinusoidal(10, harm_amps, f0_hz)
+    sin_freqs = np.squeeze(sin_freqs)
+    f0_hz = np.squeeze(f0_hz)
+    expected_amps = orig_harm_amps * 10
+    # f1 > nyquist
+    expected_amps[:, 2, 1] = 0
+    # f2 > nyquist
+    expected_amps[:, 1:4, 2] = 0
+    # normalize
+    expected_amps[:, 0] /= 3
+    expected_amps[:, 1] /= 2
+    expected_amps[:, 3] /= 2
+    expected_amps[:, 4] /= 3
+    self.assertAllClose(amps[..., 0], expected_amps[..., 0])
+    self.assertAllClose(amps[..., 1], expected_amps[..., 1])
+    self.assertAllClose(amps[..., 2], expected_amps[..., 2])
+    self.assertAllClose(sin_freqs[..., 0], f0_hz)
+    self.assertAllClose(sin_freqs[..., 1], f0_hz * 2)
+    self.assertAllClose(sin_freqs[..., 2], f0_hz * 3)
 
 
 class ResampleTest(parameterized.TestCase, tf.test.TestCase):
@@ -359,7 +409,7 @@ def create_wave_np(batch_size, frequencies, amplitudes, seconds, n_samples):
   return wave_np
 
 
-class AdditiveSynthTest(parameterized.TestCase, tf.test.TestCase):
+class HarmonicSynthTest(parameterized.TestCase, tf.test.TestCase):
 
   def setUp(self):
     """Creates some common default values for the tests."""
@@ -835,6 +885,77 @@ class FiniteImpulseResponseTest(parameterized.TestCase, tf.test.TestCase):
 
     audio_out_size = int(audio_out.shape[-1])
     self.assertEqual(audio_out_size, self.audio_size)
+
+  @parameterized.named_parameters(
+      ('high_pass_odd_window', True, 257),
+      ('low_pass_even_window', False, 256),
+  )
+  def test_sinc_filter_gives_correct_size(self, high_pass, window_size):
+    """Tests filtering signals with sinc impulse response sampling method.
+
+    Args:
+      high_pass: Remove frequencies below cutoff.
+      window_size: Size of the filter window.
+    """
+    cutoff = 0.5
+    audio_out = core.sinc_filter(self.audio,
+                                 cutoff_frequency=cutoff,
+                                 window_size=window_size,
+                                 padding='same',
+                                 high_pass=high_pass)
+    audio_out_size = int(audio_out.shape[-1])
+    self.assertEqual(audio_out_size, self.audio_size)
+
+
+class DiffTest(tf.test.TestCase):
+
+  def test_shape_is_correct(self):
+    """Tests the finite difference function."""
+    n_batch = 2
+    n_time = 125
+    n_freq = 100
+    mag = tf.ones([n_batch, n_time, n_freq])
+
+    diff = core.diff
+    delta_t = diff(mag, axis=1)
+    self.assertEqual(delta_t.shape[1], mag.shape[1] - 1)
+    delta_delta_t = diff(delta_t, axis=1)
+    self.assertEqual(delta_delta_t.shape[1], mag.shape[1] - 2)
+    delta_f = diff(mag, axis=2)
+    self.assertEqual(delta_f.shape[2], mag.shape[2] - 1)
+    delta_delta_f = diff(delta_f, axis=2)
+    self.assertEqual(delta_delta_f.shape[2], mag.shape[2] - 2)
+
+
+class DecibelsConversionTest(parameterized.TestCase, tf.test.TestCase):
+
+  @parameterized.named_parameters(
+      ('range_db_100', 100.0),
+      ('range_db_1', 1.0),
+  )
+  def test_equivalent_with_librosa(self, range_db):
+    """Tests the finite difference function."""
+    x = tf.sin(tf.linspace(0.0, 100 * np.pi, 16000))**2.0
+
+    # Amplitude.
+    librosa_db = librosa.amplitude_to_db(x, top_db=range_db)
+    ddsp_db = core.amplitude_to_db(x, range_db=range_db)
+    self.assertAllClose(librosa_db, ddsp_db, rtol=1e-6, atol=1e-6)
+
+    # Back to linear.
+    librosa_x = librosa.db_to_amplitude(librosa_db)
+    ddsp_x = core.db_to_amplitude(ddsp_db)
+    self.assertAllClose(librosa_x, ddsp_x, rtol=1e-6, atol=1e-6)
+
+    # Power.
+    librosa_power_db = librosa.power_to_db(x, top_db=range_db)
+    ddsp_power_db = core.power_to_db(x, range_db=range_db)
+    self.assertAllClose(librosa_power_db, ddsp_power_db, rtol=1e-6, atol=1e-6)
+
+    # Back to linear.
+    librosa_power_x = librosa.db_to_power(librosa_power_db)
+    ddsp_power_x = core.db_to_power(ddsp_power_db)
+    self.assertAllClose(librosa_power_x, ddsp_power_x, rtol=1e-6, atol=1e-6)
 
 
 if __name__ == '__main__':

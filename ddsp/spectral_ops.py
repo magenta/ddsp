@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,24 +16,31 @@
 """Library of FFT operations for loss functions and conditioning."""
 
 import crepe
+from ddsp import core
 from ddsp.core import safe_log
 from ddsp.core import tf_float32
 import gin
 import librosa
 import numpy as np
 import tensorflow.compat.v2 as tf
+import tensorflow_probability as tfp
 
 CREPE_SAMPLE_RATE = 16000
-_CREPE_FRAME_SIZE = 1024
+CREPE_FRAME_SIZE = 1024
 
-F0_RANGE = 127.0  # MIDI
-LD_RANGE = 120.0  # dB
+F0_RANGE = 127.0  # MIDI.
+DB_RANGE = core.DB_RANGE  # dB (80.0).
 
 
 def stft(audio, frame_size=2048, overlap=0.75, pad_end=True):
   """Differentiable stft in tensorflow, computed in batch."""
-  audio = tf_float32(audio)
   assert frame_size * overlap % 2.0 == 0.0
+
+  # Remove channel dim if present.
+  audio = tf_float32(audio)
+  if len(audio.shape) == 3:
+    audio = tf.squeeze(audio, axis=-1)
+
   s = tf.signal.stft(
       signals=audio,
       frame_length=int(frame_size),
@@ -50,18 +57,11 @@ def stft_np(audio, frame_size=2048, overlap=0.75, pad_end=True):
   is_2d = (len(audio.shape) == 2)
 
   if pad_end:
-    n_samples_initial = int(audio.shape[-1])
-    n_frames = int(np.ceil(n_samples_initial / hop_size))
-    n_samples_final = (n_frames - 1) * hop_size + frame_size
-    pad = n_samples_final - n_samples_initial
-    padding = ((0, 0), (0, pad)) if is_2d else ((0, pad),)
-    audio = np.pad(audio, padding, 'constant')
+    audio = pad(audio, frame_size, hop_size, 'same', axis=is_2d).numpy()
 
   def stft_fn(y):
-    return librosa.stft(y=y,
-                        n_fft=int(frame_size),
-                        hop_length=hop_size,
-                        center=False).T
+    return librosa.stft(
+        y=y, n_fft=int(frame_size), hop_length=hop_size, center=False).T
 
   s = np.stack([stft_fn(a) for a in audio]) if is_2d else stft_fn(audio)
   return s
@@ -80,12 +80,13 @@ def compute_mel(audio,
                 bins=64,
                 fft_size=2048,
                 overlap=0.75,
-                pad_end=True):
+                pad_end=True,
+                sample_rate=16000):
   """Calculate Mel Spectrogram."""
   mag = compute_mag(audio, fft_size, overlap, pad_end)
   num_spectrogram_bins = int(mag.shape[-1])
   linear_to_mel_matrix = tf.signal.linear_to_mel_weight_matrix(
-      bins, num_spectrogram_bins, 16000, lo_hz, hi_hz)
+      bins, num_spectrogram_bins, sample_rate, lo_hz, hi_hz)
   mel = tf.tensordot(mag, linear_to_mel_matrix, 1)
   mel.set_shape(mag.shape[:-1].concatenate(linear_to_mel_matrix.shape[-1:]))
   return mel
@@ -103,8 +104,11 @@ def compute_logmel(audio,
                    bins=64,
                    fft_size=2048,
                    overlap=0.75,
-                   pad_end=True):
-  mel = compute_mel(audio, lo_hz, hi_hz, bins, fft_size, overlap, pad_end)
+                   pad_end=True,
+                   sample_rate=16000):
+  """Logarithmic amplitude of mel-scaled spectrogram."""
+  mel = compute_mel(audio, lo_hz, hi_hz, bins,
+                    fft_size, overlap, pad_end, sample_rate)
   return safe_log(mel)
 
 
@@ -116,7 +120,8 @@ def compute_mfcc(audio,
                  mel_bins=128,
                  mfcc_bins=13,
                  overlap=0.75,
-                 pad_end=True):
+                 pad_end=True,
+                 sample_rate=16000):
   """Calculate Mel-frequency Cepstral Coefficients."""
   logmel = compute_logmel(
       audio,
@@ -125,151 +130,224 @@ def compute_mfcc(audio,
       bins=mel_bins,
       fft_size=fft_size,
       overlap=overlap,
-      pad_end=pad_end)
+      pad_end=pad_end,
+      sample_rate=sample_rate)
   mfccs = tf.signal.mfccs_from_log_mel_spectrograms(logmel)
   return mfccs[..., :mfcc_bins]
 
 
-def diff(x, axis=-1):
-  """Take the finite difference of a tensor along an axis.
+def get_framed_lengths(input_length, frame_size, hop_size, padding='center'):
+  """Give a strided framing, such as tf.signal.frame, gives output lengths.
 
   Args:
-    x: Input tensor of any dimension.
-    axis: Axis on which to take the finite difference.
+    input_length: Original length along the dimension to be framed.
+    frame_size: Size of frames for striding.
+    hop_size: Striding, space between frames.
+    padding: Type of padding to apply, ['valid', 'same', 'center']. 'valid' is
+      a no-op. 'same' applies padding to the end such that
+      n_frames = n_t / hop_size. 'center' applies padding to both ends such that
+      each frame timestamp is centered and n_frames = n_t / hop_size + 1.
 
   Returns:
-    d: Tensor with size less than x by 1 along the difference dimension.
-
-  Raises:
-    ValueError: Axis out of range for tensor.
+    n_frames: Number of frames left after striding.
+    padded_length: Length of the padded signal before striding.
   """
-  shape = x.shape.as_list()
-  if axis >= len(shape):
-    raise ValueError('Invalid axis index: %d for tensor with only %d axes.' %
-                     (axis, len(shape)))
+  # Use numpy since this function isn't used dynamically.
+  def get_n_frames(length):
+    return int(np.floor((length - frame_size) / hop_size)) + 1
 
-  begin_back = [0 for _ in range(len(shape))]
-  begin_front = [0 for _ in range(len(shape))]
-  begin_front[axis] = 1
+  if padding == 'valid':
+    padded_length = input_length
+    n_frames = get_n_frames(input_length)
 
-  shape[axis] -= 1
-  slice_front = tf.slice(x, begin_front, shape)
-  slice_back = tf.slice(x, begin_back, shape)
-  d = slice_front - slice_back
-  return d
+  elif padding == 'center':
+    padded_length = input_length + frame_size
+    n_frames = get_n_frames(padded_length)
+
+  elif padding == 'same':
+    n_frames = int(np.ceil(input_length / hop_size))
+    padded_length = (n_frames - 1) * hop_size + frame_size
+
+  return n_frames, padded_length
 
 
-def amplitude_to_db(amplitude, use_tf=False):
-  """Converts amplitude to dB."""
-  lib = tf if use_tf else np
-  log10 = (lambda x: tf.math.log(x) / tf.math.log(10.0)) if use_tf else np.log10
-  amin = 1e-20  # Avoid log(0) instabilities.
-  db = log10(lib.maximum(amin, amplitude))
-  db *= 20.0
-  return db
+def pad(x, frame_size, hop_size, padding='center',
+        axis=1, mode='CONSTANT', constant_values=0):
+  """Pad a tensor for strided framing such as tf.signal.frame.
+
+  Args:
+    x: Tensor to pad, any shape.
+    frame_size: Size of frames for striding.
+    hop_size: Striding, space between frames.
+    padding: Type of padding to apply, ['valid', 'same', 'center']. 'valid' is
+      a no-op. 'same' applies padding to the end such that
+      n_frames = n_t / hop_size. 'center' applies padding to both ends such that
+      each frame timestamp is centered and n_frames = n_t / hop_size + 1.
+    axis: Axis along which to pad `x`.
+    mode: Padding mode for tf.pad(). One of "CONSTANT", "REFLECT", or
+      "SYMMETRIC" (case-insensitive).
+    constant_values: Passthrough kwarg for tf.pad().
+
+  Returns:
+    A padded version of `x` along axis. Output sizes can be computed separately
+      with strided_lengths.
+  """
+  x = tf_float32(x)
+
+  if padding == 'valid':
+    return x
+
+  if hop_size > frame_size:
+    raise ValueError(f'During padding, frame_size ({frame_size})'
+                     f' must be greater than hop_size ({hop_size}).')
+
+  if len(x.shape) <= 1:
+    axis = 0
+
+  n_t = x.shape[axis]
+  _, n_t_padded = get_framed_lengths(n_t, frame_size, hop_size, padding)
+  pads = [[0, 0] for _ in range(len(x.shape))]
+
+  if padding == 'same':
+    pad_amount = int(n_t_padded - n_t)
+    pads[axis] = [0, pad_amount]
+
+  elif padding == 'center':
+    pad_amount = int(frame_size // 2)  # Symmetric even padding like librosa.
+    pads[axis] = [pad_amount, pad_amount]
+
+  else:
+    raise ValueError('`padding` must be one of [\'center\', \'same\''
+                     f'\'valid\'], received ({padding}).')
+
+  return tf.pad(x, pads, mode=mode, constant_values=constant_values)
+
+
+def compute_rms_energy(audio,
+                       sample_rate=16000,
+                       frame_rate=250,
+                       frame_size=512,
+                       padding='center'):
+  """Compute root mean squared energy of audio."""
+  audio = tf_float32(audio)
+  hop_size = sample_rate // frame_rate
+  audio = pad(audio, frame_size, hop_size, padding=padding)
+  audio_frames = tf.signal.frame(audio, frame_size, hop_size, pad_end=False)
+  rms_energy = tf.reduce_mean(audio_frames**2.0, axis=-1)**0.5
+  return rms_energy
+
+
+def compute_power(audio,
+                  sample_rate=16000,
+                  frame_rate=250,
+                  frame_size=512,
+                  ref_db=0.0,
+                  range_db=DB_RANGE,
+                  padding='center'):
+  """Compute power of audio in dB."""
+  rms_energy = compute_rms_energy(
+      audio, sample_rate, frame_rate, frame_size, padding=padding)
+  power_db = core.amplitude_to_db(
+      rms_energy, ref_db=ref_db, range_db=range_db, use_tf=True)
+  return power_db
 
 
 @gin.register
 def compute_loudness(audio,
                      sample_rate=16000,
                      frame_rate=250,
-                     n_fft=2048,
-                     range_db=LD_RANGE,
-                     ref_db=20.7,
-                     use_tf=False):
-  """Perceptual loudness in dB, relative to white noise, amplitude=1.
+                     n_fft=512,
+                     range_db=DB_RANGE,
+                     ref_db=0.0,
+                     use_tf=True,
+                     padding='center'):
+  """Perceptual loudness (weighted power) in dB.
 
   Function is differentiable if use_tf=True.
   Args:
     audio: Numpy ndarray or tensor. Shape [batch_size, audio_length] or
-      [batch_size,].
+      [audio_length,].
     sample_rate: Audio sample rate in Hz.
     frame_rate: Rate of loudness frames in Hz.
     n_fft: Fft window size.
     range_db: Sets the dynamic range of loudness in decibles. The minimum
       loudness (per a frequency bin) corresponds to -range_db.
     ref_db: Sets the reference maximum perceptual loudness as given by
-      (A_weighting + 10 * log10(abs(stft(audio))**2.0). The default value
-      corresponds to white noise with amplitude=1.0 and n_fft=2048. There is a
-      slight dependence on fft_size due to different granularity of perceptual
-      weighting.
+      (A_weighting + 10 * log10(abs(stft(audio))**2.0). The old (<v2.0.0)
+      default value corresponded to white noise with amplitude=1.0 and
+      n_fft=2048. With v2.0.0 it was set to 0.0 to be more consistent with power
+      calculations that have a natural scale for 0 dB being amplitude=1.0.
     use_tf: Make function differentiable by using tensorflow.
+    padding: 'same', 'valid', or 'center'.
 
   Returns:
     Loudness in decibels. Shape [batch_size, n_frames] or [n_frames,].
   """
-  if sample_rate % frame_rate != 0:
-    raise ValueError(
-        'frame_rate: {} must evenly divide sample_rate: {}.'
-        'For default frame_rate: 250Hz, suggested sample_rate: 16kHz or 48kHz'
-        .format(frame_rate, sample_rate))
-
   # Pick tensorflow or numpy.
   lib = tf if use_tf else np
+  reduce_mean = tf.reduce_mean if use_tf else np.mean
+  stft_fn = stft if use_tf else stft_np
 
   # Make inputs tensors for tensorflow.
-  audio = tf_float32(audio) if use_tf else audio
+  frame_size = n_fft
+  hop_size = sample_rate // frame_rate
+  audio = pad(audio, frame_size, hop_size, padding=padding)
+  audio = audio if use_tf else np.array(audio)
 
   # Temporarily a batch dimension for single examples.
   is_1d = (len(audio.shape) == 1)
   audio = audio[lib.newaxis, :] if is_1d else audio
 
   # Take STFT.
-  hop_size = sample_rate // frame_rate
-  overlap = 1 - hop_size / n_fft
-  stft_fn = stft if use_tf else stft_np
-  s = stft_fn(audio, frame_size=n_fft, overlap=overlap, pad_end=True)
+  overlap = 1 - hop_size / frame_size
+  s = stft_fn(audio, frame_size=frame_size, overlap=overlap, pad_end=False)
 
   # Compute power.
   amplitude = lib.abs(s)
-  power_db = amplitude_to_db(amplitude, use_tf=use_tf)
+  power = amplitude**2
 
   # Perceptual weighting.
   frequencies = librosa.fft_frequencies(sr=sample_rate, n_fft=n_fft)
   a_weighting = librosa.A_weighting(frequencies)[lib.newaxis, lib.newaxis, :]
-  loudness = power_db + a_weighting
 
-  # Set dynamic range.
-  loudness -= ref_db
-  loudness = lib.maximum(loudness, -range_db)
-  mean = tf.reduce_mean if use_tf else np.mean
+  # Perform weighting in linear scale, a_weighting given in decibels.
+  weighting = 10**(a_weighting/10)
+  power = power * weighting
 
-  # Average over frequency bins.
-  loudness = mean(loudness, axis=-1)
+  # Average over frequencies (weighted power per a bin).
+  avg_power = reduce_mean(power, axis=-1)
+  loudness = core.power_to_db(avg_power,
+                              ref_db=ref_db,
+                              range_db=range_db,
+                              use_tf=use_tf)
 
   # Remove temporary batch dimension.
   loudness = loudness[0] if is_1d else loudness
 
-  # Compute expected length of loudness vector
-  n_secs = audio.shape[-1] / float(
-      sample_rate)  # `n_secs` can have milliseconds
-  expected_len = int(n_secs * frame_rate)
-
-  # Pad with `-range_db` noise floor or trim vector
-  loudness = pad_or_trim_to_expected_length(
-      loudness, expected_len, -range_db, use_tf=use_tf)
   return loudness
 
 
 @gin.register
-def compute_f0(audio, sample_rate, frame_rate, viterbi=True):
+def compute_f0(audio, frame_rate, viterbi=True, padding='center'):
   """Fundamental frequency (f0) estimate using CREPE.
 
   This function is non-differentiable and takes input as a numpy array.
   Args:
-    audio: Numpy ndarray of single audio example. Shape [audio_length,].
-    sample_rate: Sample rate in Hz.
+    audio: Numpy ndarray of single audio (16kHz) example. Shape [audio_length,].
     frame_rate: Rate of f0 frames in Hz.
     viterbi: Use Viterbi decoding to estimate f0.
+    padding: Apply zero-padding for centered frames.
+      'same', 'valid', or 'center'.
 
   Returns:
     f0_hz: Fundamental frequency in Hz. Shape [n_frames,].
     f0_confidence: Confidence in Hz estimate (scaled [0, 1]). Shape [n_frames,].
   """
-
-  n_secs = len(audio) / float(sample_rate)  # `n_secs` can have milliseconds
+  sample_rate = CREPE_SAMPLE_RATE
   crepe_step_size = 1000 / frame_rate  # milliseconds
-  expected_len = int(n_secs * frame_rate)
+  hop_size = sample_rate // frame_rate
+
+  audio = pad(audio, CREPE_FRAME_SIZE, hop_size, padding)
   audio = np.asarray(audio)
 
   # Compute f0 with crepe.
@@ -281,47 +359,12 @@ def compute_f0(audio, sample_rate, frame_rate, viterbi=True):
       center=False,
       verbose=0)
 
-  # Postprocessing on f0_hz
-  f0_hz = pad_or_trim_to_expected_length(f0_hz, expected_len, 0)  # pad with 0
+  # Postprocessing.
   f0_hz = f0_hz.astype(np.float32)
-
-  # Postprocessing on f0_confidence
-  f0_confidence = pad_or_trim_to_expected_length(f0_confidence, expected_len, 1)
-  f0_confidence = np.nan_to_num(f0_confidence)   # Set nans to 0 in confidence
   f0_confidence = f0_confidence.astype(np.float32)
+  f0_confidence = np.nan_to_num(f0_confidence)   # Set nans to 0 in confidence
+
   return f0_hz, f0_confidence
-
-
-def compute_rms_energy(audio,
-                       sample_rate=16000,
-                       frame_rate=250,
-                       frame_size=2048):
-  """Compute root mean squared energy of audio."""
-  n_secs = len(audio) / float(sample_rate)  # `n_secs` can have milliseconds
-  expected_len = int(n_secs * frame_rate)
-
-  audio = tf_float32(audio)
-
-  hop_size = sample_rate // frame_rate
-  audio_frames = tf.signal.frame(audio, frame_size, hop_size, pad_end=True)
-  rms_energy = tf.reduce_mean(audio_frames**2.0, axis=-1)**0.5
-  return pad_or_trim_to_expected_length(rms_energy, expected_len, use_tf=True)
-
-
-def compute_power(audio,
-                  sample_rate=16000,
-                  frame_rate=250,
-                  frame_size=1024,
-                  range_db=LD_RANGE,
-                  ref_db=20.7):
-  """Compute power of audio in dB."""
-  # TODO(hanoih@): enable `use_tf` to be True or False like `compute_loudness`
-  rms_energy = compute_rms_energy(audio, sample_rate, frame_rate, frame_size)
-  power_db = amplitude_to_db(rms_energy**2, use_tf=True)
-  # Set dynamic range.
-  power_db -= ref_db
-  power_db = tf.maximum(power_db, -range_db)
-  return power_db
 
 
 def pad_or_trim_to_expected_length(vector,
@@ -387,3 +430,140 @@ def reset_crepe():
   """Reset the global state of CREPE to force model re-building."""
   for k in crepe.core.models:
     crepe.core.models[k] = None
+
+
+class PretrainedCREPE(tf.keras.Model):
+  """A wrapper around a pretrained CREPE model, for pitch prediction.
+
+  Enables predicting pitch and confidence entirely in TF for running in batch
+  on accelerators. For [full,large,small,tiny] crepe models, reads h5 models
+  from installed pip package. Other saved models
+  """
+
+  def __init__(self,
+               model_size_or_path,
+               hop_size=160,
+               **kwargs):
+    super().__init__(**kwargs)
+    self.hop_size = hop_size
+    self.frame_size = 1024
+    self.sample_rate = 16000
+    # Load the crepe model.
+    if model_size_or_path in ['full', 'large', 'small', 'tiny']:
+      self.core_model = crepe.core.build_and_load_model(model_size_or_path)
+    else:
+      self.core_model = tf.keras.models.load_model(model_size_or_path)
+
+    self.model_size_or_path = model_size_or_path
+
+  @classmethod
+  def activations_to_f0_and_confidence(cls, activations, centers=None):
+    """Convert network outputs (activations) to f0 predictions."""
+    cent_mapping = tf.cast(
+        tf.linspace(0, 7180, 360) + 1997.3794084376191, tf.float32)
+
+    # The confidence of voicing activity and the argmax bin.
+    confidence = tf.reduce_max(activations, axis=-1, keepdims=True)
+    if centers is None:
+      centers = tf.math.argmax(activations, axis=-1)
+    centers = tf.cast(centers, tf.int32)
+
+    # Slice the local neighborhood around the argmax bin.
+    start = centers - 4
+    idx_list = tf.range(0, 10)
+    idx_list = start[:, None] + idx_list[None, :]
+
+    # Bound to [0, 359].
+    idx_list = tf.where(idx_list > 0, idx_list, 0)
+    idx_list = tf.where(idx_list < 359, idx_list, 359)
+
+    # Gather and weight activations.
+    weights = tf.gather(activations, idx_list, batch_dims=1)
+    cents = tf.gather(cent_mapping, idx_list, batch_dims=0)
+    f0_cent = tf.reduce_sum(weights * cents, axis=-1) / tf.reduce_sum(
+        weights, axis=-1)
+    f0_hz = 10 * 2**(f0_cent / 1200.)
+
+    return f0_hz, confidence
+
+  def batch_frames(self, audio):
+    """Chop audio into overlapping frames, and push to batch dimension."""
+    if audio.shape[-1] == self.frame_size:
+      return audio
+    else:
+      frames = tf.signal.frame(audio, self.frame_size, self.hop_size)
+      frames = tf.reshape(frames, [-1, self.frame_size])
+      return frames
+
+  def normalize_frames(self, frames):
+    """Normalize each frame -- this is expected by the model."""
+    mu, var = tf.nn.moments(frames, axes=[-1])
+    std = tf.where(tf.abs(var) > 0, tf.sqrt(var), 1e-8)
+    frames -= mu[:, None]
+    frames /= std[:, None]
+    return frames
+
+  def predict_f0_and_confidence(self, audio, viterbi=False, padding='center'):
+    audio = audio[None, :] if len(audio.shape) == 1 else audio
+    batch_size = audio.shape[0]
+
+    audio = pad(audio, self.frame_size, self.hop_size, padding=padding)
+
+    frames = self.batch_frames(audio)
+    frames = self.normalize_frames(frames)
+    acts = self.core_model(frames, training=False)
+
+    if viterbi:
+      acts_viterbi = tf.reshape(acts, [batch_size, -1, 360])
+      centers = self.viterbi_decode(acts_viterbi)
+      centers = tf.reshape(centers, [-1])
+    else:
+      centers = None
+
+    f0_hz, confidence = self.activations_to_f0_and_confidence(acts, centers)
+    f0_hz = tf.reshape(f0_hz, [batch_size, -1])
+    confidence = tf.reshape(confidence, [batch_size, -1])
+    return f0_hz, confidence
+
+  def create_hmm(self, num_steps):
+    """Same as the original CREPE viterbi decdoding, but in TF."""
+    # Initial distribution is uniform.
+    initial_distribution = tfp.distributions.Categorical(
+        probs=tf.ones([360]) / 360)
+
+    # Transition probabilities inducing continuous pitch.
+    bins = tf.range(360, dtype=tf.float32)
+    xx, yy = tf.meshgrid(bins, bins)
+    min_transition = 1e-5  # For training stabiity.
+    transition = tf.maximum(12 - abs(xx - yy), min_transition)
+    transition = transition / tf.reduce_sum(transition, axis=1)[:, None]
+    transition = tf.cast(transition, tf.float32)
+    transition_distribution = tfp.distributions.Categorical(
+        probs=transition)
+
+    # Emission probability = fixed probability for self, evenly distribute the
+    # others.
+    self_emission = 0.1
+    emission = (
+        tf.eye(360) * self_emission + tf.ones(shape=(360, 360)) *
+        ((1 - self_emission) / 360.)
+    )
+    emission = tf.cast(emission, tf.float32)[None, ...]
+    observation_distribution = tfp.distributions.Multinomial(
+        total_count=1, probs=emission)
+
+    return tfp.distributions.HiddenMarkovModel(
+        initial_distribution=initial_distribution,
+        transition_distribution=transition_distribution,
+        observation_distribution=observation_distribution,
+        num_steps=num_steps,
+    )
+
+  def viterbi_decode(self, acts):
+    """Adapted from original CREPE viterbi decdoding, but in TF."""
+    num_steps = acts.shape[1]
+    hmm = self.create_hmm(num_steps)
+    centers = hmm.posterior_mode(acts)
+    return centers
+
+

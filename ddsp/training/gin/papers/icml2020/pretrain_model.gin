@@ -3,15 +3,17 @@
 import ddsp
 import ddsp.training
 
+include 'eval/basic_f0_ld_twm.gin'
+
 # =====
 # Model
 # =====
-get_model.model = @models.TranscribingAutoencoder()
+get_model.model = @models.InverseSynthesis()
 
-TranscribingAutoencoder.reverb = False
+InverseSynthesis.reverb = False
 
 # Sinusoidal Encoder
-TranscribingAutoencoder.sinusoidal_encoder = @encoders.ResnetSinusoidalEncoder()
+InverseSynthesis.sinusoidal_encoder = @encoders.ResnetSinusoidalEncoder()
 ResnetSinusoidalEncoder.size = 'small'
 ResnetSinusoidalEncoder.output_splits = (('frequencies', 6400),
                                          ('amplitudes', 100),
@@ -28,11 +30,12 @@ f0_spectral/compute_logmel.overlap = 0.75
 f0_spectral/compute_logmel.pad_end = True
 
 # Harmonic Encoder
-TranscribingAutoencoder.harmonic_encoder = @encoders.SinusoidalToHarmonicEncoder()
+InverseSynthesis.harmonic_encoder = @encoders.SinusoidalToHarmonicEncoder()
+SinusoidalToHarmonicEncoder.net = @nn.RnnSandwich()
 
 
 # Audio Losses
-TranscribingAutoencoder.losses = [
+InverseSynthesis.losses = [
     @losses.SpectralLoss(),
 ]
 SpectralLoss.loss_type = 'L1'
@@ -41,7 +44,7 @@ SpectralLoss.logmag_weight = 0.0
 
 
 # Sinusoidal Consistency loss:
-TranscribingAutoencoder.sinusoidal_consistency_losses = @losses.KDEConsistencyLoss()
+InverseSynthesis.sinusoidal_consistency_losses = @losses.KDEConsistencyLoss()
 KDEConsistencyLoss.weight_a = 1.0
 KDEConsistencyLoss.weight_b = 1.0
 KDEConsistencyLoss.scale_a = 0.1
@@ -49,12 +52,12 @@ KDEConsistencyLoss.scale_b = 0.1
 
 
 # Harmonic Consistency Loss.
-TranscribingAutoencoder.harmonic_consistency_losses = @losses.HarmonicConsistencyLoss()
+InverseSynthesis.harmonic_consistency_losses = @losses.HarmonicConsistencyLoss()
 HarmonicConsistencyLoss.amp_weight = 1.0
 HarmonicConsistencyLoss.dist_weight = 1.0
 HarmonicConsistencyLoss.f0_weight = 1.0
 
 
 # Filtered Noise Consistency loss:
-TranscribingAutoencoder.filtered_noise_consistency_loss = @losses.FilteredNoiseConsistencyLoss()
+InverseSynthesis.filtered_noise_consistency_loss = @losses.FilteredNoiseConsistencyLoss()
 FilteredNoiseConsistencyLoss.weight = 1.0

@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,10 +15,9 @@
 # Lint as: python3
 """Library of functions for differentiable digital signal processing (DDSP)."""
 
-
 import collections
 import copy
-from typing import Any, Dict, Text, TypeVar
+from typing import Any, Dict, Optional, Sequence, Text, TypeVar
 
 import gin
 import numpy as np
@@ -26,6 +25,7 @@ from scipy import fftpack
 import tensorflow.compat.v2 as tf
 
 Number = TypeVar('Number', int, float, np.ndarray, tf.Tensor)
+DB_RANGE = 80.0
 
 
 # Utility Functions ------------------------------------------------------------
@@ -41,8 +41,25 @@ def make_iterable(x):
   """Wrap in a list if not iterable, return empty list if None."""
   if x is None:
     return []
+  elif isinstance(x, (np.ndarray, tf.Tensor)):
+    # Wrap in list so you don't iterate over the batch.
+    return [x]
   else:
     return x if isinstance(x, collections.Iterable) else [x]
+
+
+def to_dict(x, keys):
+  """Converts list to a dictionary with supplied keys."""
+  if isinstance(x, dict):
+    # No-op for dict.
+    return x
+  else:
+    # Wrap individual tensors in a list so we don't iterate over batch..
+    x = make_iterable(x)
+    if len(keys) != len(x):
+      raise ValueError(f'Keys: {keys} must be the same length as {x}')
+    # Use keys to create an output dictionary.
+    return dict(zip(keys, x))
 
 
 def copy_if_tf_function(x):
@@ -57,6 +74,33 @@ def copy_if_tf_function(x):
     A shallow copy of x if inside a tf.function.
   """
   return copy.copy(x) if not tf.executing_eagerly() else x
+
+
+def nested_keys(nested_dict: Dict[Text, Any],
+                delimiter: Text = '/',
+                prefix: Text = '') -> Sequence[Text]:
+  """Returns a flattend list of nested key strings of a nested dict.
+
+  Args:
+    nested_dict: Nested dictionary.
+    delimiter: String that splits the nested keys.
+    prefix: Top-level key used for recursion, usually leave blank.
+
+  Returns:
+    List of nested key strings.
+  """
+  keys = []
+
+  for k, v in nested_dict.items():
+    key = k if not prefix else f'{prefix}{delimiter}{k}'
+
+    if not isinstance(v, dict):
+      keys.append(key)
+    else:
+      dict_keys = nested_keys(v, prefix=key)
+      keys += dict_keys
+
+  return keys
 
 
 def nested_lookup(nested_key: Text,
@@ -77,8 +121,34 @@ def nested_lookup(nested_key: Text,
   # Return the nested value.
   value = nested_dict
   for key in keys:
-    value = value[key]
+    try:
+      value = value[key]
+    except KeyError:
+      raise KeyError(f'Key \'{key}\' as a part of nested key \'{nested_key}\' '
+                     'not found during nested dictionary lookup, out of '
+                     f'available keys: {nested_keys(nested_dict)}')
   return value
+
+
+def leaf_key(nested_key: Text,
+             delimiter: Text = '/') -> tf.Tensor:
+  """Returns the leaf node key name.
+
+  Args:
+    nested_key: String of the form "key/key/key...".
+    delimiter: String that splits the nested keys.
+
+  Returns:
+    value: Final leaf node key name.
+  """
+  # Parse the input string.
+  keys = nested_key.split(delimiter)
+  return keys[-1]
+
+
+def map_shape(x: Dict[Text, tf.Tensor]) -> Dict[Text, Sequence[int]]:
+  """Recursively infer tensor shapes for a dictionary of tensors."""
+  return tf.nest.map_structure(lambda t: list(tf.shape(t).numpy()), x)
 
 
 def pad_axis(x, padding=(0, 0), axis=0, **pad_kwargs):
@@ -99,7 +169,42 @@ def pad_axis(x, padding=(0, 0), axis=0, **pad_kwargs):
   return tf.pad(x, paddings, **pad_kwargs)
 
 
+def diff(x, axis=-1):
+  """Take the finite difference of a tensor along an axis.
+
+  Args:
+    x: Input tensor of any dimension.
+    axis: Axis on which to take the finite difference.
+
+  Returns:
+    d: Tensor with size less than x by 1 along the difference dimension.
+
+  Raises:
+    ValueError: Axis out of range for tensor.
+  """
+  shape = x.shape.as_list()
+  ndim = len(shape)
+  if axis >= ndim:
+    raise ValueError('Invalid axis index: %d for tensor with only %d axes.' %
+                     (axis, ndim))
+
+  begin_back = [0 for _ in range(ndim)]
+  begin_front = [0 for _ in range(ndim)]
+  begin_front[axis] = 1
+
+  shape[axis] -= 1
+  slice_front = tf.slice(x, begin_front, shape)
+  slice_back = tf.slice(x, begin_back, shape)
+  d = slice_front - slice_back
+  return d
+
+
 # Math -------------------------------------------------------------------------
+def nan_to_num(x, value=0.0):
+  """Replace NaNs with value."""
+  return tf.where(tf.math.is_nan(x), value * tf.ones_like(x), x)
+
+
 def safe_divide(numerator, denominator, eps=1e-7):
   """Avoid dividing by zero by adding a small epsilon."""
   safe_denominator = tf.where(denominator == 0.0, eps, denominator)
@@ -112,12 +217,14 @@ def safe_log(x, eps=1e-5):
   return tf.math.log(safe_x)
 
 
-def logb(x, base=2.0, safe=True):
+def logb(x, base=2.0, eps=1e-5):
   """Logarithm with base as an argument."""
-  if safe:
-    return safe_divide(safe_log(x), safe_log(base))
-  else:
-    return tf.math.log(x) / tf.math.log(base)
+  return safe_divide(safe_log(x, eps), safe_log(base, eps), eps)
+
+
+def log10(x, eps=1e-5):
+  """Logarithm with base 10."""
+  return logb(x, base=10, eps=eps)
 
 
 def log_scale(x, min_x, max_x):
@@ -138,10 +245,57 @@ def gradient_reversal(x):
 
 
 # Unit Conversions -------------------------------------------------------------
-def midi_to_hz(notes: Number) -> Number:
-  """TF-compatible midi_to_hz function."""
+def amplitude_to_db(amplitude, ref_db=0.0, range_db=DB_RANGE, use_tf=True):
+  """Converts amplitude in linear scale to power in decibels."""
+  power = amplitude**2.0
+  return power_to_db(power, ref_db=ref_db, range_db=range_db, use_tf=use_tf)
+
+
+def power_to_db(power, ref_db=0.0, range_db=DB_RANGE, use_tf=True):
+  """Converts power from linear scale to decibels."""
+  # Choose library.
+  maximum = tf.maximum if use_tf else np.maximum
+  log_base10 = log10 if use_tf else np.log10
+
+  # Convert to decibels.
+  pmin = 10**-(range_db / 10.0)
+  power = maximum(pmin, power)
+  db = 10.0 * log_base10(power)
+
+  # Set dynamic range.
+  db -= ref_db
+  db = maximum(db, -range_db)
+  return db
+
+
+def db_to_amplitude(db):
+  """Converts power in decibels to amplitude in linear scale."""
+  return db_to_power(db / 2.0)
+
+
+def db_to_power(db):
+  """Converts power from decibels to linear scale."""
+  return 10.0**(db / 10.0)
+
+
+def midi_to_hz(notes: Number, midi_zero_silence: bool = False) -> Number:
+  """TF-compatible midi_to_hz function.
+
+  Args:
+    notes: Tensor containing encoded pitch in MIDI scale.
+    midi_zero_silence: Whether to output 0 hz for midi 0, which would be
+      convenient when midi 0 represents silence. By defualt (False), midi 0.0
+      corresponds to 8.18 Hz.
+
+  Returns:
+    hz: Frequency of MIDI in hz, same shape as input.
+  """
   notes = tf_float32(notes)
-  return 440.0 * (2.0**((notes - 69.0) / 12.0))
+  hz = 440.0 * (2.0 ** ((notes - 69.0) / 12.0))
+  # Map MIDI 0 as 0 hz when MIDI 0 is silence.
+  if midi_zero_silence:
+    hz = tf.where(tf.equal(notes, 0.0), 0.0, hz)
+  return hz
 
 
 def hz_to_midi(frequencies: Number) -> Number:
@@ -561,6 +715,21 @@ def upsample_with_windows(inputs: tf.Tensor,
   return x[:, hop_size:-hop_size, :]
 
 
+def center_crop(audio, frame_size):
+  """Remove padding introduced from centering frames.
+
+  Inverse of center_pad().
+  Args:
+    audio: Input, shape [batch, time, ...].
+    frame_size: Size of each frame.
+
+  Returns:
+    audio_cropped: Shape [batch, time - (frame_size // 2) * 2, ...].
+  """
+  pad_amount = int(frame_size // 2)  # Symmetric even padding like librosa.
+  return audio[:, pad_amount:-pad_amount]
+
+
 # Synth conversions ------------------------------------------------------------
 def sinusoidal_to_harmonic(sin_amps,
                            sin_freqs,
@@ -618,12 +787,15 @@ def harmonic_to_sinusoidal(harm_amp, harm_dist, f0_hz, sample_rate=16000):
   n_harmonics = int(harm_dist.shape[-1])
   freqs = get_harmonic_frequencies(f0_hz, n_harmonics)
   # Double check to remove anything above Nyquist.
-  harm_dist = remove_above_nyquist(f0_hz, harm_dist, sample_rate)
+  harm_dist = remove_above_nyquist(freqs, harm_dist, sample_rate)
+  # Renormalize after removing above nyquist.
+  harm_dist_sum = tf.reduce_sum(harm_dist, axis=-1, keepdims=True)
+  harm_dist = safe_divide(harm_dist, harm_dist_sum)
   amps = harm_amp * harm_dist
   return amps, freqs
 
 
-# Additive Synthesizer ---------------------------------------------------------
+# Harmonic Synthesizer ---------------------------------------------------------
 # TODO(jesseengel): Remove reliance on global injection for angular cumsum.
 @gin.configurable
 def angular_cumsum(angular_frequency, chunk_size=1000):
@@ -665,8 +837,8 @@ def angular_cumsum(angular_frequency, chunk_size=1000):
   # Pad if needed.
   remainder = n_time % chunk_size
   if remainder:
-    pad = chunk_size - remainder
-    angular_frequency = pad_axis(angular_frequency, [0, pad], axis=1)
+    pad_amount = chunk_size - remainder
+    angular_frequency = pad_axis(angular_frequency, [0, pad_amount], axis=1)
 
   # Split input into chunks.
   length = angular_frequency.shape[1]
@@ -718,6 +890,22 @@ def remove_above_nyquist(frequency_envelopes: tf.Tensor,
       tf.greater_equal(frequency_envelopes, sample_rate / 2.0),
       tf.zeros_like(amplitude_envelopes), amplitude_envelopes)
   return amplitude_envelopes
+
+
+def normalize_harmonics(harmonic_distribution, f0_hz=None, sample_rate=None):
+  """Normalize the harmonic distribution, optionally removing above nyquist."""
+  # Bandlimit the harmonic distribution.
+  if sample_rate is not None and f0_hz is not None:
+    n_harmonics = int(harmonic_distribution.shape[-1])
+    harmonic_frequencies = get_harmonic_frequencies(f0_hz, n_harmonics)
+    harmonic_distribution = remove_above_nyquist(
+        harmonic_frequencies, harmonic_distribution, sample_rate)
+
+  # Normalize
+  harmonic_distribution = safe_divide(
+      harmonic_distribution,
+      tf.reduce_sum(harmonic_distribution, axis=-1, keepdims=True))
+  return harmonic_distribution
 
 
 # TODO(jesseengel): Remove reliance on global injection for angular cumsum.
@@ -775,6 +963,69 @@ def oscillator_bank(frequency_envelopes: tf.Tensor,
   return audio
 
 
+# TODO(jesseengel): Remove reliance on global injection for angular cumsum.
+@gin.configurable
+def harmonic_oscillator_bank(
+    frequency: tf.Tensor,
+    amplitude_envelopes: tf.Tensor,
+    initial_phase: Optional[tf.Tensor] = None,
+    sample_rate: int = 16000,
+    use_angular_cumsum: bool = True) -> tf.Tensor:
+  """Special oscillator bank for harmonic frequencies and streaming synthesis.
+
+
+  Args:
+    frequency: Sample-wise oscillator frequencies (Hz). Shape
+      [batch_size, n_samples, 1].
+    amplitude_envelopes: Sample-wise oscillator amplitude. Shape [batch_size,
+      n_samples, n_sinusoids].
+    initial_phase: Starting phase. Shape [batch_size, 1, 1].
+    sample_rate: Sample rate in samples per a second.
+    use_angular_cumsum: If synthesized examples are longer than ~100k audio
+      samples, consider use_angular_cumsum to avoid accumulating noticible phase
+      errors due to the limited precision of tf.cumsum. Unlike the rest of the
+      library, this property can be set with global dependency injection with
+      gin. Set the gin parameter `oscillator_bank.use_angular_cumsum=True`
+      to activate. Avoids accumulation of errors for generation, but don't use
+      usually for training because it is slower on accelerators.
+
+  Returns:
+    wav: Sample-wise audio. Shape [batch_size, n_samples, n_sinusoids] if
+      sum_sinusoids=False, else shape is [batch_size, n_samples].
+  """
+  frequency = tf_float32(frequency)
+  amplitude_envelopes = tf_float32(amplitude_envelopes)
+
+  # Angular frequency, Hz -> radians per sample.
+  omega = frequency * (2.0 * np.pi)  # rad / sec
+  omega = omega / float(sample_rate)  # rad / sample
+
+  # Accumulate phase and synthesize.
+  if use_angular_cumsum:
+    # Avoids accumulation errors.
+    phases = angular_cumsum(omega)
+  else:
+    phases = tf.cumsum(omega, axis=1)
+
+  if initial_phase is None:
+    initial_phase = tf.zeros([phases.shape[0], 1, 1])
+
+  phases += initial_phase
+  final_phase = phases[:, -1:, 0:1]
+
+  n_harmonics = int(amplitude_envelopes.shape[-1])
+  f_ratios = tf.linspace(1.0, float(n_harmonics), int(n_harmonics))
+  f_ratios = f_ratios[tf.newaxis, tf.newaxis, :]
+  phases = phases * f_ratios
+
+  # Convert to waveforms.
+  wavs = tf.sin(phases)
+  audio = amplitude_envelopes * wavs  # [mb, n_samples, n_sinusoids]
+  audio = tf.reduce_sum(audio, axis=-1)  # [mb, n_samples]
+
+  return audio, final_phase
+
+
 def get_harmonic_frequencies(frequencies: tf.Tensor,
                              n_harmonics: int) -> tf.Tensor:
   """Create integer multiples of the fundamental frequency.
@@ -797,11 +1048,12 @@ def get_harmonic_frequencies(frequencies: tf.Tensor,
 
 def harmonic_synthesis(frequencies: tf.Tensor,
                        amplitudes: tf.Tensor,
-                       harmonic_shifts: tf.Tensor = None,
-                       harmonic_distribution: tf.Tensor = None,
+                       harmonic_shifts: Optional[tf.Tensor] = None,
+                       harmonic_distribution: Optional[tf.Tensor] = None,
                        n_samples: int = 64000,
                        sample_rate: int = 16000,
-                       amp_resample_method: Text = 'window') -> tf.Tensor:
+                       amp_resample_method: Text = 'window',
+                       use_angular_cumsum: bool = False) -> tf.Tensor:
   """Generate audio from frame-wise monophonic harmonic oscillator bank.
 
   Args:
@@ -818,6 +1070,8 @@ def harmonic_synthesis(frequencies: tf.Tensor,
     n_samples: Total length of output audio. Interpolates and crops to this.
     sample_rate: Sample rate.
     amp_resample_method: Mode with which to resample amplitude envelopes.
+    use_angular_cumsum: Use angular cumulative sum on accumulating phase
+      instead of tf.cumsum. More accurate for inference.
 
   Returns:
     audio: Output audio. Shape [batch_size, n_samples, 1]
@@ -853,8 +1107,62 @@ def harmonic_synthesis(frequencies: tf.Tensor,
   # Synthesize from harmonics [batch_size, n_samples].
   audio = oscillator_bank(frequency_envelopes,
                           amplitude_envelopes,
-                          sample_rate=sample_rate)
+                          sample_rate=sample_rate,
+                          use_angular_cumsum=use_angular_cumsum)
   return audio
+
+
+def streaming_harmonic_synthesis(
+    frequencies: tf.Tensor,
+    amplitudes: tf.Tensor,
+    harmonic_distribution: Optional[tf.Tensor] = None,
+    initial_phase: Optional[tf.Tensor] = None,
+    n_samples: int = 64000,
+    sample_rate: int = 16000,
+    amp_resample_method: Text = 'linear') -> tf.Tensor:
+  """Generate audio from frame-wise monophonic harmonic oscillator bank.
+
+  Args:
+    frequencies: Frame-wise fundamental frequency in Hz. Shape [batch_size,
+      n_frames, 1].
+    amplitudes: Frame-wise oscillator peak amplitude. Shape [batch_size,
+      n_frames, 1].
+    harmonic_distribution: Harmonic amplitude variations, ranged zero to one.
+      Total amplitude of a harmonic is equal to (amplitudes *
+      harmonic_distribution). Shape [batch_size, n_frames, n_harmonics].
+    initial_phase: Starting phase. Shape [batch_size, 1, 1].
+    n_samples: Total length of output audio. Interpolates and crops to this.
+    sample_rate: Sample rate.
+    amp_resample_method: Mode with which to resample amplitude envelopes.
+
+  Returns:
+    audio: Output audio. Shape [batch_size, n_samples, 1]
+  """
+  frequencies = tf_float32(frequencies)
+  amplitudes = tf_float32(amplitudes)
+
+  if harmonic_distribution is not None:
+    # Create harmonic amplitudes [batch_size, n_frames, n_harmonics].
+    harmonic_distribution = tf_float32(harmonic_distribution)
+    # Don't exceed Nyquist.
+    harmonic_distribution = normalize_harmonics(
+        harmonic_distribution, frequencies, sample_rate)
+    harmonic_amplitudes = amplitudes * harmonic_distribution
+  else:
+    harmonic_amplitudes = amplitudes
+
+  # Create sample-wise envelopes.
+  frequencies = resample(frequencies, n_samples)  # cycles/sec
+  amplitude_envelopes = resample(harmonic_amplitudes, n_samples,
+                                 method=amp_resample_method)
+
+  # Synthesize from harmonics [batch_size, n_samples].
+  audio, final_phase = harmonic_oscillator_bank(
+      frequencies,
+      amplitude_envelopes,
+      initial_phase,
+      sample_rate=sample_rate)
+  return audio, final_phase
 
 
 # Wavetable Synthesizer --------------------------------------------------------
@@ -905,6 +1213,27 @@ def linear_lookup(phase: tf.Tensor,
 
   # Interpolated audio from summing the weighted wavetable at each timestep.
   return tf.reduce_sum(weighted_wavetables, axis=-1)
+
+
+def harmonic_distribution_to_wavetable(harmonic_distribution, n_wavetable=2048):
+  """Convert a harmonic distribution into a wavetable for synthesis.
+
+  Args:
+    harmonic_distribution: Shape [batch, time, n_harmonics], where the last axis
+      is normalized (sums to 1.0).
+    n_wavetable: Number of samples to have in the wavetable. If more than the
+      number of harmonics, performs interpolation/upsampling.
+
+  Returns:
+    A series of wavetables, shape [batch, time, n_wavetable]
+  """
+  n_harmonics = harmonic_distribution.shape[-1]
+  n_pad = int(n_wavetable/2 - n_harmonics)
+  # Pad the left for DC component, pad the right for wavetable interpolation.
+  fft_in = tf.pad(harmonic_distribution, [[0, 0], [0, 0], [1, n_pad]])
+  fft_in = tf.complex(fft_in, tf.zeros_like(fft_in))
+  wavetable = tf.signal.irfft(fft_in) * (n_wavetable / 2)
+  return wavetable
 
 
 def wavetable_synthesis(frequencies: tf.Tensor,
@@ -1093,15 +1422,21 @@ def fft_convolve(audio: tf.Tensor,
   """
   audio, impulse_response = tf_float32(audio), tf_float32(impulse_response)
 
+  # Get shapes of audio.
+  batch_size, audio_size = audio.shape.as_list()
+
   # Add a frame dimension to impulse response if it doesn't have one.
   ir_shape = impulse_response.shape.as_list()
   if len(ir_shape) == 2:
     impulse_response = impulse_response[:, tf.newaxis, :]
-    ir_shape = impulse_response.shape.as_list()
 
-  # Get shapes of audio and impulse response.
+  # Broadcast impulse response.
+  if ir_shape[0] == 1 and batch_size > 1:
+    impulse_response = tf.tile(impulse_response, [batch_size, 1, 1])
+
+  # Get shapes of impulse response.
+  ir_shape = impulse_response.shape.as_list()
   batch_size_ir, n_ir_frames, ir_size = ir_shape
-  batch_size, audio_size = audio.shape.as_list()
 
   # Validate that batch sizes match.
   if batch_size != batch_size_ir:
@@ -1239,7 +1574,10 @@ def sinc(x, threshold=1e-20):
   return tf.sin(x) / x
 
 
-def sinc_impulse_response(cutoff_frequency, window_size=512, sample_rate=None):
+def sinc_impulse_response(cutoff_frequency,
+                          window_size=512,
+                          sample_rate=None,
+                          high_pass=False):
   """Get a sinc impulse response for a set of low-pass cutoff frequencies.
 
   Args:
@@ -1249,6 +1587,8 @@ def sinc_impulse_response(cutoff_frequency, window_size=512, sample_rate=None):
       range [0, 1.0]. Shape [batch_size, n_time, 1].
     window_size: Size of the Hamming window to apply to the impulse.
     sample_rate: Optionally provide the sample rate.
+    high_pass: If true, filter removes frequencies below cutoff (high-pass), if
+      false [default], filter removes frequencies above cutoff (low-pass).
 
   Returns:
     impulse_response: A series of impulse responses. Shape
@@ -1273,7 +1613,16 @@ def sinc_impulse_response(cutoff_frequency, window_size=512, sample_rate=None):
   impulse_response = window * tf.math.real(impulse_response)
 
   # Normalize for unity gain.
-  impulse_response /= tf.reduce_sum(impulse_response, axis=-1, keepdims=True)
+  impulse_response /= tf.abs(
+      tf.reduce_sum(impulse_response, axis=-1, keepdims=True))
+
+  if high_pass:
+    # Invert filter.
+    pass_through = np.zeros(impulse_response.shape)
+    pass_through[..., half_size] = 1.0
+    pass_through = tf.convert_to_tensor(pass_through, dtype=tf.float32)
+    impulse_response = pass_through - impulse_response
+
   return impulse_response
 
 
@@ -1310,8 +1659,9 @@ def frequency_filter(audio: tf.Tensor,
 def sinc_filter(audio: tf.Tensor,
                 cutoff_frequency: tf.Tensor,
                 window_size: int = 512,
-                sample_rate: int = None,
-                padding: Text = 'same') -> tf.Tensor:
+                sample_rate: Optional[int] = None,
+                padding: Text = 'same',
+                high_pass: bool = False) -> tf.Tensor:
   """Filter audio with sinc low-pass filter.
 
   Args:
@@ -1326,6 +1676,8 @@ def sinc_filter(audio: tf.Tensor,
       same size as the input audio (audio_timesteps). For 'valid' the audio is
       extended to include the tail of the impulse response (audio_timesteps +
       window_size - 1).
+    high_pass: If true, filter removes frequencies below cutoff (high-pass), if
+      false [default], filter removes frequencies above cutoff (low-pass).
 
   Returns:
     Filtered audio. Tensor of shape
@@ -1334,5 +1686,6 @@ def sinc_filter(audio: tf.Tensor,
   """
   impulse_response = sinc_impulse_response(cutoff_frequency,
                                            window_size=window_size,
-                                           sample_rate=sample_rate)
+                                           sample_rate=sample_rate,
+                                           high_pass=high_pass)
   return fft_convolve(audio, impulse_response, padding=padding)

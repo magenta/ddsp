@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,27 +47,33 @@ setuptools.setup(
         'librosa',
         'pydub',
         'mir_eval',
+        'note_seq',
         'numba < 0.50',  # temporary fix for librosa import
         'numpy',
         'scipy',
         'six',
         'tensorflow',
+        'tensorflow-addons',
+        'tensorflowjs',
         'tensorflow-probability',
-        # TODO(adarob): Switch to tensorflow_datasets once includes nsynth 2.3.
-        'tfds-nightly',
+        'tensorflow-datasets',
+        'tflite_support'
     ],
     extras_require={
-        'gcp': ['gevent', 'google-api-python-client', 'google-compute-engine',
-                'oauth2client'],
+        'gcp': [
+            'gevent', 'google-api-python-client', 'google-compute-engine',
+            'oauth2client'
+        ],
         'data_preparation': [
-            # TODO(adarob): Remove next line once avro-python3 is fixed.
-            'avro-python3!=1.9.2',
             'apache_beam',
+            # TODO(jesseengel): Remove versioning when beam import is fixed.
+            'pyparsing<=2.4.7'
         ],
         'test': ['pytest', 'pylint!=2.5.0'],
     },
     entry_points={
         'console_scripts': [
+            'ddsp_export = ddsp.training.ddsp_export:console_entry_point',
             'ddsp_run = ddsp.training.ddsp_run:console_entry_point',
             'ddsp_prepare_tfrecord = ddsp.training.data_preparation.ddsp_prepare_tfrecord:console_entry_point',
             'ddsp_generate_synthetic_dataset = ddsp.training.data_preparation.ddsp_generate_synthetic_dataset:console_entry_point',

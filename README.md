@@ -17,7 +17,11 @@ synthesizers, waveshapers, and filters). This allows these
 interpretable elements to be used as part of an deep learning model, especially
 as the output layers for audio generation.
 
+
+
+
 ## Getting Started
+
 
 First, follow the steps in the [**Installation**](#Installation) section
 to install the DDSP package and its dependencies. DDSP modules can be used to
@@ -30,37 +34,53 @@ import ddsp
 outputs = network(inputs)
 
 # Initialize signal processors.
-additive = ddsp.synths.Additive()
+harmonic = ddsp.synths.Harmonic()
 
-# Generates audio from additive synthesizer.
-audio = additive(outputs['amplitudes'],
+# Generates audio from harmonic synthesizer.
+audio = harmonic(outputs['amplitudes'],
                  outputs['harmonic_distribution'],
                  outputs['f0_hz'])
 ```
 
-### More resources
+### Links
 
 * [Check out the blog post 💻](https://magenta.tensorflow.org/ddsp)
 * [Read the original paper 📄](https://arxiv.org/abs/2001.04643)
 * [Listen to some examples 🔈](https://goo.gl/magenta/ddsp-examples)
-* [Try out the timbre transfer demo 🎤->🎻](./ddsp/colab/demos/timbre_transfer.ipynb)
+* [Try out the timbre transfer demo 🎤->🎻](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/demos/timbre_transfer.ipynb)
+
+
+<a id='Demos'></a>
+### Demos
+
+Colab notebooks demonstrating some of the neat things you can do with DDSP [`ddsp/colab/demos`](./ddsp/colab/demos)
+
+*   [Timbre Transfer](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/demos/timbre_transfer.ipynb):
+    Convert audio between sound sources with pretrained models. Try turning your voice into a violin, or scratching your laptop and seeing how it sounds as a flute :). Pick from a selection of pretrained models or upload your own that you can train with the `train_autoencoder` demo.
+
+*   [Train Autoencoder](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/demos/train_autoencoder.ipynb):
+    Takes you through all the steps to convert audio files into a dataset and train your own DDSP autoencoder model. You can transfer data and models to/from google drive, and download a .zip file of your trained model to be used with the `timbre_transfer` demo.
+
+*   [Pitch Detection](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/demos/pitch_detection.ipynb):
+    Demonstration of self-supervised pitch detection models from the [2020 ICML Workshop paper](https://openreview.net/forum?id=RlVTYWhsky7).
+
+
 
 
 <a id='Tutorials'></a>
 ### Tutorials
-
-The best place to start is the step-by-step tutorials for all the major library components that can be found in
+To introduce the main concepts of the library, we have step-by-step colab tutorials for all the major library components
 [`ddsp/colab/tutorials`](./ddsp/colab/tutorials).
 
-*   [0_processor](./ddsp/colab/tutorials/0_processor.ipynb):
+*  [0_processor](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/tutorials/0_processor.ipynb):
     Introduction to the Processor class.
-*   [1_synths_and_effects](./ddsp/colab/tutorials/1_synths_and_effects.ipynb):
+* [1_synths_and_effects](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/tutorials/1_synths_and_effects.ipynb):
     Example usage of processors.
-*   [2_processor_group](./ddsp/colab/tutorials/2_processor_group.ipynb):
+*   [2_processor_group](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/tutorials/2_processor_group.ipynb):
     Stringing processors together in a ProcessorGroup.
-*   [3_training](./ddsp/colab/tutorials/3_training.ipynb):
+* [3_training](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/tutorials/3_training.ipynb):
     Example of training on a single sound.
-*   [4_core_functions](./ddsp/colab/tutorials/4_core_functions.ipynb):
+*   [4_core_functions](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/tutorials/4_core_functions.ipynb):
     Extensive examples for most of the core DDSP functions.
 
 
@@ -114,7 +134,7 @@ Where:
 * `controls` is a dictionary of tensors scaled and constrained specifically for the processor.
 * `signal` is an output tensor (usually audio or control signal for another processor).
 
-For example, here are of some inputs to an `Additive()` synthesizer:
+For example, here are of some inputs to an `Harmonic()` synthesizer:
 
 <div align="center">
 <img src="https://storage.googleapis.com/ddsp/github_images/example_inputs.png" width="800px" alt="logo"></img>
@@ -144,17 +164,17 @@ import ddsp
 outputs = network(audio_input)
 
 # Initialize signal processors.
-additive = ddsp.synths.Additive()
+harmonic = ddsp.synths.Harmonic()
 filtered_noise = ddsp.synths.FilteredNoise()
 reverb = ddsp.effects.TrainableReverb()
 spectral_loss = ddsp.losses.SpectralLoss()
 
 # Generate audio.
-audio_additive = additive(outputs['amplitudes'],
+audio_harmonic = harmonic(outputs['amplitudes'],
                           outputs['harmonic_distribution'],
                           outputs['f0_hz'])
 audio_noise = filtered_noise(outputs['magnitudes'])
-audio = audio_additive + audio_noise
+audio = audio_harmonic + audio_noise
 audio = reverb(audio)
 
 # Multi-scale spectrogram reconstruction loss.
@@ -178,7 +198,7 @@ import gin
 outputs = network(audio_input)
 
 # Initialize signal processors.
-additive = ddsp.synths.Additive()
+harmonic = ddsp.synths.Harmonic()
 filtered_noise = ddsp.synths.FilteredNoise()
 add = ddsp.processors.Add()
 reverb = ddsp.effects.TrainableReverb()
@@ -186,12 +206,12 @@ spectral_loss = ddsp.losses.SpectralLoss()
 
 # Processor group DAG
 dag = [
-  (additive,
+  (harmonic,
    ['amps', 'harmonic_distribution', 'f0_hz']),
   (filtered_noise,
    ['magnitudes']),
   (add,
-   ['additive/signal', 'filtered_noise/signal']),
+   ['harmonic/signal', 'filtered_noise/signal']),
   (reverb,
    ['add/signal'])
 ]
@@ -219,12 +239,12 @@ gin_config = """
 import ddsp
 
 processors.ProcessorGroup.dag = [
-  (@ddsp.synths.Additive(),
+  (@ddsp.synths.Harmonic(),
    ['amplitudes', 'harmonic_distribution', 'f0_hz']),
   (@ddsp.synths.FilteredNoise(),
    ['magnitudes']),
   (@ddsp.processors.Add(),
-   ['filtered_noise/signal', 'additive/signal']),
+   ['filtered_noise/signal', 'harmonic/signal']),
   (@ddsp.effects.TrainableReverb(),
    ['add/signal'])
 ]

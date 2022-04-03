@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,16 +43,16 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
     }
 
     # Create Processors.
-    additive = synths.Additive(name='additive')
+    harmonic = synths.Harmonic(name='harmonic')
     noise = synths.FilteredNoise(name='noise')
     add = processors.Add(name='add')
     reverb = effects.Reverb(trainable=True, name='reverb')
 
     # Create DAG for testing.
     self.dag = [
-        (additive, ['amps', 'harmonic_distribution', 'f0_hz']),
+        (harmonic, ['amps', 'harmonic_distribution', 'f0_hz']),
         (noise, ['magnitudes']),
-        (add, ['noise/signal', 'additive/signal']),
+        (add, ['noise/signal', 'harmonic/signal']),
         (reverb, ['add/signal']),
     ]
     self.expected_outputs = [
@@ -61,16 +61,16 @@ class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
         'magnitudes',
         'f0_hz',
         'target_audio',
-        'additive/signal',
-        'additive/controls/amplitudes',
-        'additive/controls/harmonic_distribution',
-        'additive/controls/f0_hz',
+        'harmonic/signal',
+        'harmonic/controls/amplitudes',
+        'harmonic/controls/harmonic_distribution',
+        'harmonic/controls/f0_hz',
         'noise/signal',
         'noise/controls/magnitudes',
         'add/signal',
         'reverb/signal',
         'reverb/controls/ir',
-        'processor_group/signal',
+        'out/signal',
     ]
 
   def _check_tensor_outputs(self, strings_to_check, outputs):

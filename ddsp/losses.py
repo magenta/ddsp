@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,8 +16,11 @@
 """Library of loss functions."""
 
 import functools
+from typing import Dict, Text
 
 import crepe
+from ddsp import core
+from ddsp import dags
 from ddsp import spectral_ops
 from ddsp.core import hz_to_midi
 from ddsp.core import safe_divide
@@ -30,6 +33,70 @@ import tensorflow_probability as tfp
 
 tfd = tfp.distributions
 tfkl = tf.keras.layers
+
+# Define Types.
+TensorDict = Dict[Text, tf.Tensor]
+
+
+# ---------------------- Base Classes ------------------------------------------
+class Loss(tfkl.Layer):
+  """Base class. Duck typing: Losses just must implement get_losses_dict()."""
+
+  def get_losses_dict(self, *args, **kwargs):
+    """Returns a dictionary of losses for the model."""
+    loss = self(*args, **kwargs)
+    return {self.name: loss}
+
+
+@gin.register
+class LossGroup(dags.DAGLayer):
+  """Compute a group of loss layers on an outputs dictionary."""
+
+  def __init__(self, dag: dags.DAG, **kwarg_losses):
+    """Constructor, completely configurable via gin.
+
+    Args:
+      dag: A list of loss names/instances, with keys to extract call() inputs
+        from a dictionary, ex:
+
+        ['module', ['input_key', ...]]
+
+        'module': Loss module instance or string name of module. For example,
+          'spectral_loss' would access the attribute `loss_group.spectral_loss`.
+        'input_key': List of strings, nested keys in dictionary of dag outputs.
+
+      **kwarg_losses: Losses to add to LossGroup. Each kwarg that is a Loss will
+        be added as a property of the layer, so that it will be accessible as
+        `loss_group.kwarg`. Also, other keras kwargs such as 'name' are split
+        off before adding modules.
+    """
+    super().__init__(dag, **kwarg_losses)
+    self.loss_names = self.module_names
+
+  @property
+  def losses(self):
+    """Loss getter."""
+    return [getattr(self, name) for name in self.loss_names]
+
+  def call(self, outputs: TensorDict, **kwargs) -> TensorDict:
+    """Get a dictionary of loss values from all the losses.
+
+    Args:
+      outputs: A dictionary of model output tensors to feed into the losses.
+      **kwargs: Other kwargs for all the modules in the dag.
+
+    Returns:
+      A flat dictionary of losses {name: scalar}.
+    """
+    dag_outputs = super().call(outputs, **kwargs)
+    loss_outputs = {}
+    for k in self.loss_names:
+      loss_outputs.update(dag_outputs[k])
+    return loss_outputs
+
+  def get_losses_dict(self, outputs, **kwargs):
+    """Returns a dictionary of losses for the model, alias __call__."""
+    return self(outputs, **kwargs)
 
 
 # ---------------------- Losses ------------------------------------------------
@@ -63,7 +130,7 @@ def mean_difference(target, value, loss_type='L1', weights=None):
 
 
 @gin.register
-class SpectralLoss(tfkl.Layer):
+class SpectralLoss(Loss):
   """Multi-scale spectrogram loss.
 
   This loss is the bread-and-butter of comparing two audio signals. It offers
@@ -125,11 +192,10 @@ class SpectralLoss(tfkl.Layer):
       spectrogram_op = functools.partial(spectral_ops.compute_mag, size=size)
       self.spectrogram_ops.append(spectrogram_op)
 
-  def call(self, target_audio, audio):
-
+  def call(self, target_audio, audio, weights=None):
     loss = 0.0
 
-    diff = spectral_ops.diff
+    diff = core.diff
     cumsum = tf.math.cumsum
 
     # Compute loss for each fft size.
@@ -139,50 +205,154 @@ class SpectralLoss(tfkl.Layer):
 
       # Add magnitude loss.
       if self.mag_weight > 0:
-        loss += self.mag_weight * mean_difference(target_mag, value_mag,
-                                                  self.loss_type)
+        loss += self.mag_weight * mean_difference(
+            target_mag, value_mag, self.loss_type, weights=weights)
 
       if self.delta_time_weight > 0:
         target = diff(target_mag, axis=1)
         value = diff(value_mag, axis=1)
         loss += self.delta_time_weight * mean_difference(
-            target, value, self.loss_type)
+            target, value, self.loss_type, weights=weights)
 
       if self.delta_freq_weight > 0:
         target = diff(target_mag, axis=2)
         value = diff(value_mag, axis=2)
         loss += self.delta_freq_weight * mean_difference(
-            target, value, self.loss_type)
+            target, value, self.loss_type, weights=weights)
 
       # TODO(kyriacos) normalize cumulative spectrogram
       if self.cumsum_freq_weight > 0:
         target = cumsum(target_mag, axis=2)
         value = cumsum(value_mag, axis=2)
         loss += self.cumsum_freq_weight * mean_difference(
-            target, value, self.loss_type)
+            target, value, self.loss_type, weights=weights)
 
       # Add logmagnitude loss, reusing spectrogram.
       if self.logmag_weight > 0:
         target = spectral_ops.safe_log(target_mag)
         value = spectral_ops.safe_log(value_mag)
-        loss += self.logmag_weight * mean_difference(target, value,
-                                                     self.loss_type)
+        loss += self.logmag_weight * mean_difference(
+            target, value, self.loss_type, weights=weights)
 
     if self.loudness_weight > 0:
       target = spectral_ops.compute_loudness(target_audio, n_fft=2048,
                                              use_tf=True)
       value = spectral_ops.compute_loudness(audio, n_fft=2048, use_tf=True)
-      loss += self.loudness_weight * mean_difference(target, value,
-                                                     self.loss_type)
+      loss += self.loudness_weight * mean_difference(
+          target, value, self.loss_type, weights=weights)
 
     return loss
+
+
+@gin.register
+class HmmTranscriber(tfp.distributions.HiddenMarkovModel):
+  """HMM initialized for decoding MIDI from Pitch and Amps."""
+
+  def __init__(self,
+               avg_length=200,
+               midi_std=0.5,
+               amps_on_center=1.5,
+               amps_on_scale=0.5,
+               amps_off_center=0.0,
+               amps_off_scale=0.1,
+               n_timesteps=1000,
+               n_pitches=128,
+               weight=1.0,
+               **kwargs):
+    """Discrete hidden states for each midi pitch, f0 observations (in midi).
+
+    Args:
+      avg_length: Prior over average note length between transitions.
+      midi_std: Prior over f0 variance (in midi) allowed around discrete states.
+      amps_on_center: Center amplitude of the "on" state.
+      amps_on_scale: Variance amplitude of the "on" state.
+      amps_off_center: Center amplitude of the "off" state.
+      amps_off_scale: Variance amplitude of the "off" state.
+      n_timesteps: Number of timesteps in the batch to unroll the HMM.
+      n_pitches: Number of pitches (starting from 0) to use as HMM states.
+      weight: Weighting of the nll loss term.
+      **kwargs: Other kwargs for the distribution such as name.
+    """
+    # Initial distribution is uniform.
+    initial_distribution = tfp.distributions.Categorical(
+        probs=tf.ones([n_pitches]) / n_pitches)
+
+    # Transition is heavily peaked around diagonal and uniform otherwise.
+    hold = 1.0 - 1.0/avg_length
+    other = (1.0 - hold) / (n_pitches - 1)
+    transitions = ((hold - other) * tf.eye(n_pitches)
+                   + other * tf.ones([n_pitches, n_pitches]))
+    transitions /= tf.reduce_sum(transitions, axis=1, keepdims=True)
+    transition_distribution = tfp.distributions.Categorical(
+        probs=transitions)
+
+    # Observations are normally distributed around the MIDI pitch (hmm state).
+    p_loc = tf.range(1, n_pitches, dtype=tf.float32)
+    p_scale = tf.ones([n_pitches - 1]) * midi_std
+    pitch_loc = tf.concat([tf.ones([1]) * n_pitches / 2.0, p_loc], axis=0)
+    pitch_scale = tf.concat([tf.ones([1]) * n_pitches, p_scale], axis=0)
+
+    amps_loc = tf.concat([tf.ones([1]) * amps_off_center,
+                          tf.ones(n_pitches - 1) * amps_on_center], axis=0)
+    amps_scale = tf.concat([tf.ones([1]) * amps_off_scale,
+                            tf.ones(n_pitches - 1) * amps_on_scale], axis=0)
+
+    loc = tf.stack([pitch_loc, amps_loc], axis=-1)
+    scale = tf.stack([pitch_scale, amps_scale], axis=-1)
+
+    # observation_distribution = tfp.distributions.Normal(loc=loc, scale=scale)
+    observation_distribution = tfp.distributions.MultivariateNormalDiag(
+        loc=loc, scale_diag=scale)
+
+    super().__init__(
+        initial_distribution=initial_distribution,
+        transition_distribution=transition_distribution,
+        observation_distribution=observation_distribution,
+        num_steps=n_timesteps,
+        **kwargs
+    )
+
+    self.initial_distribution = initial_distribution
+    self.transition_distribution = transition_distribution
+    self.observation_distribution = observation_distribution
+    self.avg_length = avg_length
+    self.midi_std = midi_std
+    self.n_timesteps = n_timesteps
+    self.n_pitches = n_pitches
+    self.weight = weight
+
+  def __call__(self, pitch, amps):
+    return self.nll(pitch, amps)
+
+  @staticmethod
+  def straight_through(x, x_quant):
+    """Straight through estimation."""
+    return x - tf.stop_gradient(x - x_quant)
+
+  def nll(self, pitch, amps, per_example_loss=False):
+    """Negative log-likelihood per a timestep."""
+    pa = tf.concat([pitch, amps], axis=-1)
+    avg_nll = -self.log_prob(pa) / pitch.shape[1]
+    loss = avg_nll if per_example_loss else tf.reduce_mean(avg_nll)
+    return self.weight * loss
+
+  def predict_midi(self, pitch, amps, channel_dim=True, dtype=tf.float32):
+    """Viterbi decode most likely hidden state as the quantized MIDI signal."""
+    pa = tf.concat([pitch, amps], axis=-1)
+    q_pitch = self.posterior_mode(pa)
+    q_pitch = tf.cast(q_pitch, dtype)
+    if channel_dim:
+      q_pitch = q_pitch[:, :, tf.newaxis]
+    return q_pitch
+
+
 
 
 # ------------------------------------------------------------------------------
 # Peceptual Losses
 # ------------------------------------------------------------------------------
 @gin.register
-class EmbeddingLoss(tfkl.Layer):
+class EmbeddingLoss(Loss):
   """Embedding loss for a given pretrained model.
 
   Using these "perceptual" loss functions will help encourage better matching
@@ -329,9 +499,8 @@ def amp_loss(amp,
   """Loss comparing two amplitudes (scale logarithmically)."""
   if log:
     # Put in a log scale (psychophysically appropriate for audio).
-    log10 = lambda x: tf.math.log(x) / tf.math.log(10.0)
-    amp = log10(tf.maximum(amin, amp))
-    amp_target = log10(tf.maximum(amin, amp_target))
+    amp = core.log10(tf.maximum(amin, amp))
+    amp_target = core.log10(tf.maximum(amin, amp_target))
   # Take the difference.
   return mean_difference(amp, amp_target, loss_type, weights)
 
@@ -346,7 +515,7 @@ def freq_loss(f_hz, f_hz_target, loss_type='L1', weights=None):
 
 
 @gin.register
-class FilteredNoiseConsistencyLoss(tfkl.Layer):
+class FilteredNoiseConsistencyLoss(Loss):
   """Consistency loss for synthesizer controls.
 
   EXPERIMENTAL
@@ -363,7 +532,7 @@ class FilteredNoiseConsistencyLoss(tfkl.Layer):
 
 
 @gin.register
-class HarmonicConsistencyLoss(tfkl.Layer):
+class HarmonicConsistencyLoss(Loss):
   """Consistency loss for synthesizer controls.
 
   EXPERIMENTAL
@@ -414,7 +583,7 @@ class HarmonicConsistencyLoss(tfkl.Layer):
 # Sinusoidal Consistency Losses
 # ------------------------------------------------------------------------------
 @gin.register
-class WassersteinConsistencyLoss(tfkl.Layer):
+class WassersteinConsistencyLoss(Loss):
   """Compare similarity of two traces of sinusoids using wasserstein distance.
 
   EXPERIMENTAL
@@ -482,7 +651,7 @@ def wasserstein_distance(u_values, v_values, u_weights, v_weights, p=1.0):
   all_values = tf.sort(all_values, axis=-1)
 
   # Compute the differences between pairs of successive values of u and v.
-  deltas = spectral_ops.diff(all_values, axis=-1)
+  deltas = core.diff(all_values, axis=-1)
 
   # Get the respective positions of the values of u and v among the values of
   # both distributions.
@@ -519,7 +688,7 @@ def wasserstein_distance(u_values, v_values, u_weights, v_weights, p=1.0):
 
 
 @gin.register
-class KDEConsistencyLoss(tfkl.Layer):
+class KDEConsistencyLoss(Loss):
   """Compare similarity of two traces of sinusoids using kernels.
 
   EXPERIMENTAL
@@ -649,7 +818,7 @@ class KDEConsistencyLoss(tfkl.Layer):
 # Differentiable Two-way Mismatch Loss
 # ------------------------------------------------------------------------------
 @gin.register
-class TWMLoss(tfkl.Layer):
+class TWMLoss(Loss):
   """Two-way Mismatch, encourages sinusoids to be harmonics best f0 candidate.
 
   EXPERIMENTAL
@@ -891,5 +1060,20 @@ class TWMLoss(tfkl.Layer):
     if as_midi:
       harmonics = hz_to_midi(harmonics)
     return harmonics
+
+
+@gin.register
+class ParamLoss(Loss):
+  """Loss on the mean difference between any two tensors."""
+
+  def __init__(self, weight=1.0, loss_type='L1', **kwargs):
+    super().__init__(**kwargs)
+    self.weight = weight
+    self.loss_type = loss_type
+
+  def call(self, pred, target, weights=None):
+    # Take the difference.
+    loss = mean_difference(pred, target, self.loss_type, weights)
+    return self.weight * loss
 
 

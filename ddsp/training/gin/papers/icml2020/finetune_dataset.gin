@@ -3,8 +3,8 @@ include 'papers/icml2020/pretrain_dataset.gin'
 
 # Datasets
 train.data_provider = @train_data/data.ZippedProvider()
-evaluate.data_provider = @test_data/data.ZippedProvider()
-sample.data_provider = @test_data/data.ZippedProvider()
+evaluate.data_provider = @test_data/data.TFRecordProvider()
+sample.data_provider = @test_data/data.TFRecordProvider()
 
 
 
@@ -12,13 +12,6 @@ sample.data_provider = @test_data/data.ZippedProvider()
 train_data/ZippedProvider.data_providers = [
     @data.SyntheticNotes(),
     @train_data/data.TFRecordProvider(),
-]
-
-
-# Testing
-test_data/ZippedProvider.data_providers = [
-    @data.SyntheticNotes(),
-    @test_data/data.TFRecordProvider(),
 ]
 
 

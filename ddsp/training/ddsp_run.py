@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -72,7 +72,7 @@ from ddsp.training import train_util
 from ddsp.training import trainers
 import gin
 import pkg_resources
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 
 gfile = tf.io.gfile
 FLAGS = flags.FLAGS
@@ -128,6 +128,8 @@ def delay_start():
 
 def parse_gin(restore_dir):
   """Parse gin config from --gin_file, --gin_param, and the model directory."""
+  # Enable parsing gin files on Google Cloud.
+  gin.config.register_file_reader(tf.io.gfile.GFile, tf.io.gfile.exists)
   # Add user folders to the gin search path.
   for gin_search_path in [GIN_PATH] + FLAGS.gin_search_path:
     gin.add_config_file_search_path(gin_search_path)
@@ -138,13 +140,17 @@ def parse_gin(restore_dir):
     use_tpu = bool(FLAGS.tpu)
     opt_default = 'base.gin' if not use_tpu else 'base_tpu.gin'
     gin.parse_config_file(os.path.join('optimization', opt_default))
+    eval_default = 'eval/basic.gin'
+    gin.parse_config_file(eval_default)
 
     # Load operative_config if it exists (model has already trained).
-    operative_config = train_util.get_latest_operative_config(restore_dir)
-    if tf.io.gfile.exists(operative_config):
+    try:
+      operative_config = train_util.get_latest_operative_config(restore_dir)
       logging.info('Using operative config: %s', operative_config)
       operative_config = cloud.make_file_paths_local(operative_config, GIN_PATH)
       gin.parse_config_file(operative_config, skip_unknown=True)
+    except FileNotFoundError:
+      logging.info('Operative config not found in %s', restore_dir)
 
     # User gin config and user hyperparameters from flags.
     gin_file = cloud.make_file_paths_local(FLAGS.gin_file, GIN_PATH)
@@ -176,6 +182,8 @@ def main(unused_argv):
 
   gfile.makedirs(restore_dir)  # Only makes dirs if they don't exist.
   parse_gin(restore_dir)
+  logging.info('Operative Gin Config:\n%s', gin.config.config_str())
+  train_util.gin_register_keras_layers()
 
   if FLAGS.allow_memory_growth:
     allow_memory_growth()
@@ -186,7 +194,7 @@ def main(unused_argv):
                                        cluster_config=FLAGS.cluster_config)
     with strategy.scope():
       model = models.get_model()
-      trainer = trainers.Trainer(model, strategy)
+      trainer = trainers.get_trainer_class()(model, strategy)
 
     train_util.train(data_provider=gin.REQUIRED,
                      trainer=trainer,

@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,23 +17,9 @@
 
 from absl.testing import parameterized
 from ddsp import spectral_ops
+from ddsp.test_util import gen_np_sinusoid
 import numpy as np
 import tensorflow.compat.v2 as tf
-
-
-def gen_np_sinusoid(frequency, amp, sample_rate, audio_len_sec):
-  x = np.linspace(0, audio_len_sec, int(audio_len_sec * sample_rate))
-  audio_sin = amp * (np.sin(2 * np.pi * frequency * x))
-  return audio_sin
-
-
-def gen_np_batched_sinusoids(frequency, amp, sample_rate, audio_len_sec,
-                             batch_size):
-  batch_sinusoids = [
-      gen_np_sinusoid(frequency, amp, sample_rate, audio_len_sec)
-      for _ in range(batch_size)
-  ]
-  return np.array(batch_sinusoids)
 
 
 class STFTTest(tf.test.TestCase):
@@ -54,25 +40,6 @@ class STFTTest(tf.test.TestCase):
 
     # TODO(jesseengel): The phase comes out a little different, figure out why.
     self.assertAllClose(np.abs(s_np), np.abs(s_tf), rtol=1e-3, atol=1e-3)
-
-
-class DiffTest(tf.test.TestCase):
-
-  def test_shape_is_correct(self):
-    n_batch = 2
-    n_time = 125
-    n_freq = 100
-    mag = tf.ones([n_batch, n_time, n_freq])
-
-    diff = spectral_ops.diff
-    delta_t = diff(mag, axis=1)
-    self.assertEqual(delta_t.shape[1], mag.shape[1] - 1)
-    delta_delta_t = diff(delta_t, axis=1)
-    self.assertEqual(delta_delta_t.shape[1], mag.shape[1] - 2)
-    delta_f = diff(mag, axis=2)
-    self.assertEqual(delta_f.shape[2], mag.shape[2] - 1)
-    delta_delta_f = diff(delta_f, axis=2)
-    self.assertEqual(delta_delta_f.shape[2], mag.shape[2] - 2)
 
 
 class LoudnessTest(tf.test.TestCase):
@@ -135,145 +102,192 @@ class ComputeFeaturesTest(parameterized.TestCase, tf.test.TestCase):
     self.amp = 0.75
     self.frequency = 440.0
     self.frame_rate = 250
+    self.frame_size = 512
+
+  def expected_f0_length(self, audio, padding):
+    n_t = audio.shape[-1]
+    frame_size = spectral_ops.CREPE_FRAME_SIZE
+    hop_size = int(16000 // self.frame_rate)
+    expected_len, _ = spectral_ops.get_framed_lengths(
+        n_t, frame_size, hop_size, padding)
+    return expected_len
+
+  def expected_db_length(self, audio, sr, padding):
+    n_t = audio.shape[-1]
+    hop_size = int(sr // self.frame_rate)
+    expected_len, _ = spectral_ops.get_framed_lengths(
+        n_t, self.frame_size, hop_size, padding)
+    return expected_len
 
   @parameterized.named_parameters(
-      ('16k_.21secs', 16000, .21),
-      ('24k_.21secs', 24000, .21),
-      ('44.1k_.21secs', 44100, .21),
-      ('48k_.21secs', 48000, .21),
-      ('16k_.4secs', 16000, .4),
-      ('24k_.4secs', 24000, .4),
-      ('44.1k_.4secs', 44100, .4),
-      ('48k_.4secs', 48000, .4),
+      ('same_.21secs', 'same', .21),
+      ('same_.4secs', 'same', .4),
+      ('center_.21secs', 'center', .21),
+      ('center_.4secs', 'center', .4),
+      ('valid_.21secs', 'valid', .21),
+      ('valid_.4secs', 'valid', .4),
   )
-  def test_compute_f0_at_sample_rate(self, sample_rate, audio_len_sec):
-    audio_sin = gen_np_sinusoid(self.frequency, self.amp, sample_rate,
-                                audio_len_sec)
-    f0_hz, f0_confidence = spectral_ops.compute_f0(audio_sin, sample_rate,
-                                                   self.frame_rate)
-    expected_f0_hz_and_f0_conf_len = int(self.frame_rate * audio_len_sec)
-    self.assertLen(f0_hz, expected_f0_hz_and_f0_conf_len)
-    self.assertLen(f0_confidence, expected_f0_hz_and_f0_conf_len)
+  def test_compute_f0(self, padding, audio_len_sec):
+    """Ensure that compute_f0 (crepe) has expected output shape."""
+    sr = 16000
+    audio_sin = gen_np_sinusoid(self.frequency, self.amp, sr, audio_len_sec)
+    expected_len = self.expected_f0_length(audio_sin, padding)
+    f0_hz, f0_confidence = spectral_ops.compute_f0(
+        audio_sin, self.frame_rate, viterbi=True, padding=padding)
+    self.assertLen(f0_hz, expected_len)
+    self.assertLen(f0_confidence, expected_len)
     self.assertTrue(np.all(np.isfinite(f0_hz)))
     self.assertTrue(np.all(np.isfinite(f0_confidence)))
 
-  @parameterized.named_parameters(
-      ('16k_.21secs', 16000, .21),
-      ('24k_.21secs', 24000, .21),
-      ('48k_.21secs', 48000, .21),
-      ('16k_.4secs', 16000, .4),
-      ('24k_.4secs', 24000, .4),
-      ('48k_.4secs', 48000, .4),
-  )
-  def test_compute_loudness_at_sample_rate_1d(self, sample_rate, audio_len_sec):
+  def test_batch_compute_db(self):
+    """Ensure that compute_(loudness/power) can work on a batch."""
+    batch_size = 2
+    sample_rate = 16000
+    audio_len_sec = 0.21
+    padding = 'same'
     audio_sin = gen_np_sinusoid(self.frequency, self.amp, sample_rate,
                                 audio_len_sec)
-    expected_loudness_len = int(self.frame_rate * audio_len_sec)
+    expected_len = self.expected_db_length(audio_sin, sample_rate, padding)
+    audio_batch = tf.tile(audio_sin[None, :], [batch_size, 1])
+    loudness = spectral_ops.compute_loudness(
+        audio_batch, sample_rate, self.frame_rate, self.frame_size,
+        padding=padding)
+    power = spectral_ops.compute_power(
+        audio_batch, sample_rate, self.frame_rate, self.frame_size,
+        padding=padding)
+    self.assertLen(loudness.shape, 2)
+    self.assertLen(power.shape, 2)
+    self.assertEqual(batch_size, loudness.shape[0])
+    self.assertEqual(batch_size, power.shape[0])
+    self.assertEqual(expected_len, loudness.shape[1])
+    self.assertEqual(expected_len, power.shape[1])
 
-    for use_tf in [False, True]:
-      loudness = spectral_ops.compute_loudness(
-          audio_sin, sample_rate, self.frame_rate, use_tf=use_tf)
-      self.assertLen(loudness, expected_loudness_len)
-      self.assertTrue(np.all(np.isfinite(loudness)))
-
-  @parameterized.named_parameters(
-      ('16k_.21secs', 16000, .21),
-      ('24k_.21secs', 24000, .21),
-      ('48k_.21secs', 48000, .21),
-      ('16k_.4secs', 16000, .4),
-      ('24k_.4secs', 24000, .4),
-      ('48k_.4secs', 48000, .4),
-  )
-  def test_compute_loudness_at_sample_rate_2d(self, sample_rate, audio_len_sec):
-    batch_size = 8
-    audio_sin_batch = gen_np_batched_sinusoids(self.frequency, self.amp,
-                                               sample_rate, audio_len_sec,
-                                               batch_size)
-    expected_loudness_len = int(self.frame_rate * audio_len_sec)
-
-    for use_tf in [False, True]:
-      loudness_batch = spectral_ops.compute_loudness(
-          audio_sin_batch, sample_rate, self.frame_rate, use_tf=use_tf)
-
-      self.assertEqual(loudness_batch.shape[0], batch_size)
-      self.assertEqual(loudness_batch.shape[1], expected_loudness_len)
-      self.assertTrue(np.all(np.isfinite(loudness_batch)))
-
-      # Check if batched loudness is equal to equivalent single computations
-      audio_sin = gen_np_sinusoid(self.frequency, self.amp, sample_rate,
-                                  audio_len_sec)
-      loudness_target = spectral_ops.compute_loudness(
-          audio_sin, sample_rate, self.frame_rate, use_tf=use_tf)
-      loudness_batch_target = np.tile(loudness_target, (batch_size, 1))
-      # Allow tolerance within 1dB
-      self.assertAllClose(loudness_batch, loudness_batch_target, atol=1, rtol=1)
-
-  @parameterized.named_parameters(
-      ('16k_.21secs', 16000, .21),
-      ('24k_.21secs', 24000, .21),
-      ('48k_.21secs', 48000, .21),
-      ('16k_.4secs', 16000, .4),
-      ('24k_.4secs', 24000, .4),
-      ('48k_.4secs', 48000, .4),
-  )
-  def test_tf_compute_loudness_at_sample_rate(self, sample_rate, audio_len_sec):
+  def test_compute_loudness_tf_np(self):
+    """Ensure that compute_loudness is the same output for np and tf."""
+    sample_rate = 16000
+    audio_len_sec = 0.21
     audio_sin = gen_np_sinusoid(self.frequency, self.amp, sample_rate,
                                 audio_len_sec)
-    loudness = spectral_ops.compute_loudness(audio_sin, sample_rate,
-                                             self.frame_rate)
-    expected_loudness_len = int(self.frame_rate * audio_len_sec)
-    self.assertLen(loudness, expected_loudness_len)
+    loudness_tf = spectral_ops.compute_loudness(
+        audio_sin, sample_rate, self.frame_rate, self.frame_size, use_tf=True)
+    loudness_np = spectral_ops.compute_loudness(
+        audio_sin, sample_rate, self.frame_rate, self.frame_size, use_tf=False)
+    # Allow tolerance within 1dB
+    self.assertAllClose(loudness_tf.numpy(), loudness_np, atol=1, rtol=1)
+
+  @parameterized.named_parameters(
+      ('16k_.21secs', 16000, .21),
+      ('24k_.21secs', 24000, .21),
+      ('44.1k_.21secs', 44100, .21),
+      ('16k_.4secs', 16000, .4),
+      ('24k_.4secs', 24000, .4),
+      ('44.1k_.4secs', 44100, .4),
+  )
+  def test_compute_loudness(self, sample_rate, audio_len_sec):
+    """Ensure that compute_loudness has expected output shape."""
+    padding = 'center'
+    audio_sin = gen_np_sinusoid(self.frequency, self.amp, sample_rate,
+                                audio_len_sec)
+    expected_len = self.expected_db_length(audio_sin, sample_rate, padding)
+    loudness = spectral_ops.compute_loudness(
+        audio_sin, sample_rate, self.frame_rate, self.frame_size,
+        padding=padding)
+    self.assertLen(loudness, expected_len)
     self.assertTrue(np.all(np.isfinite(loudness)))
 
   @parameterized.named_parameters(
-      ('44.1k_.21secs', 44100, .21),
-      ('44.1k_.4secs', 44100, .4),
+      ('same', 'same'),
+      ('valid', 'valid'),
+      ('center', 'center'),
   )
-  def test_compute_loudness_indivisible_rates_raises_error(
-      self, sample_rate, audio_len_sec):
+  def test_compute_loudness_padding(self, padding):
+    """Ensure that compute_loudness works with different paddings."""
+    sample_rate = 16000
+    audio_len_sec = 0.21
     audio_sin = gen_np_sinusoid(self.frequency, self.amp, sample_rate,
                                 audio_len_sec)
-
-    for use_tf in [False, True]:
-      with self.assertRaises(ValueError):
-        spectral_ops.compute_loudness(
-            audio_sin, sample_rate, self.frame_rate, use_tf=use_tf)
+    expected_len = self.expected_db_length(audio_sin, sample_rate, padding)
+    loudness = spectral_ops.compute_loudness(
+        audio_sin, sample_rate, self.frame_rate, self.frame_size,
+        padding=padding)
+    self.assertLen(loudness, expected_len)
+    self.assertTrue(np.all(np.isfinite(loudness)))
 
   @parameterized.named_parameters(
       ('16k_.21secs', 16000, .21),
       ('24k_.21secs', 24000, .21),
-      ('48k_.21secs', 48000, .21),
+      ('44.1k_.21secs', 44100, .21),
       ('16k_.4secs', 16000, .4),
       ('24k_.4secs', 24000, .4),
-      ('48k_.4secs', 48000, .4),
+      ('44.1k_.4secs', 44100, .4),
   )
   def test_compute_rms_energy(self, sample_rate, audio_len_sec):
+    """Ensure that compute_rms_energy has expected output shape."""
+    padding = 'center'
     audio_sin = gen_np_sinusoid(self.frequency, self.amp, sample_rate,
                                 audio_len_sec)
-    expected_rmse_len = int(self.frame_rate * audio_len_sec)
-
+    expected_len = self.expected_db_length(audio_sin, sample_rate, padding)
     rms_energy = spectral_ops.compute_rms_energy(
-        audio_sin, sample_rate, self.frame_rate)
-    self.assertLen(rms_energy, expected_rmse_len)
+        audio_sin, sample_rate, self.frame_rate, self.frame_size,
+        padding=padding)
+    self.assertLen(rms_energy, expected_len)
     self.assertTrue(np.all(np.isfinite(rms_energy)))
 
   @parameterized.named_parameters(
-      ('16k_.21secs', 16000, .21),
-      ('24k_.21secs', 24000, .21),
-      ('48k_.21secs', 48000, .21),
-      ('16k_.4secs', 16000, .4),
-      ('24k_.4secs', 24000, .4),
-      ('48k_.4secs', 48000, .4),
+      ('same', 'same'),
+      ('valid', 'valid'),
+      ('center', 'center'),
   )
-  def test_compute_power(self, sample_rate, audio_len_sec):
+  def test_compute_power_padding(self, padding):
+    """Ensure that compute_power (-> +rms) work with different paddings."""
+    sample_rate = 16000
+    audio_len_sec = 0.21
     audio_sin = gen_np_sinusoid(self.frequency, self.amp, sample_rate,
                                 audio_len_sec)
-    expected_power_len = int(self.frame_rate * audio_len_sec)
-
+    expected_len = self.expected_db_length(audio_sin, sample_rate, padding)
     power = spectral_ops.compute_power(
-        audio_sin, sample_rate, self.frame_rate)
-    self.assertLen(power, expected_power_len)
+        audio_sin, sample_rate, self.frame_rate, self.frame_size,
+        padding=padding)
+    self.assertLen(power, expected_len)
     self.assertTrue(np.all(np.isfinite(power)))
+
+
+class PadTest(parameterized.TestCase, tf.test.TestCase):
+
+  def test_pad_end_stft_is_consistent(self):
+    """Ensure that spectral_ops.pad('same') is same as stft(pad_end=True)."""
+    frame_size = 200
+    hop_size = 180
+    audio = tf.random.normal([1, 1000])
+    padded_audio = spectral_ops.pad(audio, frame_size, hop_size, 'same')
+    s_pad_end = tf.signal.stft(audio, frame_size, hop_size, pad_end=True)
+    s_same = tf.signal.stft(padded_audio, frame_size, hop_size, pad_end=False)
+    self.assertAllClose(np.abs(s_pad_end), np.abs(s_same), rtol=1e-3, atol=1e-3)
+
+  @parameterized.named_parameters(
+      ('valid_odd', 'valid', 180),
+      ('same_odd', 'same', 180),
+      ('center_odd', 'center', 180),
+      ('valid_even', 'valid', 200),
+      ('same_even', 'same', 200),
+      ('center_even', 'center', 200),
+  )
+  def test_padding_shapes_are_correct(self, padding, hop_size):
+    """Ensure that pad() and get_framed_lengths() have correct shapes."""
+    frame_size = 200
+    n_t = 1000
+    audio = tf.random.normal([1, n_t])
+    padded_audio = spectral_ops.pad(audio, frame_size, hop_size, padding)
+    n_t_pad = padded_audio.shape[1]
+
+    frames = tf.signal.frame(padded_audio, frame_size, hop_size)
+    n_frames = frames.shape[1]
+
+    exp_n_frames, exp_n_t_pad = spectral_ops.get_framed_lengths(
+        n_t, frame_size, hop_size, padding)
+
+    self.assertEqual(n_frames, exp_n_frames)
+    self.assertEqual(n_t_pad, exp_n_t_pad)
 
 
 if __name__ == '__main__':

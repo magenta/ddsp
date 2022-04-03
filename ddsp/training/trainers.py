@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -62,15 +62,19 @@ class Trainer(object):
         decay_rate=lr_decay_rate)
 
     with self.strategy.scope():
-      optimizer = tf.keras.optimizers.Adam(lr_schedule)
-      self.optimizer = optimizer
+      self.optimizer = tf.keras.optimizers.Adam(lr_schedule)
+
+  def get_checkpoint(self, model=None):
+    """Model arg can also be a tf.train.Checkpoint(**dict(submodules))."""
+    model = model or self.model  # Default to full model.
+    return tf.train.Checkpoint(model=model, optimizer=self.optimizer)
 
   def save(self, save_dir):
     """Saves model and optimizer to a checkpoint."""
     # Saving weights in checkpoint format because saved_model requires
     # handling variable batch size, which some synths and effects can't.
     start_time = time.time()
-    checkpoint = tf.train.Checkpoint(model=self.model, optimizer=self.optimizer)
+    checkpoint = self.get_checkpoint()
     manager = tf.train.CheckpointManager(
         checkpoint, directory=save_dir, max_to_keep=self.checkpoints_to_keep)
     step = self.step.numpy()
@@ -79,12 +83,20 @@ class Trainer(object):
     logging.info('Saving model took %.1f seconds', time.time() - start_time)
 
   def restore(self, checkpoint_path, restore_keys=None):
-    """Restore model and optimizer from a checkpoint if it exists."""
+    """Restore model and optimizer from a checkpoint if it exists.
+
+    Args:
+      checkpoint_path: Path to checkpoint file or directory.
+      restore_keys: Optional list of strings for submodules to restore.
+
+    Raises:
+      FileNotFoundError: If no checkpoint is found.
+    """
     logging.info('Restoring from checkpoint...')
     start_time = time.time()
 
     # Prefer function args over object properties.
-    restore_keys = self.restore_keys if restore_keys is None else restore_keys
+    restore_keys = restore_keys or self.restore_keys
     if restore_keys is None:
       # If no keys are passed, restore the whole model.
       model = self.model
@@ -100,20 +112,17 @@ class Trainer(object):
         logging.info(log_str)
 
     # Restore from latest checkpoint.
-    checkpoint = tf.train.Checkpoint(model=model, optimizer=self.optimizer)
-    latest_checkpoint = train_util.get_latest_chekpoint(checkpoint_path)
-    if latest_checkpoint is not None:
-      # checkpoint.restore must be within a strategy.scope() so that optimizer
-      # slot variables are mirrored.
-      with self.strategy.scope():
-        if restore_keys is None:
-          checkpoint.restore(latest_checkpoint)
-        else:
-          checkpoint.restore(latest_checkpoint).expect_partial()
-        logging.info('Loaded checkpoint %s', latest_checkpoint)
-      logging.info('Loading model took %.1f seconds', time.time() - start_time)
-    else:
-      logging.info('No checkpoint, skipping.')
+    checkpoint = self.get_checkpoint(model)
+    latest_checkpoint = train_util.get_latest_checkpoint(checkpoint_path)
+    # checkpoint.restore must be within a strategy.scope() so that optimizer
+    # slot variables are mirrored.
+    with self.strategy.scope():
+      if restore_keys is None:
+        checkpoint.restore(latest_checkpoint)
+      else:
+        checkpoint.restore(latest_checkpoint).expect_partial()
+      logging.info('Loaded checkpoint %s', latest_checkpoint)
+    logging.info('Loading model took %.1f seconds', time.time() - start_time)
 
   @property
   def step(self):
@@ -163,3 +172,14 @@ class Trainer(object):
     return losses
 
 
+@gin.configurable
+def get_trainer_class(trainer_class=Trainer):
+  """Gin configurable function get a 'global' trainer for use in ddsp_run.py.
+
+  Args:
+    trainer_class: A trainer class such as `Trainer`.
+
+  Returns:
+    The 'global' trainer class specifieed in the gin config.
+  """
+  return trainer_class

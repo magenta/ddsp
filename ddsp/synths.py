@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,9 +21,40 @@ import gin
 import tensorflow.compat.v2 as tf
 
 
-# TODO(jesseengel): Rename Additive to Harmonic.
 @gin.register
-class Additive(processors.Processor):
+class TensorToAudio(processors.Processor):
+  """Identity "synth" returning input samples with channel dimension removed."""
+
+  def __init__(self, name='tensor_to_audio'):
+    super().__init__(name=name)
+
+  def get_controls(self, samples):
+    """Convert network output tensors into a dictionary of synthesizer controls.
+
+    Args:
+      samples: 3-D Tensor of "controls" (really just samples), of shape
+        [batch, time, 1].
+
+    Returns:
+      Dictionary of tensors of synthesizer controls.
+    """
+    return {'samples': samples}
+
+  def get_signal(self, samples):
+    """"Synthesize" audio by removing channel dimension from input samples.
+
+    Args:
+      samples: 3-D Tensor of "controls" (really just samples), of shape
+        [batch, time, 1].
+
+    Returns:
+      A tensor of audio with shape [batch, time].
+    """
+    return tf.squeeze(samples, 2)
+
+
+@gin.register
+class Harmonic(processors.Processor):
   """Synthesize audio with a bank of harmonic sinusoidal oscillators."""
 
   def __init__(self,
@@ -31,12 +62,35 @@ class Additive(processors.Processor):
                sample_rate=16000,
                scale_fn=core.exp_sigmoid,
                normalize_below_nyquist=True,
-               name='additive'):
+               amp_resample_method='window',
+               use_angular_cumsum=False,
+               name='harmonic'):
+    """Constructor.
+
+    Args:
+      n_samples: Fixed length of output audio.
+      sample_rate: Samples per a second.
+      scale_fn: Scale function for amplitude and harmonic distribution inputs.
+      normalize_below_nyquist: Remove harmonics above the nyquist frequency
+        and normalize the remaining harmonic distribution to sum to 1.0.
+      amp_resample_method: Mode with which to resample amplitude envelopes.
+        Must be in ['nearest', 'linear', 'cubic', 'window']. 'window' uses
+        overlapping windows (only for upsampling) which is smoother
+        for amplitude envelopes with large frame sizes.
+      use_angular_cumsum: Use angular cumulative sum on accumulating phase
+        instead of tf.cumsum. If synthesized examples are longer than ~100k
+        audio samples, consider use_angular_cumsum to avoid accumulating
+        noticible phase errors due to the limited precision of tf.cumsum.
+        However, using angular cumulative sum is slower on accelerators.
+      name: Synth name.
+    """
     super().__init__(name=name)
     self.n_samples = n_samples
     self.sample_rate = sample_rate
     self.scale_fn = scale_fn
     self.normalize_below_nyquist = normalize_below_nyquist
+    self.amp_resample_method = amp_resample_method
+    self.use_angular_cumsum = use_angular_cumsum
 
   def get_controls(self,
                    amplitudes,
@@ -59,26 +113,16 @@ class Additive(processors.Processor):
       amplitudes = self.scale_fn(amplitudes)
       harmonic_distribution = self.scale_fn(harmonic_distribution)
 
-    # Bandlimit the harmonic distribution.
-    if self.normalize_below_nyquist:
-      n_harmonics = int(harmonic_distribution.shape[-1])
-      harmonic_frequencies = core.get_harmonic_frequencies(f0_hz,
-                                                           n_harmonics)
-      harmonic_distribution = core.remove_above_nyquist(harmonic_frequencies,
-                                                        harmonic_distribution,
-                                                        self.sample_rate)
-
-    # Normalize
-    harmonic_distribution /= tf.reduce_sum(harmonic_distribution,
-                                           axis=-1,
-                                           keepdims=True)
+    harmonic_distribution = core.normalize_harmonics(
+        harmonic_distribution, f0_hz,
+        self.sample_rate if self.normalize_below_nyquist else None)
 
     return {'amplitudes': amplitudes,
             'harmonic_distribution': harmonic_distribution,
             'f0_hz': f0_hz}
 
   def get_signal(self, amplitudes, harmonic_distribution, f0_hz):
-    """Synthesize audio with additive synthesizer from controls.
+    """Synthesize audio with harmonic synthesizer from controls.
 
     Args:
       amplitudes: Amplitude tensor of shape [batch, n_frames, 1]. Expects
@@ -97,7 +141,9 @@ class Additive(processors.Processor):
         amplitudes=amplitudes,
         harmonic_distribution=harmonic_distribution,
         n_samples=self.n_samples,
-        sample_rate=self.sample_rate)
+        sample_rate=self.sample_rate,
+        amp_resample_method=self.amp_resample_method,
+        use_angular_cumsum=self.use_angular_cumsum)
     return signal
 
 
@@ -191,7 +237,7 @@ class Wavetable(processors.Processor):
              'f0_hz': f0_hz}
 
   def get_signal(self, amplitudes, wavetables, f0_hz):
-    """Synthesize audio with additive synthesizer from controls.
+    """Synthesize audio with wavetable synthesizer from controls.
 
     Args:
       amplitudes: Amplitude tensor of shape [batch, n_frames, 1]. Expects

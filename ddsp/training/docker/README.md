@@ -9,7 +9,7 @@ Make sure that you have completed the following steps:
 * Enable [AI Platform Training and Prediction and Container Registry APIs](https://console.cloud.google.com/flows/enableapi?apiid=ml.googleapis.com,containerregistry.googleapis.com)
 * Install [Docker](https://docs.docker.com/engine/install/) locally
 * [Configure Docker for Cloud Container Registry](https://cloud.google.com/container-registry/docs/pushing-and-pulling)
-* [Upload the training data](https://cloud.google.com/storage/docs/uploading-objects) in the [TFRecord](https://www.tensorflow.org/tutorials/load_data/tfrecord) format to the GCS bucket. You can preprocess your audio files into this format using the `ddsp_prepare_tfrecord` tool as described in [Making a TFRecord dataset from your own sounds](https://github.com/magenta/ddsp/tree/master/ddsp/training/data_preparation).
+* [Upload the training data](https://cloud.google.com/storage/docs/uploading-objects) in the [TFRecord](https://www.tensorflow.org/tutorials/load_data/tfrecord) format to the GCS bucket. You can preprocess your audio files into this format using the `ddsp_prepare_tfrecord` tool as described in [Making a TFRecord dataset from your own sounds](https://github.com/magenta/ddsp/tree/main/ddsp/training/data_preparation).
 * Install TensorBoard: `pip install -U tensorboard` and add the executable to your PATH: `export PATH=/usr/local/google/home/$USER/.local/bin:$PATH`
 
 ## Quickstart:
@@ -97,7 +97,7 @@ gcloud ai-platform jobs submit training $JOB_NAME \
 * `--hypertune` - If True enables metric reporting for hyperparameter tuning.
 
 ##### Additional configuration flags
-* `--gin_param` - Gin parameter bindings. Using this flag requires some familiarity with the Magenta DDSP source code. Take a look at parameters you can specify in [Gin config files](https://github.com/magenta/ddsp/tree/master/ddsp/training/gin).
+* `--gin_param` - Gin parameter bindings. Using this flag requires some familiarity with the Magenta DDSP source code. Take a look at parameters you can specify in [Gin config files](https://github.com/magenta/ddsp/tree/main/ddsp/training/gin).
 * `--gin_search_path` - Additional gin file search path. Must be path inside Docker container and necessary gin configs should be added at the Docker image building stage.
 * `--gin_file` - Additional Gin config file. If the file is in gstorage bucket specify a whole gstorage path.
 

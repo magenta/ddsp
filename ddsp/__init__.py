@@ -1,4 +1,4 @@
-# Copyright 2020 The DDSP Authors.
+# Copyright 2022 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 
 # Module imports.
 from ddsp import core
+from ddsp import dags
 from ddsp import effects
 from ddsp import losses
 from ddsp import processors
