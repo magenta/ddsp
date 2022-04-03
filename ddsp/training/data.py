@@ -89,7 +89,7 @@ class FTMProvider(DataProvider):
       sample_rate: Sample rate of audio in the dataset.
       frame_rate: Frame rate of features in the dataset.
     """
-    self._name = name
+    #self._name = name
     self._split = split
     self._data_dir = data_dir
     super().__init__(sample_rate, frame_rate)
