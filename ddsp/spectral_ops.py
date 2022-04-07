@@ -34,8 +34,6 @@ DB_RANGE = core.DB_RANGE  # dB (80.0).
 
 def stft(audio, frame_size=2048, overlap=0.75, pad_end=True):
   """Differentiable stft in tensorflow, computed in batch."""
-  assert frame_size * overlap % 2.0 == 0.0
-
   # Remove channel dim if present.
   audio = tf_float32(audio)
   if len(audio.shape) == 3:
@@ -45,7 +43,7 @@ def stft(audio, frame_size=2048, overlap=0.75, pad_end=True):
       signals=audio,
       frame_length=int(frame_size),
       frame_step=int(frame_size * (1.0 - overlap)),
-      fft_length=int(frame_size),
+      fft_length=None,  # Use enclosing power of 2.
       pad_end=pad_end)
   return s
 
