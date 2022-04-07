@@ -904,6 +904,47 @@ class RnnFc(tfk.Sequential):
 
 
 @gin.register
+class MultiheadRnn(tfkl.Layer):
+  """RNN stack with sent to multiple output FC layers (heads)."""
+
+  def __init__(self,
+               rnn_feat,
+               out_feat_list,
+               rnn_type='lstm',
+               nonlinearity='sigmoid',
+               bidir=False,
+               n_rnn=4,
+               dropout=0.3,
+               skip_dense=False,
+               **kwargs):
+    super().__init__(**kwargs)
+    self.rnn = tfk.Sequential()
+
+    for n in range(n_rnn):
+      self.rnn.add(Rnn(rnn_feat, rnn_type, bidir=bidir,
+                       return_sequences=True))
+      if n != n_rnn-1:
+        self.rnn.add(tfkl.Dropout(dropout))
+
+    if not isinstance(nonlinearity, list):
+      nonlinearity = [nonlinearity] * len(out_feat_list)
+
+    self.out_heads = []
+    if not skip_dense:
+      for d, nl in zip(out_feat_list, nonlinearity):
+        nl = get_nonlinearity(nl)
+        self.out_heads.append(tfk.Sequential([tfkl.Dense(d),
+                                              tfkl.Activation(nl)]))
+
+  def call(self, x, **kwargs):
+    rnn_out = self.rnn(x)
+    if self.out_heads:
+      return tuple(out_head(rnn_out) for out_head in self.out_heads)
+    else:
+      return rnn_out
+
+
+@gin.register
 class RnnSandwich(tf.keras.Sequential):
   """RNN Sandwiched by two FC Stacks."""
 
