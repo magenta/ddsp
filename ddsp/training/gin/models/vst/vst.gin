@@ -25,7 +25,7 @@ OnlineF0PowerPreprocessor:
   padding = 'center'
   compute_power = True
   compute_f0 = False
-  crepe_saved_model_path = 'full'
+  crepe_saved_model_path = None
 
 
 # Encoder
