@@ -32,6 +32,21 @@ tfkl = tfk.layers
 # pylint: disable=redundant-keyword-arg
 
 
+def gin_register_keras_layers():
+  """Registers all keras layers and Sequential to be referenceable in gin."""
+  # Register sequential model.
+  gin.external_configurable(tf.keras.Sequential, 'tf.keras.Sequential')
+
+  # Register all the layers.
+  for k, v in inspect.getmembers(tf.keras.layers):
+    # Duck typing for tf.keras.layers.Layer since keras uses metaclasses.
+    if hasattr(v, 'variables'):
+      gin.external_configurable(v, f'tf.keras.layers.{k}')
+
+
+gin_register_keras_layers()
+
+
 class DictLayer(tfkl.Layer):
   """Wrap a Keras Layer to take dictionary inputs and outputs.
 
