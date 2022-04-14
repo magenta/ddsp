@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Data preparation code for DDSP models."""
 
 from ddsp.training.data_preparation import prepare_tfrecord_lib
