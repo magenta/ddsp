@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Constructs inference version of the models.
 
 N.B. (jesseengel): I tried to make a nice base class. I tried both with multiple

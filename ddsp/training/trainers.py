@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Library of Trainer objects that define traning step and wrap optimizer."""
 
 import time
