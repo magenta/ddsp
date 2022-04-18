@@ -10,3 +10,6 @@ Here are colab notebooks for demonstrating neat things you can do with DDSP.
 
 *   [pitch_detection](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/demos/pitch_detection.ipynb):
     Demonstration of self-supervised pitch detection models from [2020 ICML Workshop paper](https://openreview.net/forum?id=RlVTYWhsky7).
+
+*   [Train_VST](https://colab.research.google.com/github/magenta/ddsp/blob/main/ddsp/colab/demos/Train_VST.ipynb):
+    Simplified training colab for the real-time audio plugin (WIP).
