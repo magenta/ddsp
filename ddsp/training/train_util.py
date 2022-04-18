@@ -268,18 +268,21 @@ def train(data_provider,
   with summary_writer.as_default():
     tick = time.time()
 
-    for iteration in range(num_steps):
-      step = trainer.step  # Step is not iteration if restarting a model.
+    first_step = True
+
+    while trainer.step < num_steps:
+      step = trainer.step
 
       # Take a step.
       losses = trainer.train_step(dataset_iter)
 
       # Create training loss metrics when starting/restarting training.
-      if iteration == 0:
+      if first_step:
         loss_names = list(losses.keys())
         logging.info('Creating metrics for %s', loss_names)
         avg_losses = {name: tf.keras.metrics.Mean(name=name, dtype=tf.float32)
                       for name in loss_names}
+        first_step = False
 
       # Update metrics.
       for k, v in losses.items():
@@ -312,16 +315,16 @@ def train(data_provider,
           losses['total_loss'] <= early_stop_loss_value):
         logging.info('Total loss reached early stopping value of %s',
                      early_stop_loss_value)
-
-        # Write a final checkpoint.
-        if save_dir:
-          trainer.save(save_dir)
-          summary_writer.flush()
         break
 
       # Save Model.
       if step % steps_per_save == 0 and save_dir:
         trainer.save(save_dir)
         summary_writer.flush()
+
+  # Write a final checkpoint.
+  if save_dir:
+    trainer.save(save_dir)
+    summary_writer.flush()
 
   logging.info('Training Finished!')
