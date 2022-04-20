@@ -309,6 +309,10 @@ def compute_dataset_statistics(data_provider,
   # Detect notes.
   mask_on, _ = detect_notes(loudness_trimmed, f0_conf_trimmed)
 
+  # If no notes detected, just default to using full signal.
+  mask_on = np.logical_or(
+      mask_on, np.logical_not(np.any(mask_on, axis=1, keepdims=True)))
+
   quantile_transform = fit_quantile_transform(loudness_trimmed, mask_on)
 
   # Pitch statistics.
