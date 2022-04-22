@@ -184,9 +184,13 @@ class OnlineF0PowerPreprocessor(nn.DictLayer):
     # Use viterbi decoding.
     self.viterbi = viterbi
 
-  def call(self, audio, f0_hz=None, f0_confidence=None) -> [
+  def call(self, audio, f0_hz=None, f0_confidence=None, audio_16k=None) -> [
       'f0_hz', 'pw_db', 'f0_scaled', 'pw_scaled', 'f0_confidence']:
     """Compute power on the fly if it's not in the inputs."""
+    # Compute features at 16kHz (needed for CREPE).
+    if audio_16k is not None:
+      audio = audio_16k
+
     # Compute power and f0 on the fly.
     if self.compute_power:
       pw_db = ddsp.spectral_ops.compute_power(audio,
@@ -204,7 +208,7 @@ class OnlineF0PowerPreprocessor(nn.DictLayer):
     elif f0_hz is None or f0_confidence is None:
       raise ValueError('Preprocessor must either have `compute_f0=True`, or'
                        '__call__ must be supplied 3 arguments, '
-                       '[audio, f0, and f0_confidence].')
+                       '[audio, f0_hz, and f0_confidence].')
 
     # For NN training, scale frequency and loudness to the range [0, 1].
     pw_db = at_least_3d(pw_db)

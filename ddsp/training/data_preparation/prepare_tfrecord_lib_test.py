@@ -26,6 +26,8 @@ import numpy as np
 import scipy.io.wavfile
 import tensorflow.compat.v2 as tf
 
+CREPE_SAMPLE_RATE = spectral_ops.CREPE_SAMPLE_RATE
+
 
 class PrepareTFRecordBeamTest(parameterized.TestCase):
 
@@ -70,7 +72,7 @@ class PrepareTFRecordBeamTest(parameterized.TestCase):
         try:
           self.assertLen(arr, expected_len)
         except AssertionError as e:
-          raise AssertionError('%s feature: %s' % (e, feat))
+          raise AssertionError('feature: %s' % feat) from e
         self.assertFalse(any(np.isinf(arr)))
 
   def get_expected_length(self, input_length, frame_rate, center=False):
@@ -139,6 +141,7 @@ class PrepareTFRecordBeamTest(parameterized.TestCase):
         expected_n_batch,
         {
             'audio': expected_n_t,
+            'audio_16k': expected_n_t,
             'f0_hz': expected_n_frames,
             'f0_confidence': expected_n_frames,
             'loudness_db': expected_n_frames,
@@ -169,13 +172,49 @@ class PrepareTFRecordBeamTest(parameterized.TestCase):
     self.validate_outputs(
         n_batch, {
             'audio': n_t,
+            'audio_16k': n_t,
             'f0_hz': n_frames,
             'f0_confidence': n_frames,
             'loudness_db': n_frames,
         })
 
-  @parameterized.named_parameters(('16k', 16000), ('24k', 24000),
-                                  ('48k', 48000))
+  @parameterized.named_parameters(
+      ('16kHz', 16000),
+      ('32kHz', 32000),
+      ('48kHz', 48000))
+  def test_sample_rate(self, sample_rate):
+    frame_rate = 250
+    example_secs = 0.3
+    hop_secs = 0.1
+    center = True
+    n_batch = self.get_n_per_chunk(self.wav_secs, example_secs, hop_secs)
+    prepare_tfrecord_lib.prepare_tfrecord(
+        [self.wav_path],
+        os.path.join(self.test_dir, 'output.tfrecord'),
+        num_shards=2,
+        sample_rate=sample_rate,
+        frame_rate=frame_rate,
+        example_secs=example_secs,
+        hop_secs=hop_secs,
+        center=center,
+        chunk_secs=None)
+
+    n_t = int(example_secs * sample_rate)
+    n_t_16k = int(example_secs * CREPE_SAMPLE_RATE)
+    n_frames = self.get_expected_length(n_t_16k, frame_rate, center)
+    n_expected_frames = 76  # (250 * 0.3) + 1.
+    self.assertEqual(n_frames, n_expected_frames)
+    self.validate_outputs(
+        n_batch, {
+            'audio': n_t,
+            'audio_16k': n_t_16k,
+            'f0_hz': n_frames,
+            'f0_confidence': n_frames,
+            'loudness_db': n_frames,
+        })
+
+  @parameterized.named_parameters(('16kHz', 16000), ('44.1kHz', 44100),
+                                  ('48kHz', 48000))
   def test_audio_only(self, sample_rate):
     prepare_tfrecord_lib.prepare_tfrecord(
         [self.wav_path],
@@ -189,6 +228,7 @@ class PrepareTFRecordBeamTest(parameterized.TestCase):
     self.validate_outputs(
         1, {
             'audio': int(self.wav_secs * sample_rate),
+            'audio_16k': int(self.wav_secs * CREPE_SAMPLE_RATE),
         })
 
 

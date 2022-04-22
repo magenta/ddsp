@@ -254,7 +254,8 @@ class QuantileTransformer:
 def compute_dataset_statistics(data_provider,
                                batch_size=1,
                                power_frame_size=1024,
-                               power_frame_rate=50):
+                               power_frame_rate=50,
+                               legacy=False):
   """Calculate dataset stats.
 
   Args:
@@ -262,6 +263,7 @@ def compute_dataset_statistics(data_provider,
     batch_size: Iterate over dataset with this batch size.
     power_frame_size: Calculate power features on the fly with this frame size.
     power_frame_rate: Calculate power features on the fly with this frame rate.
+    legacy: Use the 'audio' key instead of 'audio_16k'.
 
   Returns:
     Dictionary of dataset statistics. This is an overcomplete set of statistics,
@@ -279,15 +281,17 @@ def compute_dataset_statistics(data_provider,
   f0_conf = []
   audio = []
 
+  audio_key = 'audio' if legacy else 'audio_16k'
+
   for batch in data_iter:
     loudness.append(batch['loudness_db'])
     power.append(
-        spectral_ops.compute_power(batch['audio'],
+        spectral_ops.compute_power(batch[audio_key],
                                    frame_size=power_frame_size,
                                    frame_rate=power_frame_rate))
     f0.append(batch['f0_hz'])
     f0_conf.append(batch['f0_confidence'])
-    audio.append(batch['audio'])
+    audio.append(batch[audio_key])
     i += 1
 
   print(f'Computing statistics for {i * batch_size} examples.')

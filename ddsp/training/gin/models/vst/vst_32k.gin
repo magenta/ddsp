@@ -1,0 +1,120 @@
+# -*-Python-*-
+# Autoencoder that decodes from (power, f0).
+# All lengths from the 16kHz config * 2.
+
+import ddsp
+import ddsp.training
+
+# =====
+# Model
+# =====
+get_model.model = @models.Autoencoder()
+
+# Globals
+frame_rate = 50
+frame_size = 1024
+sample_rate = 32000
+n_samples = 128640  # Extra frame for center padding. 32000 * 4 + 640
+
+
+# Preprocessor
+# Use same preprocessor for creating dataset and for training / inference.
+Autoencoder.preprocessor = @preprocessing.OnlineF0PowerPreprocessor()
+OnlineF0PowerPreprocessor:
+  frame_rate = %frame_rate
+  frame_size = %frame_size
+  padding = 'center'
+  compute_power = True
+  compute_f0 = False
+  crepe_saved_model_path = None
+
+
+# Encoder
+Autoencoder.encoder = None
+
+
+# Decoder
+Autoencoder.decoder = @decoders.RnnFcDecoder()
+RnnFcDecoder:
+    rnn_channels = 512
+    rnn_type = 'gru'
+    ch = 256
+    layers_per_stack = 1
+    input_keys = ('pw_scaled', 'f0_scaled')
+    output_splits = (('amps', 1),
+                     ('harmonic_distribution', 100),
+                     ('noise_magnitudes', 98))
+
+# Losses
+Autoencoder.losses = [
+    @losses.SpectralLoss(),
+]
+SpectralLoss:
+    loss_type = 'L1'
+    mag_weight = 1.0
+    logmag_weight = 1.0
+    fft_sizes = [4096, 2048, 1024, 512, 256, 128]
+
+# 16kHz fft sizes: (2048, 1024, 512, 256, 128, 64)
+
+# ==============
+# ProcessorGroup
+# ==============
+
+Autoencoder.processor_group = @processors.ProcessorGroup()
+
+# ==============
+# ProcessorGroup
+# ==============
+
+# Has a "Crop" processor to remove the padding from centered frames.
+
+ProcessorGroup.dag = [
+  (@synths.Harmonic(),
+    ['amps', 'harmonic_distribution', 'f0_hz']),
+  (@synths.FilteredNoise(),
+    ['noise_magnitudes']),
+  (@processors.Add(),
+    ['filtered_noise/signal', 'harmonic/signal']),
+  (@effects.FilteredNoiseReverb(),
+    ['add/signal']),
+  (@processors.Crop(),
+    ['reverb/signal'])
+]
+
+# Reverb
+FilteredNoiseReverb:
+    name = 'reverb'
+    reverb_length = 48000
+    n_frames = 500
+    n_filter_banks = 32
+    initial_bias = -4.0
+    trainable = True
+
+# Harmonic Synthesizer
+Harmonic:
+    name = 'harmonic'
+    n_samples = %n_samples
+    sample_rate = %sample_rate
+    normalize_below_nyquist = True
+    scale_fn = @core.exp_sigmoid
+    amp_resample_method = 'linear'
+    use_angular_cumsum = True  # Necessary at 48k as oscillators precess more.
+
+# Filtered Noise Synthesizer
+FilteredNoise:
+    name = 'filtered_noise'
+    n_samples = %n_samples
+    window_size = 0
+    scale_fn = @core.exp_sigmoid
+
+# Add
+processors.Add.name = 'add'
+
+# Remove the extra frame of synthesis from centering.
+# Since generation is forward.
+# Frame size is the frame of the "synthesis" which is just the hop size.
+Crop:
+    frame_size = 640
+    crop_location = 'back'
+

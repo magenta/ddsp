@@ -16,6 +16,8 @@
 import os
 
 from absl import logging
+from ddsp.spectral_ops import CREPE_FRAME_SIZE
+from ddsp.spectral_ops import CREPE_SAMPLE_RATE
 from ddsp.spectral_ops import get_framed_lengths
 import gin
 import tensorflow.compat.v2 as tf
@@ -199,31 +201,30 @@ class NSynthTfds(TfdsProvider):
     return dataset
 
 
-class RecordProvider(DataProvider):
-  """Class for reading records and returning a dataset."""
+@gin.register
+class TFRecordProvider(DataProvider):
+  """Class for reading TFRecords and returning a dataset."""
 
   def __init__(self,
-               file_pattern,
-               example_secs,
-               sample_rate,
-               frame_rate,
-               data_format_map_fn,
+               file_pattern=None,
+               example_secs=4,
+               sample_rate=16000,
+               frame_rate=250,
                centered=False):
     """RecordProvider constructor."""
+    super().__init__(sample_rate, frame_rate)
     self._file_pattern = file_pattern or self.default_file_pattern
     self._audio_length = example_secs * sample_rate
-    super().__init__(sample_rate, frame_rate)
+    self._audio_16k_length = example_secs * CREPE_SAMPLE_RATE
     self._feature_length = self.get_feature_length(centered)
-    self._data_format_map_fn = data_format_map_fn
 
   def get_feature_length(self, centered):
     """Take into account center padding to get number of frames."""
     # Number of frames is independent of frame size for "center/same" padding.
-    frame_size = 1024
-    hop_size = self.sample_rate / self.frame_rate
+    hop_size = CREPE_SAMPLE_RATE / self.frame_rate
     padding = 'center' if centered else 'same'
     return get_framed_lengths(
-        self._audio_length, frame_size, hop_size, padding)[0]
+        self._audio_16k_length, CREPE_FRAME_SIZE, hop_size, padding)[0]
 
   @property
   def default_file_pattern(self):
@@ -246,11 +247,32 @@ class RecordProvider(DataProvider):
 
     filenames = tf.data.Dataset.list_files(self._file_pattern, shuffle=shuffle)
     dataset = filenames.interleave(
-        map_func=self._data_format_map_fn,
+        map_func=tf.data.TFRecordDataset,
         cycle_length=40,
         num_parallel_calls=_AUTOTUNE)
     dataset = dataset.map(parse_tfexample, num_parallel_calls=_AUTOTUNE)
     return dataset
+
+  @property
+  def features_dict(self):
+    """Dictionary of features to read from dataset."""
+    return {
+        'audio':
+            tf.io.FixedLenFeature([self._audio_length], dtype=tf.float32),
+        'audio_16k':
+            tf.io.FixedLenFeature([self._audio_16k_length], dtype=tf.float32),
+        'f0_hz':
+            tf.io.FixedLenFeature([self._feature_length], dtype=tf.float32),
+        'f0_confidence':
+            tf.io.FixedLenFeature([self._feature_length], dtype=tf.float32),
+        'loudness_db':
+            tf.io.FixedLenFeature([self._feature_length], dtype=tf.float32),
+    }
+
+
+@gin.register
+class LegacyTFRecordProvider(TFRecordProvider):
+  """Class for reading TFRecords and returning a dataset."""
 
   @property
   def features_dict(self):
@@ -265,21 +287,6 @@ class RecordProvider(DataProvider):
         'loudness_db':
             tf.io.FixedLenFeature([self._feature_length], dtype=tf.float32),
     }
-
-
-@gin.register
-class TFRecordProvider(RecordProvider):
-  """Class for reading TFRecords and returning a dataset."""
-
-  def __init__(self,
-               file_pattern=None,
-               example_secs=4,
-               sample_rate=16000,
-               frame_rate=250,
-               centered=False):
-    """TFRecordProvider constructor."""
-    super().__init__(file_pattern, example_secs, sample_rate,
-                     frame_rate, tf.data.TFRecordDataset, centered=centered)
 
 
 # ------------------------------------------------------------------------------
@@ -397,7 +404,7 @@ class MixedProvider(BaseMultiProvider):
 # Synthetic Data for InverseSynthesis
 # ------------------------------------------------------------------------------
 @gin.register
-class SyntheticNotes(TFRecordProvider):
+class SyntheticNotes(LegacyTFRecordProvider):
   """Create self-supervised control signal.
 
   EXPERIMENTAL
@@ -440,7 +447,7 @@ class SyntheticNotes(TFRecordProvider):
 
 
 @gin.register
-class Urmp(TFRecordProvider):
+class Urmp(LegacyTFRecordProvider):
   """Urmp training set."""
 
   def __init__(self,

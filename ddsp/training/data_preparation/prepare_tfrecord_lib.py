@@ -21,6 +21,7 @@ import numpy as np
 import pydub
 import tensorflow.compat.v2 as tf
 
+CREPE_SAMPLE_RATE = spectral_ops.CREPE_SAMPLE_RATE  # 16kHz.
 
 
 def _load_audio_as_array(audio_path, sample_rate):
@@ -57,24 +58,32 @@ def _load_audio(audio_path, sample_rate):
   logging.info("Loading '%s'.", audio_path)
   beam.metrics.Metrics.counter('prepare-tfrecord', 'load-audio').inc()
   audio = _load_audio_as_array(audio_path, sample_rate)
-  return {'audio': audio}
+  if sample_rate != CREPE_SAMPLE_RATE:
+    audio_16k = _load_audio_as_array(audio_path, CREPE_SAMPLE_RATE)
+  else:
+    audio_16k = audio
+  return {'audio': audio, 'audio_16k': audio_16k}
 
 
 def _chunk_audio(ex, sample_rate, chunk_secs):
   """Pad audio and split into chunks."""
   beam.metrics.Metrics.counter('prepare-tfrecord', 'load-audio').inc()
-  audio = ex['audio']
-  chunk_size = int(chunk_secs * sample_rate)
-  chunks = tf.signal.frame(audio, chunk_size, chunk_size, pad_end=True)
+  def get_chunks(audio, sample_rate):
+    chunk_size = int(chunk_secs * sample_rate)
+    return tf.signal.frame(audio, chunk_size, chunk_size, pad_end=True).numpy()
+
+  chunks = get_chunks(ex['audio'], sample_rate)
+  chunks_16k = get_chunks(ex['audio_16k'], CREPE_SAMPLE_RATE)
+  assert chunks.shape[0] == chunks_16k.shape[0]
   n_chunks = chunks.shape[0]
   for i in range(n_chunks):
-    yield {'audio': chunks[i].numpy()}
+    yield {'audio': chunks[i], 'audio_16k': chunks_16k[i]}
 
 
 def _add_f0_estimate(ex, frame_rate, center, viterbi):
   """Add fundamental frequency (f0) estimate using CREPE."""
   beam.metrics.Metrics.counter('prepare-tfrecord', 'estimate-f0').inc()
-  audio = ex['audio']
+  audio = ex['audio_16k']
   padding = 'center' if center else 'same'
   f0_hz, f0_confidence = spectral_ops.compute_f0(
       audio, frame_rate, viterbi=viterbi, padding=padding)
@@ -86,13 +95,13 @@ def _add_f0_estimate(ex, frame_rate, center, viterbi):
   return ex
 
 
-def _add_loudness(ex, sample_rate, frame_rate, n_fft, center):
+def _add_loudness(ex, frame_rate, n_fft, center):
   """Add loudness in dB."""
   beam.metrics.Metrics.counter('prepare-tfrecord', 'compute-loudness').inc()
-  audio = ex['audio']
+  audio = ex['audio_16k']
   padding = 'center' if center else 'same'
   loudness_db = spectral_ops.compute_loudness(
-      audio, sample_rate, frame_rate, n_fft, padding=padding)
+      audio, CREPE_SAMPLE_RATE, frame_rate, n_fft, padding=padding)
   ex = dict(ex)
   ex['loudness_db'] = loudness_db.numpy().astype(np.float32)
   return ex
@@ -113,14 +122,16 @@ def _split_example(ex, sample_rate, frame_rate, example_secs, hop_secs, center):
       end = start + window_size
       yield sequence[start:end]
 
-  for audio, loudness_db, f0_hz, f0_confidence in zip(
+  for audio, audio_16k, loudness_db, f0_hz, f0_confidence in zip(
       get_windows(ex['audio'], sample_rate, center=False),
+      get_windows(ex['audio_16k'], CREPE_SAMPLE_RATE, center=False),
       get_windows(ex['loudness_db'], frame_rate, center),
       get_windows(ex['f0_hz'], frame_rate, center),
       get_windows(ex['f0_confidence'], frame_rate, center)):
     beam.metrics.Metrics.counter('prepare-tfrecord', 'split-example').inc()
     yield {
         'audio': audio,
+        'audio_16k': audio_16k,
         'loudness_db': loudness_db,
         'f0_hz': f0_hz,
         'f0_confidence': f0_confidence
@@ -238,7 +249,6 @@ def prepare_tfrecord(input_audio_paths,
                      center=center,
                      viterbi=viterbi)
           | beam.Map(_add_loudness,
-                     sample_rate=sample_rate,
                      frame_rate=frame_rate,
                      n_fft=512,
                      center=center))
