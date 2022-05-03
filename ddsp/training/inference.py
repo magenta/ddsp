@@ -132,7 +132,7 @@ class VSTBaseModule(models.Autoencoder):
 
   def __init__(self,
                ckpt,
-               verbose=True,
+               verbose=False,
                **kwargs):
     self.parse_gin(ckpt)
     self.configure_gin()
@@ -194,7 +194,6 @@ class VSTExtractFeatures(VSTBaseModule):
   def __init__(self,
                ckpt,
                crepe_saved_model_path=None,
-               verbose=True,
                **kwargs):
     self.crepe_saved_model_path = crepe_saved_model_path
     super().__init__(ckpt, **kwargs)
