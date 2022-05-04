@@ -1,4 +1,7 @@
 #!/bin/bash
+
+# Usage:
+# sh third_party/py/ddsp/update_pip.sh
 set -ex
 
 orig_dir=$(pwd)
