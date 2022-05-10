@@ -48,10 +48,14 @@ import note_seq
 import tensorflow as tf
 from tensorflowjs.converters import converter
 
+# pylint: disable=pointless-string-statement
 
 from tflite_support import metadata as _metadata
+# pylint: enable=pointless-string-statement
 
-
+flags.DEFINE_string(
+    'name', '', 'Name of your model to use as folder and filename on export. '
+    'Defaults to "export/" and "model.tflite" if none is provided.')
 flags.DEFINE_string(
     'model_path', '', 'Path to checkpoint or SavedModel directory. If no '
     'SavedModel is found, will search for latest checkpoint '
@@ -236,7 +240,10 @@ def saved_model_to_tfjs(input_dir, save_dir):
   print('TFJS Conversion Success!')
 
 
-def saved_model_to_tflite(input_dir, save_dir, metadata_file=None):
+def saved_model_to_tflite(input_dir,
+                          save_dir,
+                          metadata_file=None,
+                          name=''):
   """Convert SavedModel to TFLite model."""
   print(f'\nConverting to TFLite:\nInput:{input_dir}\nOutput:{save_dir}\n')
   # Convert the model.
@@ -247,7 +254,8 @@ def saved_model_to_tflite(input_dir, save_dir, metadata_file=None):
   ]
   tflite_model = tflite_converter.convert()  # Byte string.
   # Save the model.
-  save_path = os.path.join(save_dir, 'model.tflite')
+  name = name if name else 'model'
+  save_path = os.path.join(save_dir, f'{name}.tflite')
   with tf.io.gfile.GFile(save_path, 'wb') as f:
     f.write(tflite_model)
 
@@ -302,6 +310,7 @@ def main(unused_argv):
   is_ckpt = not tf.io.gfile.isdir(model_path)
 
   # Infer save directory path.
+  export_name = FLAGS.name if FLAGS.name else 'export'
   if FLAGS.save_dir:
     save_dir = FLAGS.save_dir
   else:
@@ -310,10 +319,10 @@ def main(unused_argv):
       save_dir = model_path
     elif is_ckpt:
       # If model_path is a checkpoint file, use the directory of the file.
-      save_dir = os.path.join(os.path.dirname(model_path), 'export')
+      save_dir = os.path.join(os.path.dirname(model_path), export_name)
     else:
       # If model_path is a checkpoint directory, use child export directory.
-      save_dir = os.path.join(model_path, 'export')
+      save_dir = os.path.join(model_path, export_name)
 
   # Make a new save directory.
   save_dir = train_util.expand_path(save_dir)
@@ -344,8 +353,10 @@ def main(unused_argv):
   if FLAGS.tflite:
     tflite_dir = os.path.join(save_dir, 'tflite')
     ensure_exits(tflite_dir)
-    saved_model_to_tflite(save_dir, tflite_dir,
-                          metadata_path if FLAGS.metadata else '')
+    saved_model_to_tflite(save_dir,
+                          tflite_dir,
+                          metadata_path if FLAGS.metadata else '',
+                          name=FLAGS.name)
 
 
 def console_entry_point():
