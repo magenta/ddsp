@@ -478,3 +478,94 @@ class VSTSynthesize(tf.keras.Model):
     return audio_out, final_phase
 
 
+@gin.configurable
+class VSTSynthesizeHarmonic(VSTSynthesize):
+  """VST inference modules, for models trained with `models/vst/vst.gin`."""
+
+  @property
+  def _signatures(self):
+    return {'call': self.call.get_concrete_function(
+        amps=tf.TensorSpec(shape=[1], dtype=tf.float32),
+        prev_amps=tf.TensorSpec(shape=[1], dtype=tf.float32),
+        hd=tf.TensorSpec(shape=[self.n_harmonics], dtype=tf.float32),
+        prev_hd=tf.TensorSpec(shape=[self.n_harmonics], dtype=tf.float32),
+        f0=tf.TensorSpec(shape=[1], dtype=tf.float32),
+        prev_f0=tf.TensorSpec(shape=[1], dtype=tf.float32),
+        prev_phase=tf.TensorSpec(shape=[1], dtype=tf.float32),
+    )}
+
+  def build_network(self):
+    """Run a fake batch through the network."""
+    # Need two frames because of interpolation.
+    amps = tf.zeros([1])
+    prev_amps = tf.zeros([1])
+    hd = tf.zeros([self.n_harmonics])
+    prev_hd = tf.zeros([self.n_harmonics])
+    f0 = tf.zeros([1])
+    prev_f0 = tf.zeros([1])
+    prev_phase = tf.zeros([1])
+    self._build_network(
+        amps, prev_amps, hd, prev_hd, f0, prev_f0, prev_phase)
+
+  @tf.function
+  def call(self, amps, prev_amps, hd, prev_hd,
+           f0, prev_f0, prev_phase):
+    """Compute a frame of audio, single example, single frame."""
+    # Make 3-D tensors, two frames for interpolation.
+    amps = tf.reshape(
+        tf.concat([prev_amps[None, :], amps[None, :]], axis=0),
+        [1, 2, 1])
+    hd = tf.reshape(
+        tf.concat([prev_hd[None, :], hd[None, :]], axis=0),
+        [1, 2, self.n_harmonics])
+    f0 = tf.reshape(
+        tf.concat([prev_f0[None, :], f0[None, :]], axis=0),
+        [1, 2, 1])
+    prev_phase = tf.reshape(prev_phase, [1, 1, 1])
+
+    audio_out, final_phase = ddsp.core.streaming_harmonic_synthesis(
+        frequencies=f0,
+        amplitudes=amps,
+        harmonic_distribution=hd,
+        initial_phase=prev_phase,
+        n_samples=self.hop_size,
+        sample_rate=self.sample_rate,
+        amp_resample_method=self.resample_method)
+
+    # Return 1-D outputs.
+    audio_out = audio_out[0]
+    final_phase = final_phase[0, 0]
+    return audio_out, final_phase
+
+
+@gin.configurable
+class VSTSynthesizeNoise(VSTSynthesize):
+  """VST inference modules, for models trained with `models/vst/vst.gin`."""
+
+  @property
+  def _signatures(self):
+    return {'call': self.call.get_concrete_function(
+        noise=tf.TensorSpec(shape=[self.n_noise], dtype=tf.float32),
+    )}
+
+  def build_network(self):
+    """Run a fake batch through the network."""
+    # Need two frames because of interpolation.
+    noise = tf.zeros([self.n_noise])
+    self._build_network(noise)
+
+  @tf.function
+  def call(self, noise):
+    """Compute a frame of audio, single example, single frame."""
+    # Make 3-D tensors, two frames for interpolation.
+    noise = tf.reshape(
+        tf.concat([noise[None, :], noise[None, :]], axis=0),
+        [1, 2, self.n_noise])
+
+    audio_out = self.filtered_noise.get_signal(noise)
+
+    # Return 1-D outputs.
+    audio_out = audio_out[0]
+    return audio_out
+
+

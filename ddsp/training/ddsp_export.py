@@ -77,6 +77,8 @@ flags.DEFINE_enum(
         'vst_predict_controls',
         'vst_stateless_predict_controls',
         'vst_synthesize',
+        'vst_synthesize_harmonic',
+        'vst_synthesize_noise',
     ],
     'Specify the ddsp.training.inference model to use for '
     'converting a checkpoint to a SavedModel. Names are '
@@ -215,6 +217,8 @@ def get_inference_model(ckpt):
       'vst_predict_controls': inference.VSTPredictControls,
       'vst_stateless_predict_controls': inference.VSTStatelessPredictControls,
       'vst_synthesize': inference.VSTSynthesize,
+      'vst_synthesize_harmonic': inference.VSTSynthesizeHarmonic,
+      'vst_synthesize_noise': inference.VSTSynthesizeNoise,
   }
   return models[FLAGS.inference_model](ckpt)
 
