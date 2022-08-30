@@ -45,6 +45,7 @@ setuptools.setup(
         'google-cloud-storage',
         'librosa',
         'pydub',
+        'protobuf==3.20.*',  # temporary fix for proto dependency bug
         'mir_eval',
         'note_seq',
         'numba < 0.50',  # temporary fix for librosa import

@@ -66,6 +66,7 @@ disable=abstract-method,
         buffer-builtin,
         c-extension-no-member,
         consider-using-enumerate,
+        consider-using-generator,
         consider-using-f-string,
         cmp-builtin,
         cmp-method,
@@ -146,6 +147,7 @@ disable=abstract-method,
         trailing-newlines,
         unichr-builtin,
         unicode-builtin,
+        unnecessary-lambda-assignment,
         unnecessary-pass,
         unpacking-in-except,
         useless-else-on-loop,
@@ -156,7 +158,6 @@ disable=abstract-method,
         xrange-builtin,
         unexpected-keyword-arg,
         zip-builtin-not-iterating,
-
 
 [REPORTS]
 
