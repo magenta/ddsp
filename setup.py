@@ -76,6 +76,7 @@ setuptools.setup(
             'ddsp_export = ddsp.training.ddsp_export:console_entry_point',
             'ddsp_run = ddsp.training.ddsp_run:console_entry_point',
             'ddsp_prepare_tfrecord = ddsp.training.data_preparation.ddsp_prepare_tfrecord:console_entry_point',
+            'ddsp_prepare_urmp_dataset = ddsp.training.data_preparation.ddsp_prepare_urmp_dataset:console_entry_point',
             'ddsp_generate_synthetic_dataset = ddsp.training.data_preparation.ddsp_generate_synthetic_dataset:console_entry_point',
             'ddsp_ai_platform = ddsp.training.docker.ddsp_ai_platform:console_entry_point',
         ],
