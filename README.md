@@ -4,6 +4,7 @@
 
 # DDSP: Differentiable Digital Signal Processing
 [![Build Status](https://github.com/magenta/ddsp/workflows/build/badge.svg)](https://github.com/magenta/ddsp/actions?query=workflow%3Abuild)
+[![Downloads](https://static.pepy.tech/personalized-badge/crepe?period=total&units=international_system&left_color=grey&right_color=blue&left_text=Downloads)](https://pepy.tech/project/crepe)
 
 [**Demos**](./ddsp/colab/demos)
 | [**Tutorials**](./ddsp/colab/tutorials)

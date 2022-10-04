@@ -39,22 +39,22 @@ setuptools.setup(
     install_requires=[
         'absl-py',
         'cloudml-hypertune',
-        'crepe>=0.0.11',
+        'crepe<=0.0.12',
         'future',
         'gin-config>=0.3.0',
         'google-cloud-storage',
+        'hmmlearn<=0.2.7',
         'librosa',
         'pydub',
-        'protobuf==3.20.*',  # temporary fix for proto dependency bug
+        'protobuf<=3.20.*',  # temporary fix for proto dependency bug
         'mir_eval',
-        'note_seq',
-        'numba < 0.50',  # temporary fix for librosa import
+        'note_seq<0.0.4',
         'numpy',
         'scipy',
         'six',
         'tensorflow',
         'tensorflow-addons',
-        'tensorflowjs',
+        'tensorflowjs<3.19',
         'tensorflow-probability',
         'tensorflow-datasets',
         'tflite_support'
