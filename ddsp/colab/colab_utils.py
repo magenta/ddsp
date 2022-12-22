@@ -231,7 +231,7 @@ def get_tuning_factor(f0_midi, f0_confidence, mask_on):
   ## Computes mininmum "note" transitions.
   f0_at = f0_midi[mask_on][:, np.newaxis] - midi_diffs
   f0_at_diffs = np.diff(f0_at, axis=0)
-  deltas = (f0_at_diffs != 0.0).astype(np.float)
+  deltas = (f0_at_diffs != 0.0).astype(float)
   cost_deltas = np.mean(weights[:-1] * deltas, axis=0)
 
   # Tuning factor is minimum cost.

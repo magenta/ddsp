@@ -256,7 +256,7 @@ def strided_freq_change(controls,
   """Finds changes in f0 of >= 1 semitone across multiple strides."""
   f0 = np.squeeze(controls['f0_hz'].numpy())
   f0_midi = ddsp.core.hz_to_midi(f0)
-  transitions = np.ones(len(f0), dtype=np.bool)
+  transitions = np.ones(len(f0), dtype=bool)
   for frame_width in frame_widths:
     padded_f0 = pad_for_frame(
         f0_midi, mode=pad_mode, frame_width=frame_width, axis=0)
