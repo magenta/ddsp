@@ -63,6 +63,7 @@ disable=abstract-method,
         attribute-defined-outside-init,
         backtick,
         bad-option-value,
+        broad-exception-raised,
         buffer-builtin,
         c-extension-no-member,
         consider-using-enumerate,
@@ -131,6 +132,7 @@ disable=abstract-method,
         setslice-method,
         signature-differs,
         standarderror-builtin,
+        superfluous-parens,
         suppressed-message,
         sys-max-int,
         too-few-public-methods,
@@ -153,6 +155,7 @@ disable=abstract-method,
         useless-else-on-loop,
         useless-object-inheritance,
         useless-suppression,
+        use-dict-literal,
         using-cmp-argument,
         wrong-import-order,
         xrange-builtin,
@@ -449,6 +452,4 @@ valid-metaclass-classmethod-first-arg=mcs
 
 # Exceptions that will emit a warning when being caught. Defaults to
 # "Exception"
-overgeneral-exceptions=StandardError,
-                       Exception,
-                       BaseException
+overgeneral-exceptions=

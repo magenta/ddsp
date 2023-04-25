@@ -1,4 +1,4 @@
-# Copyright 2022 The DDSP Authors.
+# Copyright 2023 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ from ddsp import core
 from ddsp import losses
 import gin
 import tensorflow as tf
-import tensorflow_addons as tfa
+from tensorflow_addons.layers import SpectralNormalization
 import tensorflow_probability as tfp
 
 tfk = tf.keras
@@ -1102,7 +1102,7 @@ class DilatedConvStack(tfkl.Layer):
                           padding='same',
                           kernel_initializer=initializer)
       if spectral_norm:
-        return tfa.layers.SpectralNormalization(layer)
+        return SpectralNormalization(layer)
       else:
         return layer
 

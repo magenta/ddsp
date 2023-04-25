@@ -1,4 +1,4 @@
-# Copyright 2022 The DDSP Authors.
+# Copyright 2023 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -40,16 +40,17 @@ setuptools.setup(
         'absl-py',
         'cloudml-hypertune',
         'crepe<=0.0.12',
+        'dill<=0.3.4',
         'future',
         'gin-config>=0.3.0',
         'google-cloud-storage',
         'hmmlearn<=0.2.7',
         'librosa',
         'pydub',
-        'protobuf<=3.20.*',  # temporary fix for proto dependency bug
+        'protobuf<=3.20',  # temporary fix for proto dependency bug
         'mir_eval',
         'note_seq<0.0.4',
-        'numpy',
+        'numpy<1.24',
         'scipy',
         'six',
         'tensorflow',
@@ -71,6 +72,7 @@ setuptools.setup(
         ],
         'test': ['pytest', 'pylint!=2.5.0'],
     },
+    # pylint: disable=line-too-long
     entry_points={
         'console_scripts': [
             'ddsp_export = ddsp.training.ddsp_export:console_entry_point',
@@ -80,6 +82,7 @@ setuptools.setup(
             'ddsp_ai_platform = ddsp.training.docker.ddsp_ai_platform:console_entry_point',
         ],
     },
+    # pylint: enable=line-too-long
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
