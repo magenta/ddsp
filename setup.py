@@ -54,7 +54,6 @@ setuptools.setup(
         'scipy',
         'six',
         'tensorflow',
-        'tensorflow-addons',
         'tensorflowjs<3.19',
         'tensorflow-probability',
         'tensorflow-datasets',
