@@ -181,7 +181,7 @@ class LoudnessMetrics(BaseMetrics):
   def metrics(self):
     return self._metrics
 
-  def update_state(self, batch, audio_gen):
+  def update_state(self, batch, audio_gen):  # pytype: disable=signature-mismatch  # overriding-parameter-count-checks
     """Update metrics based on a batch of audio.
 
     Args:
@@ -228,7 +228,7 @@ class F0CrepeMetrics(BaseMetrics):
   def metrics(self):
     return self._metrics
 
-  def update_state(self, batch, audio_gen):
+  def update_state(self, batch, audio_gen):  # pytype: disable=signature-mismatch  # overriding-parameter-count-checks
     """Update metrics based on a batch of audio.
 
     Args:
@@ -293,7 +293,7 @@ class F0Metrics(BaseMetrics):
   def metrics(self):
     return self._metrics
 
-  def update_state(self, batch, f0_hz_predict):
+  def update_state(self, batch, f0_hz_predict):  # pytype: disable=signature-mismatch  # overriding-parameter-count-checks
     """Update metrics based on a batch of audio.
 
     Args:
