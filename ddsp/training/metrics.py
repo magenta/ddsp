@@ -29,6 +29,8 @@ import tensorflow.compat.v2 as tf
 MIN_F0_CONFIDENCE = 0.85
 OUTLIER_MIDI_THRESH = 12
 
+# pytype: disable=signature-mismatch  # overriding-parameter-count-checks
+
 
 # ---------------------- Helper Functions --------------------------------------
 def squeeze(input_vector):
@@ -181,7 +183,7 @@ class LoudnessMetrics(BaseMetrics):
   def metrics(self):
     return self._metrics
 
-  def update_state(self, batch, audio_gen):  # pytype: disable=signature-mismatch  # overriding-parameter-count-checks
+  def update_state(self, batch, audio_gen):
     """Update metrics based on a batch of audio.
 
     Args:
@@ -228,7 +230,7 @@ class F0CrepeMetrics(BaseMetrics):
   def metrics(self):
     return self._metrics
 
-  def update_state(self, batch, audio_gen):  # pytype: disable=signature-mismatch  # overriding-parameter-count-checks
+  def update_state(self, batch, audio_gen):
     """Update metrics based on a batch of audio.
 
     Args:
@@ -293,7 +295,7 @@ class F0Metrics(BaseMetrics):
   def metrics(self):
     return self._metrics
 
-  def update_state(self, batch, f0_hz_predict):  # pytype: disable=signature-mismatch  # overriding-parameter-count-checks
+  def update_state(self, batch, f0_hz_predict):
     """Update metrics based on a batch of audio.
 
     Args:
