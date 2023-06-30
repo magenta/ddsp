@@ -18,8 +18,8 @@ import os
 import re
 
 from absl import logging
-import hypertune
 from google.cloud import storage
+import hypertune
 
 
 def download_from_gstorage(gstorage_path, local_path):
