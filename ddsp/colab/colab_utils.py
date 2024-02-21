@@ -183,7 +183,8 @@ def upload(sample_rate=DEFAULT_SAMPLE_RATE, normalize_db=None):
 def save_dataset_statistics(data_provider,
                             file_path=None,
                             batch_size=1,
-                            power_frame_size=256,):
+                            power_frame_size=256,
+                            power_frame_rate=250):
   """Calculate dataset stats and save in a pickle file.
 
   Calls out to postprocessing.compute_dataset_statistics.
@@ -201,7 +202,7 @@ def save_dataset_statistics(data_provider,
   """
 
   ds_stats = ddsp.training.postprocessing.compute_dataset_statistics(
-      data_provider, batch_size, power_frame_size)
+      data_provider, batch_size, power_frame_size, power_frame_rate)
 
   # Save.
   if file_path is not None:
