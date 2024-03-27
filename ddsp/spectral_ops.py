@@ -1,4 +1,4 @@
-# Copyright 2023 The DDSP Authors.
+# Copyright 2024 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -151,7 +151,7 @@ def get_framed_lengths(input_length, frame_size, hop_size, padding='center'):
   """
   # Use numpy since this function isn't used dynamically.
   def get_n_frames(length):
-    return int(np.floor((length - frame_size) / hop_size)) + 1
+    return int(np.floor((length - frame_size) // hop_size)) + 1
 
   if padding == 'valid':
     padded_length = input_length
