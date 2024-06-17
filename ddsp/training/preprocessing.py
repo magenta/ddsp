@@ -1,4 +1,4 @@
-# Copyright 2023 The DDSP Authors.
+# Copyright 2024 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -179,13 +179,15 @@ class OnlineF0PowerPreprocessor(nn.DictLayer):
     # Crepe model, must either be a model size or path to SavedModel.
     if crepe_saved_model_path:
       self.crepe_model = ddsp.spectral_ops.PretrainedCREPE(
-          model_size_or_path=crepe_saved_model_path, hop_size=self.hop_size)
+          model_size_or_path=crepe_saved_model_path, hop_size=self.hop_size
+      )
 
     # Use viterbi decoding.
     self.viterbi = viterbi
 
-  def call(self, audio, f0_hz=None, f0_confidence=None, audio_16k=None) -> [
-      'f0_hz', 'pw_db', 'f0_scaled', 'pw_scaled', 'f0_confidence']:
+  def call(
+      self, audio, f0_hz=None, f0_confidence=None, audio_16k=None, pw_db=None
+  ) -> ['f0_hz', 'pw_db', 'f0_scaled', 'pw_scaled', 'f0_confidence']:
     """Compute power on the fly if it's not in the inputs."""
     # Compute features at 16kHz (needed for CREPE).
     if audio_16k is not None:
