@@ -325,6 +325,10 @@ def compute_dataset_statistics(data_provider,
       mean_min = np.mean(np.min(x, axis=-1))
     else:
       max_list = []
+      if x.shape != note_mask.shape:
+        min_length = min(x.shape[1], note_mask.shape[1])
+        x = x[:, :min_length]
+        note_mask = note_mask[:, :min_length]
       for x_i, m in zip(x, note_mask):
         if np.sum(m) > 0:
           max_list.append(np.max(x_i[m]))
