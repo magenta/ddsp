@@ -175,7 +175,7 @@ def prepare_tfrecord(input_audio_paths,
                      chunk_secs=20.0,
                      center=False,
                      viterbi=True,
-                     pipeline_options=''):
+                     pipeline_options=()):
   """Prepares a TFRecord for use in training, evaluation, and prediction.
 
   Args:
