@@ -289,7 +289,7 @@ As you can see in the code, this allows us to flexibly define hyperparameters of
 most functions without worrying about side-effects. One exception is `ddsp.core.oscillator_bank.use_angular_cumsum` where we can enable a slower but more accurate algorithm globally.
 
 
-### Backwards compatability
+### Backwards compatibility
 
 For backwards compatability, we keep track of changes in function signatures in `update_gin_config.py`, which can be used to update old operative configs to work with the current library.
 
