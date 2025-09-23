@@ -1,4 +1,4 @@
-# Copyright 2024 The DDSP Authors.
+# Copyright 2025 The DDSP Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -292,8 +292,8 @@ def compute_loudness(audio,
   audio = audio if use_tf else np.array(audio)
 
   # Temporarily a batch dimension for single examples.
-  is_1d = (len(audio.shape) == 1)
-  audio = audio[lib.newaxis, :] if is_1d else audio
+  is_mono = (len(audio.shape) == 1)
+  audio = audio[lib.newaxis, :] if is_mono else audio
 
   # Take STFT.
   overlap = 1 - hop_size / frame_size
@@ -319,7 +319,7 @@ def compute_loudness(audio,
                               use_tf=use_tf)
 
   # Remove temporary batch dimension.
-  loudness = loudness[0] if is_1d else loudness
+  loudness = loudness[0] if is_mono else loudness
 
   return loudness
 
@@ -404,8 +404,8 @@ def pad_or_trim_to_expected_length(vector,
   # Pick tensorflow or numpy.
   lib = tf if use_tf else np
 
-  is_1d = (len(vector.shape) == 1)
-  vector = vector[lib.newaxis, :] if is_1d else vector
+  is_mono = (len(vector.shape) == 1)
+  vector = vector[lib.newaxis, :] if is_mono else vector
 
   # Pad missing samples
   if vector_len < expected_len:
@@ -419,7 +419,7 @@ def pad_or_trim_to_expected_length(vector,
     vector = vector[..., :expected_len]
 
   # Remove temporary batch dimension.
-  vector = vector[0] if is_1d else vector
+  vector = vector[0] if is_mono else vector
   return vector
 
 
