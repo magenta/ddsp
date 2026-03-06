@@ -87,7 +87,7 @@ A pretrained model on 1.2M steps (batch size=64) of synthetic data [is available
 or on GCP.
 
 ```bash
-gsutil cp -r gs://ddsp-inv/ckpts/synthetic_pretrained_ckpt /path/to/synthetic_pretrained_ckpt
+gcloud storage cp --recursive gs://ddsp-inv/ckpts/synthetic_pretrained_ckpt /path/to/synthetic_pretrained_ckpt
 ```
 
 ```bash
