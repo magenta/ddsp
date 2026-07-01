@@ -321,7 +321,7 @@ def midi_to_unit(midi: Number,
                  clip: bool = False) -> Number:
   """Map MIDI notes to the unit interval [0, 1]."""
   unit = (midi - midi_min) / (midi_max - midi_min)
-  return tf.clip_by_value(unit, 0.0, 1.0) if clip else unit
+  return tf.clip_by_value(unit, 0.0, 1.0) if clip else unit  # pyrefly: ignore[bad-return]
 
 
 def unit_to_hz(unit: Number,
@@ -1520,7 +1520,7 @@ def apply_window_to_impulse_response(impulse_response: tf.Tensor,
 
   # Put IR in causal form and trim zero padding.
   if padding > 0:
-    first_half_start = (ir_size - (half_idx - 1)) + 1
+    first_half_start = (ir_size - (half_idx - 1)) + 1  # pyrefly: ignore[unbound-name]
     second_half_end = half_idx + 1
     impulse_response = tf.concat([impulse_response[..., first_half_start:],
                                   impulse_response[..., :second_half_end]],
