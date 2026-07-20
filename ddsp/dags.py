@@ -148,7 +148,7 @@ class DAGLayer(tfkl.Layer):
     # Initialize the outputs with inputs to the dag.
     outputs = {'inputs': inputs}
     # TODO(jesseengel): Remove this cluttering of the base namespace. Only there
-    # for backwards compatability.
+    # for backwards compatibility.
     outputs.update(inputs)
 
     # Run through the DAG nodes in sequential order.
