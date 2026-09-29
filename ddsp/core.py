@@ -294,7 +294,7 @@ def midi_to_hz(notes: Number, midi_zero_silence: bool = False) -> Number:
   # Map MIDI 0 as 0 hz when MIDI 0 is silence.
   if midi_zero_silence:
     hz = tf.where(tf.equal(notes, 0.0), 0.0, hz)
-  return hz
+  return hz  # pyrefly: ignore[bad-return]
 
 
 def hz_to_midi(frequencies: Number) -> Number:
