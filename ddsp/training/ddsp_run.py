@@ -58,6 +58,7 @@ ddsp_run \
 
 """
 
+import importlib.resources
 import os
 import time
 
@@ -70,7 +71,6 @@ from ddsp.training import models
 from ddsp.training import train_util
 from ddsp.training import trainers
 import gin
-import pkg_resources
 import tensorflow as tf
 
 gfile = tf.io.gfile
@@ -114,7 +114,7 @@ flags.DEFINE_boolean('run_once', False, 'Whether evaluation will run once.')
 flags.DEFINE_integer('initial_delay_secs', None,
                      'Time to wait before evaluation starts')
 
-GIN_PATH = pkg_resources.resource_filename(__name__, 'gin')
+GIN_PATH = str(importlib.resources.files('ddsp.training').joinpath('gin'))
 
 
 def delay_start():
