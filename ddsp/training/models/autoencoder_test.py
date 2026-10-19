@@ -14,15 +14,16 @@
 
 """Tests for ddsp.training.models.autoencoder."""
 
+import importlib.resources
+
 from absl.testing import parameterized
 from ddsp.core import tf_float32
 from ddsp.training import models
 import gin
 import numpy as np
-import pkg_resources
 import tensorflow as tf
 
-GIN_PATH = pkg_resources.resource_filename(__name__, '../gin')
+GIN_PATH = str(importlib.resources.files(models).joinpath('../gin'))
 gin.add_config_file_search_path(GIN_PATH)
 
 
