@@ -63,7 +63,7 @@ def get_worker_behavior_info(save_dir):
   """Infers worker behavior from the environment.
 
   Checks if TF_CONFIG environment variable is set
-  and inferes cluster configuration and save_dir
+  and infers cluster configuration and save_dir
   from it.
 
   Args:

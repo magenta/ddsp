@@ -5,7 +5,7 @@ papers using ddsp.
 
 ## List of papers
 
-* [iclr2020](./iclr2020/): Experiments from the orginal DDSP ICLR 2020 paper ([paper](https://openreview.net/forum?id=B1x1ma4tDr), [blog](https://magenta.tensorflow.org/ddsp)).
+* [iclr2020](./iclr2020/): Experiments from the original DDSP ICLR 2020 paper ([paper](https://openreview.net/forum?id=B1x1ma4tDr), [blog](https://magenta.tensorflow.org/ddsp)).
 
 ```latex
 @inproceedings{

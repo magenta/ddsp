@@ -98,8 +98,8 @@ def pianoroll_plot_setup(figsize=None, side_piano_ratio=0.025,
   and the main axis for plotting your data.
 
   By default, this will draw 11 octaves of piano keys along the y-axis; you will
-  probably want reduce what is visible using `ax.set_ylim()` on either returned
-  axis.
+  probably want to reduce what is visible using `ax.set_ylim()` on either
+  returned axis.
 
   Using with imshow piano roll data:
     A common use case is for using imshow() on the main axis to display a piano
@@ -125,9 +125,9 @@ def pianoroll_plot_setup(figsize=None, side_piano_ratio=0.025,
     the faint piano roll below your data.
 
   Args:
-    figsize: Size if the matplotlib figure. Will be passed to `plt.figure()`.
+    figsize: Size of the matplotlib figure. Will be passed to `plt.figure()`.
       Defaults to None.
-    side_piano_ratio: Width of the y-axis piano in terms of raio of the whole
+    side_piano_ratio: Width of the y-axis piano in terms of ratio of the whole
       figure. Defaults to 1/40th.
     faint_pr: Whether to draw faint black & white keys across the main plot.
       Defaults to True.

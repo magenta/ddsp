@@ -18,7 +18,7 @@ When there are changes in a function signature (adding or removing kwargs),
 those changes need to be reflected in gin config files. There is no way to
 automatically do this from within gin.
 
-This script maintains some backwards compatability, by keeping track of changes
+This script maintains some backwards compatibility, by keeping track of changes
 to function signatures and automatically updating gin config files to
 incorporate those changes.
 
@@ -43,7 +43,7 @@ from tensorflow import io
 flags.DEFINE_string('path', '/tmp/operative_config-*.gin', 'Path to gin '
                     'config files. May be a path to a file, a or a glob '
                     'expression.')
-flags.DEFINE_boolean('overwrite', False, 'Overwrite orginal files.')
+flags.DEFINE_boolean('overwrite', False, 'Overwrite original files.')
 
 
 FLAGS = flags.FLAGS
