@@ -90,7 +90,7 @@ class ProcessorGroup(dags.DAGLayer):
         ['module', ['input_key', ...], ['output_key', ...]]
 
         'module': Module instance or string name of module. For example,
-          'reverb' woud access the attribute `processor_group.reverb`.
+          'reverb' would access the attribute `processor_group.reverb`.
         'input_key': List of strings, nested keys in dictionary of dag outputs.
           For example, 'inputs/f0_hz' would access `outputs[inputs]['f0_hz']`.
           Inputs to the dag are wrapped in a `inputs` dict as shown in the

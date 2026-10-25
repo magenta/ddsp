@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Library of Trainer objects that define traning step and wrap optimizer."""
+"""Library of Trainer objects that define training step and wrap optimizer."""
 
 import time
 
@@ -179,6 +179,6 @@ def get_trainer_class(trainer_class=Trainer):
     trainer_class: A trainer class such as `Trainer`.
 
   Returns:
-    The 'global' trainer class specifieed in the gin config.
+    The 'global' trainer class specified in the gin config.
   """
   return trainer_class

@@ -68,7 +68,7 @@ class DAGLayer(tfkl.Layer):
         ['module', ['input_key', ...], ['output_key', ...]]
 
         'module': Module instance or string name of module. For example,
-          'encoder' woud access the attribute `dag_layer.encoder`.
+          'encoder' would access the attribute `dag_layer.encoder`.
         'input_key': List of strings, nested keys in dictionary of dag outputs.
           For example, 'inputs/f0_hz' would access `outputs[inputs]['f0_hz']`.
           Inputs to the dag are wrapped in a `inputs` dict as shown in the
@@ -100,7 +100,7 @@ class DAGLayer(tfkl.Layer):
     self.dag = dag
     modules.update(dag_modules)
 
-    # Make as propreties of DAGLayer to keep track of variables in checkpoints.
+    # Make as properties of DAGLayer to keep track of variables in checkpoints.
     self.module_names = list(modules.keys())
     for module_name, module in modules.items():
       setattr(self, module_name, module)
@@ -148,7 +148,7 @@ class DAGLayer(tfkl.Layer):
     # Initialize the outputs with inputs to the dag.
     outputs = {'inputs': inputs}
     # TODO(jesseengel): Remove this cluttering of the base namespace. Only there
-    # for backwards compatability.
+    # for backwards compatibility.
     outputs.update(inputs)
 
     # Run through the DAG nodes in sequential order.
